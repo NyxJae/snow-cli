@@ -8,6 +8,23 @@ import os from 'os';
 import {loadCodebaseConfig} from '../utils/config/codebaseConfig.js';
 
 /**
+ * 替换系统提示中的动态占位符
+ * 根据 codebase 配置生成不同的工作流和代码搜索指导内容
+ */
+function replacePlaceholders(template: string): string {
+	const hasCodebase = isCodebaseEnabled();
+	return template
+		.replace(
+			'PLACEHOLDER_FOR_WORKFLOW_SECTION',
+			getWorkflowSection(hasCodebase),
+		)
+		.replace(
+			'PLACEHOLDER_FOR_CODE_SEARCH_SECTION',
+			getCodeSearchSection(hasCodebase),
+		);
+}
+
+/**
  * Get the system prompt, dynamically reading from ROLE.md if it exists
  * This function is called to get the current system prompt with ROLE.md content if available
  */
@@ -20,11 +37,7 @@ function getSystemPromptWithRole(): string {
 		if (fs.existsSync(roleFilePath)) {
 			const roleContent = fs.readFileSync(roleFilePath, 'utf-8').trim();
 			if (roleContent) {
-				// Replace the default role description with ROLE.md content
-				return SYSTEM_PROMPT_TEMPLATE.replace(
-					'You are Snow AI CLI, an intelligent command-line assistant.',
-					roleContent,
-				);
+				return replacePlaceholders(roleContent);
 			}
 		}
 	} catch (error) {
@@ -32,7 +45,7 @@ function getSystemPromptWithRole(): string {
 		console.error('Failed to read ROLE.md:', error);
 	}
 
-	return SYSTEM_PROMPT_TEMPLATE;
+	return replacePlaceholders(SYSTEM_PROMPT_TEMPLATE);
 }
 
 // Get system environment info
@@ -461,17 +474,8 @@ function getCodeSearchSection(hasCodebase: boolean): string {
 export function getSystemPrompt(): string {
 	const basePrompt = getSystemPromptWithRole();
 	const systemEnv = getSystemEnvironmentInfo();
-	const hasCodebase = isCodebaseEnabled();
-	// Generate dynamic sections
-	const workflowSection = getWorkflowSection(hasCodebase);
-	const codeSearchSection = getCodeSearchSection(hasCodebase);
 
-	// Replace placeholders with actual content
-	const finalPrompt = basePrompt
-		.replace('PLACEHOLDER_FOR_WORKFLOW_SECTION', workflowSection)
-		.replace('PLACEHOLDER_FOR_CODE_SEARCH_SECTION', codeSearchSection);
-
-	return `${finalPrompt}
+	return `${basePrompt}
 
 ## System Environment
 
