@@ -15,10 +15,7 @@ console.log('Building with ncc...');
 await execAsync('ncc build dist/cli.js -o bundle --minify');
 
 // Copy WASM file
-copyFileSync(
-	'node_modules/sql.js/dist/sql-wasm.wasm',
-	'bundle/sql-wasm.wasm',
-);
+copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', 'bundle/sql-wasm.wasm');
 
 // Rename index.js to cli.cjs
 if (existsSync('bundle/index.js')) {

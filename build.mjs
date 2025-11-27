@@ -76,10 +76,7 @@ if (typeof globalThis.FormData === 'undefined') {
 });
 
 // Copy WASM files
-copyFileSync(
-	'node_modules/sql.js/dist/sql-wasm.wasm',
-	'bundle/sql-wasm.wasm',
-);
+copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', 'bundle/sql-wasm.wasm');
 copyFileSync(
 	'node_modules/tiktoken/tiktoken_bg.wasm',
 	'bundle/tiktoken_bg.wasm',
