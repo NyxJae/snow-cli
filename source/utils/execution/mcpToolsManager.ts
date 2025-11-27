@@ -12,6 +12,7 @@ import {mcpTools as ideDiagnosticsTools} from '../../mcp/ideDiagnostics.js';
 import {mcpTools as codebaseSearchTools} from '../../mcp/codebaseSearch.js';
 import {mcpTools as askUserQuestionTools} from '../../mcp/askUserQuestion.js';
 import {TodoService} from '../../mcp/todo.js';
+import {UsefulInfoService} from '../../mcp/usefulInfo.js';
 import {
 	mcpTools as notebookTools,
 	executeNotebookTool,
@@ -96,6 +97,25 @@ export function getTodoService(): TodoService {
 		});
 	}
 	return todoService;
+}
+
+// Lazy initialization of UsefulInfo service to avoid circular dependencies
+let usefulInfoService: UsefulInfoService | null = null;
+
+/**
+ * Get the UsefulInfo service instance (lazy initialization)
+ */
+export function getUsefulInfoService(): UsefulInfoService {
+	if (!usefulInfoService) {
+		usefulInfoService = new UsefulInfoService(
+			path.join(os.homedir(), '.snow'),
+			() => {
+				const session = sessionManager.getCurrentSession();
+				return session ? session.id : null;
+			},
+		);
+	}
+	return usefulInfoService;
 }
 
 /**
@@ -220,6 +240,34 @@ async function refreshToolsCache(): Promise<void> {
 	});
 
 	for (const tool of todoTools) {
+		allTools.push({
+			type: 'function',
+			function: {
+				name: tool.name,
+				description: tool.description || '',
+				parameters: tool.inputSchema,
+			},
+		});
+	}
+
+	// Add built-in UsefulInfo tools (always available)
+	const usefulInfoSvc = getUsefulInfoService(); // This will never return null after lazy init
+	await usefulInfoSvc.initialize();
+	const usefulInfoTools = usefulInfoSvc.getTools();
+	const usefulInfoServiceTools = usefulInfoTools.map(tool => ({
+		name: tool.name.replace('useful-info-', ''),
+		description: tool.description || '',
+		inputSchema: tool.inputSchema,
+	}));
+
+	servicesInfo.push({
+		serviceName: 'usefulInfo',
+		tools: usefulInfoServiceTools,
+		isBuiltIn: true,
+		connected: true,
+	});
+
+	for (const tool of usefulInfoTools) {
 		allTools.push({
 			type: 'function',
 			function: {
@@ -1037,6 +1085,9 @@ export async function executeMCPTool(
 		if (toolName.startsWith('todo-')) {
 			serviceName = 'todo';
 			actualToolName = toolName.substring('todo-'.length);
+		} else if (toolName.startsWith('useful-info-')) {
+			serviceName = 'usefulInfo';
+			actualToolName = toolName.substring('useful-info-'.length);
 		} else if (toolName.startsWith('notebook-')) {
 			serviceName = 'notebook';
 			actualToolName = toolName.substring('notebook-'.length);
@@ -1090,6 +1141,9 @@ export async function executeMCPTool(
 		if (serviceName === 'todo') {
 			// Handle built-in TODO tools (no connection needed)
 			result = await getTodoService().executeTool(actualToolName, args);
+		} else if (serviceName === 'usefulInfo') {
+			// Handle built-in UsefulInfo tools (no connection needed)
+			result = await getUsefulInfoService().executeTool(actualToolName, args);
 		} else if (serviceName === 'notebook') {
 			// Handle built-in Notebook tools (no connection needed)
 			result = await executeNotebookTool(toolName, args);

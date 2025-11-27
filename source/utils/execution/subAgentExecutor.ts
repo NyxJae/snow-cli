@@ -3,7 +3,11 @@ import {createStreamingResponse} from '../../api/responses.js';
 import {createStreamingGeminiCompletion} from '../../api/gemini.js';
 import {createStreamingChatCompletion} from '../../api/chat.js';
 import {getSubAgent} from '../config/subAgentConfig.js';
-import {collectAllMCPTools, executeMCPTool} from './mcpToolsManager.js';
+import {
+	collectAllMCPTools,
+	executeMCPTool,
+	getUsefulInfoService,
+} from './mcpToolsManager.js';
 import {getOpenAiConfig} from '../config/apiConfig.js';
 import {sessionManager} from '../session/sessionManager.js';
 import {unifiedHooksExecutor} from './unifiedHooksExecutor.js';
@@ -11,6 +15,7 @@ import {checkYoloPermission} from './yoloPermissionChecker.js';
 import type {ConfirmationResult} from '../../ui/components/ToolConfirmation.js';
 import type {MCPTool} from './mcpToolsManager.js';
 import type {ChatMessage} from '../../api/chat.js';
+import {formatUsefulInfoContext} from '../core/usefulInfoPreprocessor.js';
 
 export interface SubAgentMessage {
 	type: 'sub_agent_message';
@@ -602,18 +607,37 @@ You are a versatile task execution agent with full tool access, capable of handl
 		}
 
 		// Build conversation history for sub-agent
+		const messages: ChatMessage[] = [];
+
+		// Add useful information context if available (SAME AS MAIN AGENT)
+		const currentSession = sessionManager.getCurrentSession();
+		if (currentSession) {
+			const usefulInfoService = getUsefulInfoService();
+			const usefulInfoList = await usefulInfoService.getUsefulInfoList(
+				currentSession.id,
+			);
+
+			if (usefulInfoList && usefulInfoList.items.length > 0) {
+				const usefulInfoContext = await formatUsefulInfoContext(
+					usefulInfoList.items,
+				);
+				messages.push({
+					role: 'user',
+					content: usefulInfoContext,
+				});
+			}
+		}
+
 		// Append role to prompt if configured
 		let finalPrompt = prompt;
 		if (agent.role) {
 			finalPrompt = `${prompt}\n\n${agent.role}`;
 		}
 
-		const messages: ChatMessage[] = [
-			{
-				role: 'user',
-				content: finalPrompt,
-			},
-		];
+		messages.push({
+			role: 'user',
+			content: finalPrompt,
+		});
 
 		// Stream sub-agent execution
 		let finalResponse = '';
