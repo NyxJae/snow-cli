@@ -3,3 +3,5 @@ dist
 bundle
 out
 .snow
+/.vscode/settings.json
+ROLE.md

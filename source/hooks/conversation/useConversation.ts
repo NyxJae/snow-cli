@@ -10,6 +10,7 @@ import {getSystemPrompt} from '../../api/systemPrompt.js';
 import {
 	collectAllMCPTools,
 	getTodoService,
+	getUsefulInfoService,
 } from '../../utils/execution/mcpToolsManager.js';
 import {
 	executeToolCalls,
@@ -19,6 +20,7 @@ import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
 import {formatTodoContext} from '../../utils/core/todoPreprocessor.js';
 import {unifiedHooksExecutor} from '../../utils/execution/unifiedHooksExecutor.js';
+import {formatUsefulInfoContext} from '../../utils/core/usefulInfoPreprocessor.js';
 import type {Message} from '../../ui/components/MessageList.js';
 import {filterToolsBySensitivity} from '../../utils/execution/yoloPermissionChecker.js';
 import {formatToolCallMessage} from '../../utils/ui/messageFormatter.js';
@@ -212,6 +214,22 @@ async function executeWithInternalRetry(
 		conversationMessages.push({
 			role: 'user',
 			content: todoContext,
+		});
+	}
+
+	// Add useful information context if available
+	const usefulInfoService = getUsefulInfoService();
+	const usefulInfoList = await usefulInfoService.getUsefulInfoList(
+		currentSession.id,
+	);
+
+	if (usefulInfoList && usefulInfoList.items.length > 0) {
+		const usefulInfoContext = await formatUsefulInfoContext(
+			usefulInfoList.items,
+		);
+		conversationMessages.push({
+			role: 'user',
+			content: usefulInfoContext,
 		});
 	}
 
@@ -1275,8 +1293,89 @@ async function executeWithInternalRetry(
 							// 压缩后需要重新构建conversationMessages
 							conversationMessages = [];
 							const session = sessionManager.getCurrentSession();
+
+							// 1. 添加系统消息
+							conversationMessages.push({
+								role: 'system',
+								content: getSystemPrompt(),
+							});
+
+							// 2. 如果有TODOs，添加TODO上下文
+							if (existingTodoList && existingTodoList.todos.length > 0) {
+								const todoContext = formatTodoContext(existingTodoList.todos);
+								conversationMessages.push({
+									role: 'user',
+									content: todoContext,
+								});
+							}
+
+							// 3. 压缩后重新获取并添加有用信息上下文
+							const usefulInfoService = getUsefulInfoService();
+							const updatedUsefulInfoList =
+								await usefulInfoService.getUsefulInfoList(session?.id || '');
+
+							if (
+								updatedUsefulInfoList &&
+								updatedUsefulInfoList.items.length > 0
+							) {
+								const usefulInfoContext = await formatUsefulInfoContext(
+									updatedUsefulInfoList.items,
+								);
+								conversationMessages.push({
+									role: 'user',
+									content: usefulInfoContext,
+								});
+							}
+
+							// 4. 添加压缩摘要
+							conversationMessages.push({
+								role: 'user',
+								content: `[Context Summary from Previous Conversation]\n\n${compressionResult.summary}`,
+							});
+
+							// 5. 添加保留的消息（未完成的工具调用链）
+							if (
+								compressionResult.preservedMessages &&
+								compressionResult.preservedMessages.length > 0
+							) {
+								for (const msg of compressionResult.preservedMessages) {
+									conversationMessages.push(msg);
+								}
+							}
+
+							// 6. 添加会话中的其他消息（排除已保留的）
 							if (session && session.messages.length > 0) {
-								conversationMessages.push(...session.messages);
+								// 获取已保留的消息ID集合，避免重复
+								const preservedIds = new Set(
+									compressionResult.preservedMessages?.map(
+										msg =>
+											msg.tool_call_id ||
+											(msg.tool_calls && msg.tool_calls[0]?.id) ||
+											`${msg.role}-${msg.content.slice(0, 20)}`,
+									) || [],
+								);
+
+								for (const sessionMsg of session.messages) {
+									const msgId =
+										sessionMsg.tool_call_id ||
+										(sessionMsg.tool_calls && sessionMsg.tool_calls[0]?.id) ||
+										`${sessionMsg.role}-${sessionMsg.content.slice(0, 20)}`;
+
+									// 跳过已保留的消息和工具消息
+									if (!preservedIds.has(msgId) && sessionMsg.role !== 'tool') {
+										conversationMessages.push({
+											role: sessionMsg.role,
+											content: sessionMsg.content,
+											...(sessionMsg.tool_calls && {
+												tool_calls: sessionMsg.tool_calls,
+											}),
+											...(sessionMsg.images && {images: sessionMsg.images}),
+											...(sessionMsg.reasoning && {
+												reasoning: sessionMsg.reasoning,
+											}),
+										});
+									}
+								}
 							}
 						}
 					} catch (error) {
@@ -1501,8 +1600,89 @@ async function executeWithInternalRetry(
 									// 压缩后需要重新构建conversationMessages
 									conversationMessages = [];
 									const session = sessionManager.getCurrentSession();
+
+									// 1. 添加系统消息
+									conversationMessages.push({
+										role: 'system',
+										content: getSystemPrompt(),
+									});
+
+									// 2. 如果有TODOs，添加TODO上下文
+									if (existingTodoList && existingTodoList.todos.length > 0) {
+										const todoContext = formatTodoContext(
+											existingTodoList.todos,
+										);
+										conversationMessages.push({
+											role: 'user',
+											content: todoContext,
+										});
+									}
+
+									// 3. 压缩后重新获取并添加有用信息上下文
+									const usefulInfoService = getUsefulInfoService();
+									const updatedUsefulInfoList =
+										await usefulInfoService.getUsefulInfoList(
+											session?.id || '',
+										);
+
+									if (
+										updatedUsefulInfoList &&
+										updatedUsefulInfoList.items.length > 0
+									) {
+										const usefulInfoContext = await formatUsefulInfoContext(
+											updatedUsefulInfoList.items,
+										);
+										conversationMessages.push({
+											role: 'user',
+											content: usefulInfoContext,
+										});
+									}
+
+									// 4. 添加压缩摘要
+									conversationMessages.push({
+										role: 'user',
+										content: `[Context Summary from Previous Conversation]\n\n${compressionResult.summary}`,
+									});
+
+									// 5. 添加保留的消息（未完成的工具调用链）
+									if (
+										compressionResult.preservedMessages &&
+										compressionResult.preservedMessages.length > 0
+									) {
+										for (const msg of compressionResult.preservedMessages) {
+											conversationMessages.push(msg);
+										}
+									}
+
+									// 6. 添加会话中的其他消息（排除已保留的）
 									if (session && session.messages.length > 0) {
-										conversationMessages.push(...session.messages);
+										// 获取已保留的消息ID集合，避免重复
+										const preservedIds = new Set(
+											compressionResult.preservedMessages?.map(
+												msg =>
+													msg.tool_call_id ||
+													(msg.tool_calls && msg.tool_calls[0]?.id) ||
+													`${msg.role}-${msg.content.slice(0, 20)}`,
+											) || [],
+										);
+
+										for (const sessionMsg of session.messages) {
+											const msgId =
+												sessionMsg.tool_call_id ||
+												(sessionMsg.tool_calls &&
+													sessionMsg.tool_calls[0]?.id) ||
+												`${sessionMsg.role}-${sessionMsg.content.slice(0, 20)}`;
+
+											// 跳过已保留的消息和工具消息
+											if (
+												preservedIds.has(msgId) ||
+												sessionMsg.role === 'tool'
+											) {
+												continue;
+											}
+
+											conversationMessages.push(sessionMsg);
+										}
 									}
 								}
 							} catch (error) {

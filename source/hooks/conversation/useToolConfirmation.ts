@@ -51,6 +51,7 @@ export function useToolConfirmation() {
 			return (
 				alwaysApprovedToolsRef.current.has(toolName) ||
 				toolName.startsWith('todo-') ||
+				toolName.startsWith('useful-info-') ||
 				toolName.startsWith('subagent-')
 			);
 		},

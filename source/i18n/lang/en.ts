@@ -275,6 +275,7 @@ export const en: TranslationKeys = {
 		codebaseTools: 'Codebase Search Tools',
 		terminalTools: 'Terminal Tools',
 		todoTools: 'TODO Management Tools',
+		usefulInfoTools: 'Useful Information Tools',
 		webSearchTools: 'Web Search Tools',
 		ideTools: 'IDE Diagnostics Tools',
 		userInteractionTools: 'User Interaction Tools',
