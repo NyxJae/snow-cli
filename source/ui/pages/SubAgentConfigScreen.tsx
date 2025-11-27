@@ -134,6 +134,11 @@ export default function SubAgentConfigScreen({
 			],
 		},
 		{
+			name: t.subAgentConfig.usefulInfoTools || 'Useful Information',
+			tools: ['useful-info-add', 'useful-info-delete', 'useful-info-list'],
+		},
+
+		{
 			name: t.subAgentConfig.webSearchTools,
 			tools: ['websearch-search', 'websearch-fetch'],
 		},

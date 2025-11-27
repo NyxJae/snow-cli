@@ -1,25 +1,43 @@
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import type {UsefulInfoList} from '../../mcp/types/usefulInfo.types.js';
 
 /**
  * File checkpoint data structure
  */
 export interface FileCheckpoint {
-	path: string;           // File absolute path
-	content: string;        // Original file content
-	timestamp: number;      // Checkpoint creation time
-	exists: boolean;        // Whether file existed before operation
+	path: string; // File absolute path
+	content: string; // Original file content
+	timestamp: number; // Checkpoint creation time
+	exists: boolean; // Whether file existed before operation
+}
+
+/**
+ * Useful information snapshot for checkpoint
+ */
+export interface UsefulInfoSnapshot {
+	items: Array<{
+		id: string;
+		filePath: string;
+		startLine: number;
+		endLine: number;
+		description?: string;
+		createdAt: string;
+		updatedAt: string;
+	}>;
+	timestamp: number;
 }
 
 /**
  * Conversation checkpoint data structure
  */
 export interface ConversationCheckpoint {
-	sessionId: string;      // Session ID
-	messageCount: number;   // Number of messages before AI response
-	fileSnapshots: FileCheckpoint[];  // File snapshots list
-	timestamp: number;      // Checkpoint creation time
+	sessionId: string; // Session ID
+	messageCount: number; // Number of messages before AI response
+	fileSnapshots: FileCheckpoint[]; // File snapshots list
+	usefulInfoSnapshot?: UsefulInfoSnapshot; // Useful information snapshot
+	timestamp: number; // Checkpoint creation time
 }
 
 /**
@@ -29,9 +47,11 @@ export interface ConversationCheckpoint {
 class CheckpointManager {
 	private readonly checkpointsDir: string;
 	private activeCheckpoint: ConversationCheckpoint | null = null;
+	private getUsefulInfoService: () => any; // Lazy injection to avoid circular dependency
 
-	constructor() {
+	constructor(getUsefulInfoService?: () => any) {
 		this.checkpointsDir = path.join(os.homedir(), '.snow', 'checkpoints');
+		this.getUsefulInfoService = getUsefulInfoService || (() => null);
 	}
 
 	/**
@@ -39,7 +59,7 @@ class CheckpointManager {
 	 */
 	private async ensureCheckpointsDir(): Promise<void> {
 		try {
-			await fs.mkdir(this.checkpointsDir, { recursive: true });
+			await fs.mkdir(this.checkpointsDir, {recursive: true});
 		} catch (error) {
 			// Directory already exists or other error
 		}
@@ -57,14 +77,37 @@ class CheckpointManager {
 	 * @param sessionId - Current session ID
 	 * @param messageCount - Number of messages before AI response
 	 */
-	async createCheckpoint(sessionId: string, messageCount: number): Promise<void> {
+	async createCheckpoint(
+		sessionId: string,
+		messageCount: number,
+	): Promise<void> {
 		await this.ensureCheckpointsDir();
+
+		// Capture useful information snapshot
+		let usefulInfoSnapshot: UsefulInfoSnapshot | undefined;
+		try {
+			const usefulInfoService = this.getUsefulInfoService();
+			if (usefulInfoService) {
+				const usefulInfoList: UsefulInfoList | null =
+					await usefulInfoService.getUsefulInfoList(sessionId);
+				if (usefulInfoList && usefulInfoList.items.length > 0) {
+					usefulInfoSnapshot = {
+						items: usefulInfoList.items,
+						timestamp: Date.now(),
+					};
+				}
+			}
+		} catch (error) {
+			console.warn('Failed to capture useful information snapshot:', error);
+			// Continue without useful info snapshot
+		}
 
 		this.activeCheckpoint = {
 			sessionId,
 			messageCount,
 			fileSnapshots: [],
-			timestamp: Date.now()
+			usefulInfoSnapshot,
+			timestamp: Date.now(),
 		};
 
 		// Save checkpoint immediately (will be updated as files are modified)
@@ -82,7 +125,7 @@ class CheckpointManager {
 
 		// Check if this file already has a snapshot
 		const existingSnapshot = this.activeCheckpoint.fileSnapshots.find(
-			snapshot => snapshot.path === filePath
+			snapshot => snapshot.path === filePath,
 		);
 
 		if (existingSnapshot) {
@@ -96,7 +139,7 @@ class CheckpointManager {
 				path: filePath,
 				content,
 				timestamp: Date.now(),
-				exists: true
+				exists: true,
 			});
 		} catch (error) {
 			// File doesn't exist, record as non-existent
@@ -104,7 +147,7 @@ class CheckpointManager {
 				path: filePath,
 				content: '',
 				timestamp: Date.now(),
-				exists: false
+				exists: false,
 			});
 		}
 
@@ -121,14 +164,21 @@ class CheckpointManager {
 		}
 
 		await this.ensureCheckpointsDir();
-		const checkpointPath = this.getCheckpointPath(this.activeCheckpoint.sessionId);
-		await fs.writeFile(checkpointPath, JSON.stringify(this.activeCheckpoint, null, 2));
+		const checkpointPath = this.getCheckpointPath(
+			this.activeCheckpoint.sessionId,
+		);
+		await fs.writeFile(
+			checkpointPath,
+			JSON.stringify(this.activeCheckpoint, null, 2),
+		);
 	}
 
 	/**
 	 * Load checkpoint from disk
 	 */
-	async loadCheckpoint(sessionId: string): Promise<ConversationCheckpoint | null> {
+	async loadCheckpoint(
+		sessionId: string,
+	): Promise<ConversationCheckpoint | null> {
 		try {
 			const checkpointPath = this.getCheckpointPath(sessionId);
 			const data = await fs.readFile(checkpointPath, 'utf-8');
@@ -166,6 +216,37 @@ class CheckpointManager {
 			} catch (error) {
 				console.error(`Failed to rollback file ${snapshot.path}:`, error);
 			}
+		}
+
+		// Restore useful information snapshot
+		try {
+			if (checkpoint.usefulInfoSnapshot) {
+				const usefulInfoService = this.getUsefulInfoService();
+				if (usefulInfoService) {
+					// Clear current useful info
+					await usefulInfoService.deleteUsefulInfoList(sessionId);
+
+					// Restore snapshot
+					if (checkpoint.usefulInfoSnapshot.items.length > 0) {
+						const restoreRequests = checkpoint.usefulInfoSnapshot.items.map(
+							item => ({
+								filePath: item.filePath,
+								startLine: item.startLine,
+								endLine: item.endLine,
+								description: item.description,
+							}),
+						);
+
+						await usefulInfoService.addUsefulInfo(sessionId, restoreRequests);
+						console.log(
+							`Restored ${checkpoint.usefulInfoSnapshot.items.length} useful information items`,
+						);
+					}
+				}
+			}
+		} catch (error) {
+			console.warn('Failed to restore useful information snapshot:', error);
+			// Continue with file rollback even if useful info restoration fails
 		}
 
 		// Clear checkpoint after rollback
@@ -207,4 +288,16 @@ class CheckpointManager {
 	}
 }
 
-export const checkpointManager = new CheckpointManager();
+export const checkpointManager = new CheckpointManager(() => {
+	try {
+		// Use dynamic import for ES modules to avoid circular dependency
+		const {getUsefulInfoService} = require('../execution/mcpToolsManager.js');
+		return getUsefulInfoService();
+	} catch (error) {
+		console.warn(
+			'Failed to get useful info service for checkpoint manager:',
+			error,
+		);
+		return null;
+	}
+});
