@@ -6,6 +6,7 @@ import MarkdownRenderer from './MarkdownRenderer.js';
 import DiffViewer from './DiffViewer.js';
 import ToolResultPreview from './ToolResultPreview.js';
 import {HookErrorDisplay} from './HookErrorDisplay.js';
+import SubAgentResultDisplay from './SubAgentResultDisplay.js';
 
 type Props = {
 	message: Message;
@@ -142,6 +143,13 @@ export default function MessageRenderer({
 										</Text>
 									)}
 								</>
+							) : message.role === 'subagent-result' ? (
+								<SubAgentResultDisplay
+									agentType={message.subAgentResult?.agentType || 'general'}
+									content={message.content}
+									status={message.subAgentResult?.status || 'success'}
+									executionTime={message.subAgentResult?.executionTime}
+								/>
 							) : (
 								<>
 									{message.plainOutput ? (
