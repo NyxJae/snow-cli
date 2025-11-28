@@ -997,25 +997,54 @@ export async function handleConversationWithTools(
 								} catch (e) {
 									// Ignore encoding errors
 								}
-							} else if (subAgentMessage.message.type === 'done') {
-								// Mark as complete and reset token counter
-								subAgentContentAccumulator = '';
-								setStreamTokenCount(0);
-								if (existingIndex !== -1) {
-									const updated = [...prev];
-									const existing = updated[existingIndex];
-									if (existing && existing.subAgent) {
-										updated[existingIndex] = {
-											...existing,
-											subAgent: {
-												...existing.subAgent,
-												isComplete: true,
+							} else if (
+								subAgentMessage.message.type === 'done' ||
+								subAgentMessage.message.isResult
+							) {
+								// Handle completion message or result message
+								if (subAgentMessage.message.isResult) {
+									// This is a sub-agent result message - add as subagent-result type
+									const resultData = subAgentMessage.message;
+									return [
+										...prev.filter(
+											m =>
+												m.role !== 'subagent' ||
+												m.subAgent?.agentId !== subAgentMessage.agentId ||
+												!m.subAgent?.isComplete,
+										),
+										{
+											role: 'subagent-result' as const,
+											content: resultData.content || '',
+											streaming: false,
+											subAgentResult: {
+												agentType: resultData.agentType || 'general',
+												originalContent: resultData.originalContent,
+												timestamp: resultData.timestamp || Date.now(),
+												executionTime: resultData.executionTime,
+												status: resultData.status || 'success',
 											},
-										};
+										},
+									];
+								} else {
+									// Regular done message - mark as complete and reset token counter
+									subAgentContentAccumulator = '';
+									setStreamTokenCount(0);
+									if (existingIndex !== -1) {
+										const updated = [...prev];
+										const existing = updated[existingIndex];
+										if (existing && existing.subAgent) {
+											updated[existingIndex] = {
+												...existing,
+												subAgent: {
+													...existing.subAgent,
+													isComplete: true,
+												},
+											};
+										}
+										return updated;
 									}
-									return updated;
+									return prev;
 								}
-								return prev;
 							}
 
 							if (existingIndex !== -1) {
