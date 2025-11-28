@@ -757,8 +757,6 @@ export function updateSubAgent(
 	return updatedAgent;
 }
 
-}
-
 /**
  * Delete a sub-agent
  * For built-in agents: removes user override (restores default)
