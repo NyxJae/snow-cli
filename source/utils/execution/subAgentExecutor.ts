@@ -683,12 +683,36 @@ You are a versatile task execution agent with full tool access, capable of handl
 				config = getOpenAiConfig();
 				model = config.advancedModel || 'gpt-5';
 			}
+		// 重试回调函数 - 为子智能体提供流中断重试支持
+		const onRetry = (error: Error, attempt: number, nextDelay: number) => {
+			console.log(
+				`🔄 子智能体 ${
+					agent.name
+				} 重试 (${attempt}/${5}): ${error.message.substring(0, 100)}...`,
+			);
+			// 通过 onMessage 将重试状态传递给主会话
+			if (onMessage) {
+				onMessage({
+					type: 'sub_agent_message',
+					agentId: agent.id,
+					agentName: agent.name,
+					message: {
+						type: 'retry_status',
+						isRetrying: true,
+						attempt,
+						nextDelay,
+						errorMessage: `流中断重试 [${
+							agent.name
+						}]: ${error.message.substring(0, 50)}...`,
+					},
+				});
+			}
+		};
 
-			// Call API with sub-agent's tools - choose API based on config
-			// Apply sub-agent configuration overrides (model already loaded from configProfile above)
-			const stream =
-				config.requestMethod === 'anthropic'
-					? createStreamingAnthropicCompletion(
+		// Call API with sub-agent's tools - choose API based on config
+		const stream =
+			config.requestMethod === 'anthropic'
+				? createStreamingAnthropicCompletion(
 						{
 							model,
 							messages,
@@ -702,9 +726,10 @@ You are a versatile task execution agent with full tool access, capable of handl
 							customHeaders: agent.customHeaders,
 						},
 						abortSignal,
-					)
-					: config.requestMethod === 'gemini'
-						? createStreamingGeminiCompletion(
+						onRetry,
+				)
+				: config.requestMethod === 'gemini'
+					? createStreamingGeminiCompletion(
 							{
 								model,
 								messages,
@@ -715,9 +740,10 @@ You are a versatile task execution agent with full tool access, capable of handl
 								customHeaders: agent.customHeaders,
 							},
 							abortSignal,
-						)
-						: config.requestMethod === 'responses'
-							? createStreamingResponse(
+							onRetry,
+					)
+					: config.requestMethod === 'responses'
+						? createStreamingResponse(
 								{
 									model,
 									messages,
@@ -729,8 +755,9 @@ You are a versatile task execution agent with full tool access, capable of handl
 									customHeaders: agent.customHeaders,
 								},
 								abortSignal,
-							)
-							: createStreamingChatCompletion(
+								onRetry,
+						)
+						: createStreamingChatCompletion(
 								{
 									model,
 									messages,
@@ -741,12 +768,22 @@ You are a versatile task execution agent with full tool access, capable of handl
 									customHeaders: agent.customHeaders,
 								},
 								abortSignal,
-							);
+								onRetry,
+						  );
 
 			let currentContent = '';
 			let toolCalls: any[] = [];
+			let hasReceivedData = false; // 标记是否收到过任何数据
 
 			for await (const event of stream) {
+				// 检测是否收到有效数据
+				if (
+					event.type === 'content' ||
+					event.type === 'tool_calls' ||
+					event.type === 'usage'
+				) {
+					hasReceivedData = true;
+				}
 				// Forward message to UI (but don't save to main conversation)
 				if (onMessage) {
 					onMessage({
@@ -791,12 +828,15 @@ You are a versatile task execution agent with full tool access, capable of handl
 				}
 			}
 
-			if (hasError) {
-				return {
-					success: false,
-					result: finalResponse,
-					error: errorMessage,
-				};
+// 检查空回复情况
+			if (
+				!hasReceivedData ||
+				(!currentContent.trim() && toolCalls.length === 0)
+			) {
+				const emptyResponseError = new Error(
+					'Empty response received from API - no content or tool calls generated',
+				);
+				throw emptyResponseError;
 			}
 
 			// Add assistant response to conversation
@@ -812,6 +852,14 @@ You are a versatile task execution agent with full tool access, capable of handl
 
 				messages.push(assistantMessage);
 				finalResponse = currentContent;
+			}
+
+			if (hasError) {
+				return {
+					success: false,
+					result: finalResponse,
+					error: errorMessage,
+				};
 			}
 			// If no tool calls, we're done
 			if (toolCalls.length === 0) {
@@ -861,7 +909,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 								}
 							}
 						}
-						// 如果需要继续，则不 break，让循环继续
+// 如果需要继续，则不 break，让循环继续
 						if (shouldContinue) {
 							// 在继续前发送提示信息
 							if (onMessage) {
@@ -880,6 +928,41 @@ You are a versatile task execution agent with full tool access, capable of handl
 					}
 				} catch (error) {
 					console.error('onSubAgentComplete hook execution failed:', error);
+				}
+
+				// 发送结果消息给UI显示（只发送前100个字符）
+				if (onMessage && finalResponse) {
+					// 格式化内容，截取前100个字符
+					let displayContent = finalResponse;
+					if (displayContent.length > 100) {
+						// 尝试在单词边界截断
+					const truncated = displayContent.substring(0, 100);
+					const lastSpace = truncated.lastIndexOf(' ');
+					const lastNewline = truncated.lastIndexOf('\n');
+					const cutPoint = Math.max(lastSpace, lastNewline);
+						
+						if (cutPoint > 80) {
+							displayContent = truncated.substring(0, cutPoint) + '...';
+						} else {
+							displayContent = truncated + '...';
+						}
+					}
+
+					onMessage({
+						type: 'sub_agent_message',
+						agentId: agent.id,
+						agentName: agent.name,
+						message: {
+							type: 'subagent_result',
+							agentType: agent.id.replace('agent_', ''),
+							content: displayContent,
+							originalContent: finalResponse,
+							status: 'success',
+							timestamp: Date.now(),
+							// @ts-ignore
+							isResult: true
+						},
+					});
 				}
 
 				break;
