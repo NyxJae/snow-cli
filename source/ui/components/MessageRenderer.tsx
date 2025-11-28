@@ -142,6 +142,35 @@ export default function MessageRenderer({
 										</Text>
 									)}
 								</>
+							) : message.role === 'subagent-result' ? (
+								<Box flexDirection="column">
+									<Text color="cyan">
+										{message.subAgentResult?.agentType === 'explore'
+											? '🤖'
+											: message.subAgentResult?.agentType === 'plan'
+											? '📋'
+											: '🔧'}{' '}
+										{message.subAgentResult?.agentType === 'explore'
+											? 'Explore Agent'
+											: message.subAgentResult?.agentType === 'plan'
+											? 'Plan Agent'
+											: 'General Agent'}{' '}
+										Result{' '}
+										{message.subAgentResult?.status === 'success'
+											? '✓'
+											: message.subAgentResult?.status === 'error'
+											? '❌'
+											: '⏰'}
+									</Text>
+									<Box
+										borderStyle="single"
+										borderColor="cyan"
+										paddingX={1}
+										marginLeft={0}
+									>
+										<Text>{message.content}</Text>
+									</Box>
+								</Box>
 							) : (
 								<>
 									{message.plainOutput ? (

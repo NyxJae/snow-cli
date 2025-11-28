@@ -4,7 +4,7 @@ import {SelectedFile} from '../../utils/core/fileUtils.js';
 import MarkdownRenderer from './MarkdownRenderer.js';
 
 export interface Message {
-	role: 'user' | 'assistant' | 'command' | 'subagent';
+	role: 'user' | 'assistant' | 'command' | 'subagent' | 'subagent-result';
 	content: string;
 	streaming?: boolean;
 	discontinued?: boolean;
@@ -47,6 +47,13 @@ export interface Message {
 		cacheCreationInputTokens?: number;
 		cacheReadInputTokens?: number;
 	};
+	subAgentResult?: {
+		agentType: 'explore' | 'plan' | 'general';
+		originalContent?: string; // 完整内容，用于查看详情
+		timestamp: number;
+		executionTime?: number; // 执行时长
+		status: 'success' | 'error' | 'timeout';
+	}; // 子Agent结果显示相关字段
 	parallelGroup?: string; // Group ID for parallel tool execution (same ID = executed together)
 	hookError?: {
 		type: 'warning' | 'error';
@@ -81,6 +88,8 @@ const MessageList = memo(
 							? 'gray'
 							: message.role === 'subagent'
 							? 'magenta'
+							: message.role === 'subagent-result'
+							? 'cyan'
 							: message.streaming
 							? (STREAM_COLORS[animationFrame] as any)
 							: 'cyan';
@@ -94,6 +103,8 @@ const MessageList = memo(
 									? '⌘'
 									: message.role === 'subagent'
 									? '◈'
+									: message.role === 'subagent-result'
+									? '┌─'
 									: '❆'}
 							</Text>
 							<Box marginLeft={1} flexDirection="column">
@@ -109,6 +120,35 @@ const MessageList = memo(
 											<Text color="gray">{message.content || ' '}</Text>
 										</Box>
 									</>
+								) : message.role === 'subagent-result' ? (
+									<Box flexDirection="column">
+										<Text color="cyan">
+											{message.subAgentResult?.agentType === 'explore'
+												? '🤖'
+												: message.subAgentResult?.agentType === 'plan'
+												? '📋'
+												: '🔧'}{' '}
+											{message.subAgentResult?.agentType === 'explore'
+												? 'Explore Agent'
+												: message.subAgentResult?.agentType === 'plan'
+												? 'Plan Agent'
+												: 'General Agent'}{' '}
+											Result{' '}
+											{message.subAgentResult?.status === 'success'
+												? '✓'
+												: message.subAgentResult?.status === 'error'
+												? '❌'
+												: '⏰'}
+										</Text>
+										<Box
+											borderStyle="single"
+											borderColor="cyan"
+											paddingX={1}
+											marginLeft={0}
+										>
+											<Text>{message.content}</Text>
+										</Box>
+									</Box>
 								) : (
 									<>
 										{message.role === 'user' ? (
