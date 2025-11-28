@@ -258,6 +258,7 @@ export interface StreamChunk {
 	delta?: string; // For tool call streaming chunks or reasoning content
 	usage?: UsageInfo; // Token usage information
 }
+
 /**
  * Parse Server-Sent Events (SSE) stream
  */
@@ -266,6 +267,8 @@ async function* parseSSEStream(
 ): AsyncGenerator<any, void, unknown> {
 	const decoder = new TextDecoder();
 	let buffer = '';
+	let dataCount = 0; // 记录成功解析的数据块数量
+	let lastEventType = ''; // 记录最后一个事件类型
 
 	try {
 		while (true) {
@@ -274,13 +277,18 @@ async function* parseSSEStream(
 			if (done) {
 				// ✅ 关键修复：检查buffer是否有残留数据
 				if (buffer.trim()) {
-					// 连接异常中断，抛出明确错误
-					throw new Error(
-						`Stream terminated unexpectedly with incomplete data: ${buffer.substring(
-							0,
-							100,
-						)}...`,
-					);
+					// 连接异常中断，抛出明确错误，包含更详细的断点信息
+					const errorContext = {
+						dataCount,
+						lastEventType,
+						bufferLength: buffer.length,
+						bufferPreview: buffer.substring(0, 200),
+					};
+
+					const errorMessage = `Stream terminated unexpectedly with incomplete data. Context: ${JSON.stringify(
+						errorContext,
+					)}`;
+					throw new Error(errorMessage);
 				}
 				break; // 正常结束
 			}
@@ -299,7 +307,10 @@ async function* parseSSEStream(
 
 				// Handle both "event: " and "event:" formats
 				if (trimmed.startsWith('event:')) {
-					// Event type, will be followed by data
+					// 记录事件类型用于断点恢复
+					lastEventType = trimmed.startsWith('event: ')
+						? trimmed.slice(7)
+						: trimmed.slice(6);
 					continue;
 				}
 
@@ -315,6 +326,7 @@ async function* parseSSEStream(
 					});
 
 					if (parseResult.success) {
+						dataCount++;
 						yield parseResult.data;
 					}
 				}
@@ -322,10 +334,20 @@ async function* parseSSEStream(
 		}
 	} catch (error) {
 		const {logger} = await import('../utils/core/logger.js');
-		logger.error('SSE stream parsing error:', {
+
+		// 增强错误日志，包含断点状态
+		const errorContext = {
 			error: error instanceof Error ? error.message : 'Unknown error',
-			remainingBuffer: buffer.substring(0, 200),
-		});
+			dataCount,
+			lastEventType,
+			bufferLength: buffer.length,
+			bufferPreview: buffer.substring(0, 200),
+		};
+
+		logger.error(
+			'SSE stream parsing error with checkpoint context:',
+			errorContext,
+		);
 		throw error;
 	}
 }

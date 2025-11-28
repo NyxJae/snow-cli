@@ -88,6 +88,81 @@ export type ConversationHandlerOptions = {
 export async function handleConversationWithTools(
 	options: ConversationHandlerOptions,
 ): Promise<{usage: any | null}> {
+	const {controller, setRetryStatus} = options;
+
+	// 外层重试机制：最多10次，5秒间隔，确保流中断时自动重新发起请求
+	const MAX_RETRIES = 10;
+	const RETRY_DELAY = 5000; // 5秒间隔
+	let retryCount = 0;
+	let lastError: Error | null = null;
+
+	// 外层重试循环
+	while (retryCount <= MAX_RETRIES) {
+		try {
+			// 检查用户中止信号
+			if (controller.signal.aborted) {
+				throw new Error('Request aborted by user');
+			}
+
+			// 清除重试状态（如果存在）
+			if (retryCount > 0 && setRetryStatus) {
+				setRetryStatus(null);
+			}
+
+			// 执行内层逻辑（原有代码）
+			return await executeWithInternalRetry(options);
+		} catch (error) {
+			lastError = error as Error;
+
+			// 检查是否为可重试错误
+			const errorMessage = (error as Error).message.toLowerCase();
+			const isRetriable =
+				errorMessage.includes('network') ||
+				errorMessage.includes('timeout') ||
+				errorMessage.includes('rate limit') ||
+				errorMessage.includes('server error') ||
+				errorMessage.includes('connection') ||
+				errorMessage.includes('stream terminated') ||
+				errorMessage.includes('incomplete data') ||
+				errorMessage.includes('sse stream') ||
+				errorMessage.includes('reader error') ||
+				errorMessage.includes('500') ||
+				errorMessage.includes('502') ||
+				errorMessage.includes('503') ||
+				errorMessage.includes('504');
+
+			// 如果不可重试或已达到最大重试次数，抛出错误
+			if (!isRetriable || retryCount >= MAX_RETRIES) {
+				throw error;
+			}
+
+			// 更新重试状态
+			retryCount++;
+			if (setRetryStatus) {
+				setRetryStatus({
+					isRetrying: true,
+					attempt: retryCount,
+					nextDelay: RETRY_DELAY,
+					remainingSeconds: Math.floor(RETRY_DELAY / 1000),
+					errorMessage: `网络或服务错误，正在重试 (${retryCount}/${MAX_RETRIES})...`,
+				});
+			}
+
+			// 等待重试
+			await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+		}
+	}
+
+	// 不应该到达这里
+	throw lastError || new Error('Unknown error occurred');
+}
+
+/**
+ * 内层重试逻辑（原有代码）
+ */
+async function executeWithInternalRetry(
+	options: ConversationHandlerOptions,
+): Promise<{usage: any | null}> {
 	const {
 		userContent,
 		imageContents,
@@ -317,8 +392,7 @@ export async function handleConversationWithTools(
 			for await (const chunk of streamGenerator) {
 				if (controller.signal.aborted) break;
 
-				// Clear retry status after a delay when first chunk arrives
-				// This gives users time to see the retry message (500ms delay)
+				// 首次接收数据后延迟清除重试状态，确保用户能看到重试提示
 				chunkCount++;
 				if (setRetryStatus && chunkCount === 1) {
 					setTimeout(() => {
@@ -347,8 +421,7 @@ export async function handleConversationWithTools(
 						// Ignore encoding errors
 					}
 				} else if (chunk.type === 'content' && chunk.content) {
-					// Accumulate content and update token count
-					// When content starts, reasoning is done
+					// 内容开始时推理阶段结束
 					setIsReasoning?.(false);
 					streamedContent += chunk.content;
 					try {
@@ -360,8 +433,7 @@ export async function handleConversationWithTools(
 						// Ignore encoding errors
 					}
 				} else if (chunk.type === 'tool_call_delta' && chunk.delta) {
-					// Accumulate tool call deltas and update token count in real-time
-					// When tool calls start, reasoning is done (OpenAI generally doesn't output text content during tool calls)
+					// 工具调用开始时推理阶段结束（OpenAI通常不会在工具调用期间输出文本内容）
 					setIsReasoning?.(false);
 					toolCallAccumulator += chunk.delta;
 					try {
@@ -384,8 +456,7 @@ export async function handleConversationWithTools(
 					// Capture usage information both in state and locally
 					setContextUsage(chunk.usage);
 
-					// Note: Usage is now saved at API layer (chat.ts, anthropic.ts, etc.)
-					// No need to call onUsageUpdate here to avoid duplicate saves
+					// Usage已在API层保存，此处仅用于UI显示
 
 					// Accumulate for final return (UI display purposes)
 					if (!accumulatedUsage) {
