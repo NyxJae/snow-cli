@@ -106,7 +106,7 @@ const MessageList = memo(
 											{message.subAgent?.isComplete ? ' ✓' : ' ...'}
 										</Text>
 										<Box marginLeft={2}>
-											<Text color="gray">{message.content || ' '}</Text>
+											<MarkdownRenderer content={message.content || ' '} />
 										</Box>
 									</>
 								) : (
