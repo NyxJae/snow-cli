@@ -13,6 +13,9 @@ import {sessionManager} from '../session/sessionManager.js';
 import {unifiedHooksExecutor} from './unifiedHooksExecutor.js';
 import {checkYoloPermission} from './yoloPermissionChecker.js';
 import {formatUsefulInfoContext} from '../core/usefulInfoPreprocessor.js';
+import type {MCPTool} from './mcpToolsManager.js';
+import type {ChatMessage} from '../../api/types.js';
+import type {ConfirmationResult} from '../../ui/components/ToolConfirmation.js';
 
 export interface SubAgentMessage {
 	type: 'sub_agent_message';
@@ -275,49 +278,49 @@ export async function executeSubAgent(
 			const currentSession = sessionManager.getCurrentSession();
 			const model = config.advancedModel || 'gpt-5';
 
-// 重试回调函数 - 为子智能体提供流中断重试支持
-		const onRetry = (error: Error, attempt: number, nextDelay: number) => {
-			console.log(
-				`🔄 子智能体 ${
-					agent.name
-				} 重试 (${attempt}/${5}): ${error.message.substring(0, 100)}...`,
-			);
-			// 通过 onMessage 将重试状态传递给主会话
-			if (onMessage) {
-				onMessage({
-					type: 'sub_agent_message',
-					agentId: agent.id,
-					agentName: agent.name,
-					message: {
-						type: 'retry_status',
-						isRetrying: true,
-						attempt,
-						nextDelay,
-						errorMessage: `流中断重试 [${
-							agent.name
-						}]: ${error.message.substring(0, 50)}...`,
-					},
-				});
-			}
-		};
-
-		// Call API with sub-agent's tools - choose API based on config
-		const stream =
-			config.requestMethod === 'anthropic'
-				? createStreamingAnthropicCompletion(
-						{
-							model,
-							messages,
-							temperature: 0,
-							max_tokens: config.maxTokens || 4096,
-							tools: allowedTools,
-							sessionId: currentSession?.id,
-							disableThinking: true, // Sub-agents 不使用 Extended Thinking
+			// 重试回调函数 - 为子智能体提供流中断重试支持
+			const onRetry = (error: Error, attempt: number, nextDelay: number) => {
+				console.log(
+					`🔄 子智能体 ${
+						agent.name
+					} 重试 (${attempt}/${5}): ${error.message.substring(0, 100)}...`,
+				);
+				// 通过 onMessage 将重试状态传递给主会话
+				if (onMessage) {
+					onMessage({
+						type: 'sub_agent_message',
+						agentId: agent.id,
+						agentName: agent.name,
+						message: {
+							type: 'retry_status',
+							isRetrying: true,
+							attempt,
+							nextDelay,
+							errorMessage: `流中断重试 [${
+								agent.name
+							}]: ${error.message.substring(0, 50)}...`,
 						},
-						abortSignal,
-						onRetry,
-				  )
-				: config.requestMethod === 'gemini'
+					});
+				}
+			};
+
+			// Call API with sub-agent's tools - choose API based on config
+			const stream =
+				config.requestMethod === 'anthropic'
+					? createStreamingAnthropicCompletion(
+							{
+								model,
+								messages,
+								temperature: 0,
+								max_tokens: config.maxTokens || 4096,
+								tools: allowedTools,
+								sessionId: currentSession?.id,
+								disableThinking: true, // Sub-agents 不使用 Extended Thinking
+							},
+							abortSignal,
+							onRetry,
+					  )
+					: config.requestMethod === 'gemini'
 					? createStreamingGeminiCompletion(
 							{
 								model,
@@ -329,27 +332,27 @@ export async function executeSubAgent(
 							onRetry,
 					  )
 					: config.requestMethod === 'responses'
-						? createStreamingResponse(
-								{
-									model,
-									messages,
-									temperature: 0,
-									tools: allowedTools,
-									prompt_cache_key: currentSession?.id,
-								},
-								abortSignal,
-								onRetry,
-						  )
-						: createStreamingChatCompletion(
-								{
-									model,
-									messages,
-									temperature: 0,
-									tools: allowedTools,
-								},
-								abortSignal,
-								onRetry,
-						  );
+					? createStreamingResponse(
+							{
+								model,
+								messages,
+								temperature: 0,
+								tools: allowedTools,
+								prompt_cache_key: currentSession?.id,
+							},
+							abortSignal,
+							onRetry,
+					  )
+					: createStreamingChatCompletion(
+							{
+								model,
+								messages,
+								temperature: 0,
+								tools: allowedTools,
+							},
+							abortSignal,
+							onRetry,
+					  );
 
 			let currentContent = '';
 			let toolCalls: any[] = [];
@@ -408,7 +411,7 @@ export async function executeSubAgent(
 				}
 			}
 
-// 检查空回复情况
+			// 检查空回复情况
 			if (
 				!hasReceivedData ||
 				(!currentContent.trim() && toolCalls.length === 0)
@@ -489,7 +492,7 @@ export async function executeSubAgent(
 								}
 							}
 						}
-// 如果需要继续，则不 break，让循环继续
+						// 如果需要继续，则不 break，让循环继续
 						if (shouldContinue) {
 							// 在继续前发送提示信息
 							if (onMessage) {
@@ -516,12 +519,11 @@ export async function executeSubAgent(
 					let displayContent = finalResponse;
 					if (displayContent.length > 100) {
 						// 尝试在单词边界截断
-					const truncated = displayContent.substring(0, 100);
-					const lastSpace = truncated.lastIndexOf(' ');
-					const lastNewline = truncated.lastIndexOf('
-');
-					const cutPoint = Math.max(lastSpace, lastNewline);
-						
+						const truncated = displayContent.substring(0, 100);
+						const lastSpace = truncated.lastIndexOf(' ');
+						const lastNewline = truncated.lastIndexOf('\n');
+						const cutPoint = Math.max(lastSpace, lastNewline);
+
 						if (cutPoint > 80) {
 							displayContent = truncated.substring(0, cutPoint) + '...';
 						} else {
@@ -541,7 +543,7 @@ export async function executeSubAgent(
 							status: 'success',
 							timestamp: Date.now(),
 							// @ts-ignore
-							isResult: true
+							isResult: true,
 						},
 					});
 				}
