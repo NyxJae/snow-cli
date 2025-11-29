@@ -1,6 +1,7 @@
-import {existsSync, readFileSync, writeFileSync, mkdirSync} from 'fs';
+import {existsSync, readFileSync, mkdirSync, unlinkSync} from 'fs';
 import {join} from 'path';
 import {homedir} from 'os';
+import {readToml, writeToml, existsToml} from './tomlUtils.js';
 
 export interface SubAgent {
 	id: string;
@@ -22,7 +23,8 @@ export interface SubAgentsConfig {
 }
 
 const CONFIG_DIR = join(homedir(), '.snow');
-const SUB_AGENTS_CONFIG_FILE = join(CONFIG_DIR, 'sub-agents.json');
+const SUB_AGENTS_TOML_FILE = join(CONFIG_DIR, 'sub-agents.toml');
+const SUB_AGENTS_JSON_FILE = join(CONFIG_DIR, 'sub-agents.json');
 
 /**
  * Built-in sub-agents (hardcoded, always available)
@@ -496,13 +498,20 @@ export function getUserSubAgents(): SubAgent[] {
 	try {
 		ensureConfigDirectory();
 
-		if (!existsSync(SUB_AGENTS_CONFIG_FILE)) {
-			return [];
+		// 优先读取TOML文件
+		if (existsToml(SUB_AGENTS_TOML_FILE)) {
+			const config = readToml<SubAgentsConfig>(SUB_AGENTS_TOML_FILE);
+			return config?.agents || [];
 		}
 
-		const configData = readFileSync(SUB_AGENTS_CONFIG_FILE, 'utf8');
-		const config = JSON.parse(configData) as SubAgentsConfig;
-		return config.agents || [];
+		// 回退到JSON文件（向后兼容）
+		if (existsSync(SUB_AGENTS_JSON_FILE)) {
+			const configData = readFileSync(SUB_AGENTS_JSON_FILE, 'utf8');
+			const config = JSON.parse(configData) as SubAgentsConfig;
+			return config.agents || [];
+		}
+
+		return [];
 	} catch (error) {
 		console.error('Failed to load sub-agents:', error);
 		return [];
@@ -560,10 +569,21 @@ export function getSubAgent(id: string): SubAgent | null {
 function saveSubAgents(agents: SubAgent[]): void {
 	try {
 		ensureConfigDirectory();
-		// Save all agents including modified built-in agents
-		const config: SubAgentsConfig = {agents};
-		const configData = JSON.stringify(config, null, 2);
-		writeFileSync(SUB_AGENTS_CONFIG_FILE, configData, 'utf8');
+		// Filter out built-in agents (should never be saved to config)
+		const userAgents = agents.filter(agent => !agent.builtin);
+		const config: SubAgentsConfig = {agents: userAgents};
+
+		// 保存为TOML格式
+		writeToml(SUB_AGENTS_TOML_FILE, config);
+
+		// 可选：删除旧的JSON文件（避免混淆）
+		if (existsSync(SUB_AGENTS_JSON_FILE)) {
+			try {
+				unlinkSync(SUB_AGENTS_JSON_FILE);
+			} catch {
+				// 忽略删除失败
+			}
+		}
 	} catch (error) {
 		throw new Error(`Failed to save sub-agents: ${error}`);
 	}
