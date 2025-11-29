@@ -19,6 +19,8 @@ import {exportMessagesToFile} from '../../utils/session/chatExporter.js';
 export async function executeContextCompression(): Promise<{
 	uiMessages: Message[];
 	usage: UsageInfo;
+	preservedMessages?: Array<any>;
+	summary?: string;
 } | null> {
 	try {
 		// 从会话文件读取真实的消息记录
@@ -142,6 +144,8 @@ export async function executeContextCompression(): Promise<{
 				completion_tokens: compressionResult.usage.completion_tokens,
 				total_tokens: compressionResult.usage.total_tokens,
 			},
+			preservedMessages: compressionResult.preservedMessages || [],
+			summary: compressionResult.summary,
 		};
 	} catch (error) {
 		console.error('Context compression failed:', error);
