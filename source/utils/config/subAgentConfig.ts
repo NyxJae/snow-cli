@@ -610,8 +610,7 @@ function saveSubAgents(agents: SubAgent[]): void {
 	try {
 		ensureConfigDirectory();
 
-		// Save all agents including modified built-in agents (from custom-subagents branch)
-		// but use TOML format (from toml-migration branch)
+		// Save all agents including modified built-in agents
 		const config: SubAgentsConfig = {agents};
 
 		// 保存为TOML格式
