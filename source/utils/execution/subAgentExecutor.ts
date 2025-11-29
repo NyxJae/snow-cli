@@ -1,16 +1,16 @@
-import { createStreamingAnthropicCompletion } from '../../api/anthropic.js';
-import { createStreamingResponse } from '../../api/responses.js';
-import { createStreamingGeminiCompletion } from '../../api/gemini.js';
-import { createStreamingChatCompletion } from '../../api/chat.js';
-import { getSubAgent } from '../config/subAgentConfig.js';
-import { collectAllMCPTools, executeMCPTool } from './mcpToolsManager.js';
-import { getOpenAiConfig } from '../config/apiConfig.js';
-import { sessionManager } from '../session/sessionManager.js';
-import { unifiedHooksExecutor } from './unifiedHooksExecutor.js';
-import { checkYoloPermission } from './yoloPermissionChecker.js';
-import type { ConfirmationResult } from '../../ui/components/ToolConfirmation.js';
-import type { MCPTool } from './mcpToolsManager.js';
-import type { ChatMessage } from '../../api/chat.js';
+import {createStreamingAnthropicCompletion} from '../../api/anthropic.js';
+import {createStreamingResponse} from '../../api/responses.js';
+import {createStreamingGeminiCompletion} from '../../api/gemini.js';
+import {createStreamingChatCompletion} from '../../api/chat.js';
+import {getSubAgent} from '../config/subAgentConfig.js';
+import {collectAllMCPTools, executeMCPTool} from './mcpToolsManager.js';
+import {getOpenAiConfig} from '../config/apiConfig.js';
+import {sessionManager} from '../session/sessionManager.js';
+import {unifiedHooksExecutor} from './unifiedHooksExecutor.js';
+import {checkYoloPermission} from './yoloPermissionChecker.js';
+import type {ConfirmationResult} from '../../ui/components/ToolConfirmation.js';
+import type {MCPTool} from './mcpToolsManager.js';
+import type {ChatMessage} from '../../api/chat.js';
 
 export interface SubAgentMessage {
 	type: 'sub_agent_message';
@@ -94,7 +94,7 @@ export async function executeSubAgent(
 			agentId === 'agent_general'
 		) {
 			// Check user agents directly (not through getSubAgent which might return builtin)
-			const { getUserSubAgents } = await import('../config/subAgentConfig.js');
+			const {getUserSubAgents} = await import('../config/subAgentConfig.js');
 			const userAgents = getUserSubAgents();
 			const userAgent = userAgents.find(a => a.id === agentId);
 			if (userAgent) {
@@ -656,7 +656,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 			let model;
 			if (agent.configProfile) {
 				try {
-					const { loadProfile } = await import('../config/configManager.js');
+					const {loadProfile} = await import('../config/configManager.js');
 					const profileConfig = loadProfile(agent.configProfile);
 					if (profileConfig?.snowcfg) {
 						config = profileConfig.snowcfg;
@@ -683,52 +683,53 @@ You are a versatile task execution agent with full tool access, capable of handl
 				config = getOpenAiConfig();
 				model = config.advancedModel || 'gpt-5';
 			}
-		// 重试回调函数 - 为子智能体提供流中断重试支持
-		const onRetry = (error: Error, attempt: number, nextDelay: number) => {
-			console.log(
-				`🔄 子智能体 ${
-					agent.name
-				} 重试 (${attempt}/${5}): ${error.message.substring(0, 100)}...`,
-			);
-			// 通过 onMessage 将重试状态传递给主会话
-			if (onMessage) {
-				onMessage({
-					type: 'sub_agent_message',
-					agentId: agent.id,
-					agentName: agent.name,
-					message: {
-						type: 'retry_status',
-						isRetrying: true,
-						attempt,
-						nextDelay,
-						errorMessage: `流中断重试 [${
-							agent.name
-						}]: ${error.message.substring(0, 50)}...`,
-					},
-				});
-			}
-		};
 
-		// Call API with sub-agent's tools - choose API based on config
-		const stream =
-			config.requestMethod === 'anthropic'
-				? createStreamingAnthropicCompletion(
-						{
-							model,
-							messages,
-							temperature: 0,
-							max_tokens: config.maxTokens || 4096,
-							tools: allowedTools,
-							sessionId: currentSession?.id,
-							disableThinking: true, // Sub-agents 不使用 Extended Thinking
-							configProfile: agent.configProfile,
-							customSystemPromptId: agent.customSystemPrompt,
-							customHeaders: agent.customHeaders,
+			// 重试回调函数 - 为子智能体提供流中断重试支持
+			const onRetry = (error: Error, attempt: number, nextDelay: number) => {
+				console.log(
+					`🔄 子智能体 ${
+						agent.name
+					} 重试 (${attempt}/${5}): ${error.message.substring(0, 100)}...`,
+				);
+				// 通过 onMessage 将重试状态传递给主会话
+				if (onMessage) {
+					onMessage({
+						type: 'sub_agent_message',
+						agentId: agent.id,
+						agentName: agent.name,
+						message: {
+							type: 'retry_status',
+							isRetrying: true,
+							attempt,
+							nextDelay,
+							errorMessage: `流中断重试 [${
+								agent.name
+							}]: ${error.message.substring(0, 50)}...`,
 						},
-						abortSignal,
-						onRetry,
-				)
-				: config.requestMethod === 'gemini'
+					});
+				}
+			};
+
+			// Call API with sub-agent's tools - choose API based on config
+			const stream =
+				config.requestMethod === 'anthropic'
+					? createStreamingAnthropicCompletion(
+							{
+								model,
+								messages,
+								temperature: 0,
+								max_tokens: config.maxTokens || 4096,
+								tools: allowedTools,
+								sessionId: currentSession?.id,
+								disableThinking: true, // Sub-agents 不使用 Extended Thinking
+								configProfile: agent.configProfile,
+								customSystemPromptId: agent.customSystemPrompt,
+								customHeaders: agent.customHeaders,
+							},
+							abortSignal,
+							onRetry,
+					  )
+					: config.requestMethod === 'gemini'
 					? createStreamingGeminiCompletion(
 							{
 								model,
@@ -741,35 +742,35 @@ You are a versatile task execution agent with full tool access, capable of handl
 							},
 							abortSignal,
 							onRetry,
-					)
+					  )
 					: config.requestMethod === 'responses'
-						? createStreamingResponse(
-								{
-									model,
-									messages,
-									temperature: 0,
-									tools: allowedTools,
-									prompt_cache_key: currentSession?.id,
-									configProfile: agent.configProfile,
-									customSystemPromptId: agent.customSystemPrompt,
-									customHeaders: agent.customHeaders,
-								},
-								abortSignal,
-								onRetry,
-						)
-						: createStreamingChatCompletion(
-								{
-									model,
-									messages,
-									temperature: 0,
-									tools: allowedTools,
-									configProfile: agent.configProfile,
-									customSystemPromptId: agent.customSystemPrompt,
-									customHeaders: agent.customHeaders,
-								},
-								abortSignal,
-								onRetry,
-						  );
+					? createStreamingResponse(
+							{
+								model,
+								messages,
+								temperature: 0,
+								tools: allowedTools,
+								prompt_cache_key: currentSession?.id,
+								configProfile: agent.configProfile,
+								customSystemPromptId: agent.customSystemPrompt,
+								customHeaders: agent.customHeaders,
+							},
+							abortSignal,
+							onRetry,
+					  )
+					: createStreamingChatCompletion(
+							{
+								model,
+								messages,
+								temperature: 0,
+								tools: allowedTools,
+								configProfile: agent.configProfile,
+								customSystemPromptId: agent.customSystemPrompt,
+								customHeaders: agent.customHeaders,
+							},
+							abortSignal,
+							onRetry,
+					  );
 
 			let currentContent = '';
 			let toolCalls: any[] = [];
@@ -828,7 +829,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 				}
 			}
 
-// 检查空回复情况
+			// 检查空回复情况
 			if (
 				!hasReceivedData ||
 				(!currentContent.trim() && toolCalls.length === 0)
@@ -909,7 +910,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 								}
 							}
 						}
-// 如果需要继续，则不 break，让循环继续
+						// 如果需要继续，则不 break，让循环继续
 						if (shouldContinue) {
 							// 在继续前发送提示信息
 							if (onMessage) {
@@ -936,11 +937,11 @@ You are a versatile task execution agent with full tool access, capable of handl
 					let displayContent = finalResponse;
 					if (displayContent.length > 100) {
 						// 尝试在单词边界截断
-					const truncated = displayContent.substring(0, 100);
-					const lastSpace = truncated.lastIndexOf(' ');
-					const lastNewline = truncated.lastIndexOf('\n');
-					const cutPoint = Math.max(lastSpace, lastNewline);
-						
+						const truncated = displayContent.substring(0, 100);
+						const lastSpace = truncated.lastIndexOf(' ');
+						const lastNewline = truncated.lastIndexOf('\n');
+						const cutPoint = Math.max(lastSpace, lastNewline);
+
 						if (cutPoint > 80) {
 							displayContent = truncated.substring(0, cutPoint) + '...';
 						} else {
@@ -960,7 +961,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 							status: 'success',
 							timestamp: Date.now(),
 							// @ts-ignore
-							isResult: true
+							isResult: true,
 						},
 					});
 				}
@@ -1168,8 +1169,9 @@ You are a versatile task execution agent with full tool access, capable of handl
 					const errorResult = {
 						role: 'tool' as const,
 						tool_call_id: toolCall.id,
-						content: `Error: ${error instanceof Error ? error.message : 'Tool execution failed'
-							}`,
+						content: `Error: ${
+							error instanceof Error ? error.message : 'Tool execution failed'
+						}`,
 					};
 					toolResults.push(errorResult);
 
@@ -1183,10 +1185,11 @@ You are a versatile task execution agent with full tool access, capable of handl
 								type: 'tool_result',
 								tool_call_id: toolCall.id,
 								tool_name: toolCall.function.name,
-								content: `Error: ${error instanceof Error
-									? error.message
-									: 'Tool execution failed'
-									}`,
+								content: `Error: ${
+									error instanceof Error
+										? error.message
+										: 'Tool execution failed'
+								}`,
 							} as any,
 						});
 					}
