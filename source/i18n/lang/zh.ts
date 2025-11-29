@@ -284,8 +284,10 @@ export const zh: TranslationKeys = {
 		deleteConfirm: '删除 "{name}"? (Y/N)',
 		deleteSuccess: '子代理删除成功!',
 		deleteFailed: '无法删除系统内置子代理',
+		resetSuccess: '代理已重置为默认配置',
+		resetFailed: '重置代理失败',
 		navigationHint:
-			'↑↓: 导航 | Enter: 编辑 | A: 添加新代理 | D: 删除 | Esc: 返回',
+			'↑↓: 导航 | Enter: 编辑 | A: 添加新代理 | D: 删除/重置 | Esc: 返回',
 	},
 	sensitiveCommandConfig: {
 		title: '敏感命令保护',

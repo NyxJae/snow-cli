@@ -289,6 +289,8 @@ export const ko: TranslationKeys = {
 		deleteConfirm: '"{name}"을(를) 삭제하시겠습니까? (Y/N)',
 		deleteSuccess: '하위 에이전트가 삭제되었습니다!',
 		deleteFailed: '내장 하위 에이전트를 삭제할 수 없습니다',
+		resetSuccess: '에이전트가 기본 구성으로 재설정되었습니다',
+		resetFailed: '에이전트 재설정 실패',
 		navigationHint:
 			'↑↓: 이동 | Enter: 편집 | A: 새 에이전트 추가 | D: 삭제 | Esc: 뒤로',
 	},
