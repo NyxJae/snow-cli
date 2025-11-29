@@ -122,7 +122,9 @@
 		}
 	},
 	"prettier": "@vdemedes/prettier-config",
-	"dependencies": {},
+	"dependencies": {
+		"@types/markdown-it": "^14.1.2"
+	},
 	"optionalDependencies": {
 		"sharp": "^0.34.5"
 	}

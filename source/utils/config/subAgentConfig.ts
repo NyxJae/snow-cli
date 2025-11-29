@@ -130,8 +130,38 @@ export function getUserSubAgents(): SubAgent[] {
  */
 export function getSubAgents(): SubAgent[] {
 	const userAgents = getUserSubAgents();
-	// Return built-in agents first, then user-configured agents
-	return [...BUILTIN_AGENTS, ...userAgents];
+	const result: SubAgent[] = [];
+	const userAgentIds = new Set<string>();
+
+	// First, add all user agents that override built-in agents
+	for (const userAgent of userAgents) {
+		const builtinAgent = BUILTIN_AGENTS.find(ba => ba.id === userAgent.id);
+		if (builtinAgent) {
+			// User config overrides built-in config, but keep builtin: true
+			result.push({
+				...userAgent,
+				builtin: true, // 保留被覆盖代理的内置标志
+			});
+			userAgentIds.add(userAgent.id);
+		}
+	}
+
+	// Next, add remaining built-in agents (those not overridden)
+	for (const builtinAgent of BUILTIN_AGENTS) {
+		if (!userAgentIds.has(builtinAgent.id)) {
+			result.push(builtinAgent);
+		}
+	}
+
+	// Finally, add pure user-configured agents (those that don't match any built-in)
+	for (const userAgent of userAgents) {
+		if (!userAgentIds.has(userAgent.id)) {
+			result.push(userAgent);
+			userAgentIds.add(userAgent.id);
+		}
+	}
+
+	return result;
 }
 
 /**
@@ -143,21 +173,19 @@ export function getSubAgent(id: string): SubAgent | null {
 }
 
 /**
- * Save user-configured sub-agents only (never saves built-in agents)
+ * Save sub-agents to config file (includes user-modified built-in agents)
  */
 function saveSubAgents(agents: SubAgent[]): void {
 	try {
 		ensureConfigDirectory();
-		// Filter out built-in agents (should never be saved to config)
-		const userAgents = agents.filter(agent => !agent.builtin);
-		const config: SubAgentsConfig = {agents: userAgents};
+		// Save all agents including modified built-in agents
+		const config: SubAgentsConfig = {agents};
 		const configData = JSON.stringify(config, null, 2);
 		writeFileSync(SUB_AGENTS_CONFIG_FILE, configData, 'utf8');
 	} catch (error) {
 		throw new Error(`Failed to save sub-agents: ${error}`);
 	}
 }
-
 /**
  * Create a new sub-agent (user-configured only)
  */
@@ -199,17 +227,35 @@ export function updateSubAgent(
 		tools?: string[];
 	},
 ): SubAgent | null {
-	// Prevent updating built-in agents
 	const agent = getSubAgent(id);
-	if (agent?.builtin) {
-		throw new Error('Cannot update built-in agents');
+	if (!agent) {
+		return null;
 	}
 
 	const userAgents = getUserSubAgents();
 	const index = userAgents.findIndex(agent => agent.id === id);
 
+	// If agent doesn't exist in user config but is a built-in agent,
+	// create a user entry for it (allowing customization of built-in agents)
+	if (index === -1 && agent.builtin) {
+		const updatedAgent: SubAgent = {
+			id: agent.id,
+			name: updates.name ?? agent.name,
+			description: updates.description ?? agent.description,
+			role: updates.role ?? agent.role,
+			tools: updates.tools ?? agent.tools,
+			createdAt: agent.createdAt,
+			updatedAt: new Date().toISOString(),
+			builtin: true, // 为自定义的内置代理保留内置标志
+		};
+
+		userAgents.push(updatedAgent);
+		saveSubAgents(userAgents);
+		return updatedAgent;
+	}
+
 	if (index === -1) {
-		return null;
+		return null; // Agent not found in user config and not a built-in agent
 	}
 
 	const existingAgent = userAgents[index];
@@ -225,7 +271,7 @@ export function updateSubAgent(
 		tools: updates.tools ?? existingAgent.tools,
 		createdAt: existingAgent.createdAt,
 		updatedAt: new Date().toISOString(),
-		builtin: false,
+		builtin: existingAgent.builtin, // Preserve builtin flag
 	};
 
 	userAgents[index] = updatedAgent;
@@ -249,6 +295,45 @@ export function deleteSubAgent(id: string): boolean {
 
 	if (filteredAgents.length === userAgents.length) {
 		return false; // Agent not found
+	}
+
+	saveSubAgents(filteredAgents);
+	return true;
+}
+
+/**
+ * Check if a built-in agent has been modified by the user
+ */
+export function isAgentUserModified(id: string): boolean {
+	const userAgent = getUserSubAgents().find(agent => agent.id === id);
+	const builtinAgent = BUILTIN_AGENTS.find(agent => agent.id === id);
+
+	// If it's not a built-in agent, it's not applicable
+	if (!builtinAgent) {
+		return false;
+	}
+
+	// If there's a user config for this built-in agent, it's been modified
+	return !!userAgent;
+}
+
+/**
+ * Reset a built-in agent to its default configuration
+ */
+export function resetBuiltinAgent(id: string): boolean {
+	const builtinAgent = BUILTIN_AGENTS.find(agent => agent.id === id);
+
+	// Only allow resetting built-in agents
+	if (!builtinAgent) {
+		return false;
+	}
+
+	const userAgents = getUserSubAgents();
+	const filteredAgents = userAgents.filter(agent => agent.id !== id);
+
+	// If no user config existed for this agent, nothing to reset
+	if (filteredAgents.length === userAgents.length) {
+		return false; // Agent not found in user config
 	}
 
 	saveSubAgents(filteredAgents);
