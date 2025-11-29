@@ -1,17 +1,20 @@
-import { createHash, randomUUID } from 'crypto';
+import {createHash, randomUUID} from 'crypto';
 import {
 	getOpenAiConfig,
 	getCustomSystemPrompt,
 	getCustomHeaders,
 	type ThinkingConfig,
 } from '../utils/config/apiConfig.js';
-import { getSystemPrompt } from './systemPrompt.js';
-import { withRetryGenerator, parseJsonWithFix } from '../utils/core/retryUtils.js';
-import type { ChatMessage, ChatCompletionTool, UsageInfo } from './types.js';
-import { logger } from '../utils/core/logger.js';
-import { addProxyToFetchOptions } from '../utils/core/proxyUtils.js';
-import { saveUsageToFile } from '../utils/core/usageLogger.js';
-import { isDevMode, getDevUserId } from '../utils/core/devMode.js';
+import {getSystemPrompt} from './systemPrompt.js';
+import {
+	withRetryGenerator,
+	parseJsonWithFix,
+} from '../utils/core/retryUtils.js';
+import type {ChatMessage, ChatCompletionTool, UsageInfo} from './types.js';
+import {logger} from '../utils/core/logger.js';
+import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
+import {saveUsageToFile} from '../utils/core/usageLogger.js';
+import {isDevMode, getDevUserId} from '../utils/core/devMode.js';
 
 export interface AnthropicOptions {
 	model: string;
@@ -26,13 +29,13 @@ export interface AnthropicOptions {
 
 export interface AnthropicStreamChunk {
 	type:
-	| 'content'
-	| 'tool_calls'
-	| 'tool_call_delta'
-	| 'done'
-	| 'usage'
-	| 'reasoning_started'
-	| 'reasoning_delta';
+		| 'content'
+		| 'tool_calls'
+		| 'tool_call_delta'
+		| 'done'
+		| 'usage'
+		| 'reasoning_started'
+		| 'reasoning_delta';
 	content?: string;
 	tool_calls?: Array<{
 		id: string;
@@ -55,7 +58,7 @@ export interface AnthropicTool {
 	name: string;
 	description: string;
 	input_schema: any;
-	cache_control?: { type: 'ephemeral' };
+	cache_control?: {type: 'ephemeral'};
 }
 
 export interface AnthropicMessageParam {
@@ -109,7 +112,7 @@ export function resetAnthropicClient(): void {
  * Generate a persistent user_id that remains the same until application restart
  * Format: user_<hash>_account__session_<uuid>
  * This matches Anthropic's expected format for tracking and caching
- * 
+ *
  * In dev mode (--dev flag), uses a persistent userId from ~/.snow/dev-user-id
  * instead of generating a new one each session
  */
@@ -156,7 +159,7 @@ function convertToolsToAnthropic(
 
 	if (convertedTools.length > 0) {
 		const lastTool = convertedTools[convertedTools.length - 1];
-		(lastTool as any).cache_control = { type: 'ephemeral' };
+		(lastTool as any).cache_control = {type: 'ephemeral'};
 	}
 
 	return convertedTools;
@@ -339,7 +342,7 @@ function convertToAnthropicMessages(
 					{
 						type: 'text',
 						text: getSystemPrompt(),
-						cache_control: { type: 'ephemeral' },
+						cache_control: {type: 'ephemeral'},
 					},
 				] as any,
 			});
@@ -368,14 +371,14 @@ function convertToAnthropicMessages(
 					{
 						type: 'text',
 						text: lastMessage.content,
-						cache_control: { type: 'ephemeral' },
+						cache_control: {type: 'ephemeral'},
 					} as any,
 				];
 			} else if (Array.isArray(lastMessage.content)) {
 				const lastContentIndex = lastMessage.content.length - 1;
 				if (lastContentIndex >= 0) {
 					const lastContent = lastMessage.content[lastContentIndex] as any;
-					lastContent.cache_control = { type: 'ephemeral' };
+					lastContent.cache_control = {type: 'ephemeral'};
 				}
 			}
 		}
@@ -383,15 +386,15 @@ function convertToAnthropicMessages(
 
 	const system = systemContent
 		? [
-			{
-				type: 'text',
-				text: systemContent,
-				cache_control: { type: 'ephemeral' },
-			},
-		]
+				{
+					type: 'text',
+					text: systemContent,
+					cache_control: {type: 'ephemeral'},
+				},
+		  ]
 		: undefined;
 
-	return { system, messages: anthropicMessages };
+	return {system, messages: anthropicMessages};
 }
 
 /**
@@ -402,6 +405,8 @@ async function* parseSSEStream(
 ): AsyncGenerator<any, void, unknown> {
 	const decoder = new TextDecoder();
 	let buffer = '';
+	let dataCount = 0; // 记录成功解析的数据块数量
+	let lastEventType = ''; // 记录最后一个事件类型
 
 	try {
 		while (true) {
@@ -410,10 +415,18 @@ async function* parseSSEStream(
 			if (done) {
 				// ✅ 关键修复：检查buffer是否有残留数据
 				if (buffer.trim()) {
-					// 连接异常中断，抛出明确错误
-					throw new Error(
-						`Stream terminated unexpectedly with incomplete data: ${buffer.substring(0, 100)}...`,
-					);
+					// 连接异常中断，抛出明确错误，包含更详细的断点信息
+					const errorContext = {
+						dataCount,
+						lastEventType,
+						bufferLength: buffer.length,
+						bufferPreview: buffer.substring(0, 200),
+					};
+
+					const errorMessage = `Stream terminated unexpectedly with incomplete data. Context: ${JSON.stringify(
+						errorContext,
+					)}`;
+					throw new Error(errorMessage);
 				}
 				break; // 正常结束
 			}
@@ -432,7 +445,10 @@ async function* parseSSEStream(
 
 				// Handle both "event: " and "event:" formats
 				if (trimmed.startsWith('event:')) {
-					// Event type, will be followed by data
+					// 记录事件类型用于断点恢复
+					lastEventType = trimmed.startsWith('event: ')
+						? trimmed.slice(7)
+						: trimmed.slice(6);
 					continue;
 				}
 
@@ -448,6 +464,7 @@ async function* parseSSEStream(
 					});
 
 					if (parseResult.success) {
+						dataCount++;
 						yield parseResult.data;
 					}
 				}
@@ -455,13 +472,26 @@ async function* parseSSEStream(
 		}
 	} catch (error) {
 		const {logger} = await import('../utils/core/logger.js');
-		logger.error('SSE stream parsing error:', {
+
+		// 增强错误日志，包含断点状态
+		const errorContext = {
 			error: error instanceof Error ? error.message : 'Unknown error',
-			remainingBuffer: buffer.substring(0, 200),
-		});
+			dataCount,
+			lastEventType,
+			bufferLength: buffer.length,
+			bufferPreview: buffer.substring(0, 200),
+		};
+		logger.error(
+			'SSE stream parsing error with checkpoint context:',
+			errorContext,
+		);
 		throw error;
 	}
 }
+
+/**
+ * Create streaming Anthropic completion with retry support
+ */
 export async function* createStreamingAnthropicCompletion(
 	options: AnthropicOptions,
 	abortSignal?: AbortSignal,
@@ -470,7 +500,7 @@ export async function* createStreamingAnthropicCompletion(
 	yield* withRetryGenerator(
 		async function* () {
 			const config = getAnthropicConfig();
-			const { system, messages } = convertToAnthropicMessages(
+			const {system, messages} = convertToAnthropicMessages(
 				options.messages,
 				options.includeBuiltinSystemPrompt !== false, // 默认为 true
 			);
@@ -762,10 +792,10 @@ export async function* createStreamingAnthropicCompletion(
 			// Return complete thinking block with signature if thinking content exists
 			const thinkingBlock = thinkingTextBuffer
 				? {
-					type: 'thinking' as const,
-					thinking: thinkingTextBuffer,
-					signature: thinkingSignature || undefined,
-				}
+						type: 'thinking' as const,
+						thinking: thinkingTextBuffer,
+						signature: thinkingSignature || undefined,
+				  }
 				: undefined;
 
 			yield {
