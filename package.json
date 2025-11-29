@@ -45,6 +45,9 @@
 		"bundle",
 		"scripts"
 	],
+	"dependencies": {
+		"@iarna/toml": "^2.2.5"
+	},
 	"devDependencies": {
 		"@inkjs/ui": "^2.0.0",
 		"@modelcontextprotocol/sdk": "^1.17.3",
