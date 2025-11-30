@@ -1,4 +1,11 @@
-import {existsSync, readFileSync, mkdirSync, unlinkSync} from 'fs';
+import {
+	existsSync,
+	readFileSync,
+	mkdirSync,
+	unlinkSync,
+	accessSync,
+	constants,
+} from 'fs';
 import {join} from 'path';
 import {homedir} from 'os';
 import {readToml, writeToml, existsToml} from './tomlUtils.js';
@@ -483,7 +490,40 @@ You are a versatile task execution agent with full tool access, capable of handl
 
 function ensureConfigDirectory(): void {
 	if (!existsSync(CONFIG_DIR)) {
-		mkdirSync(CONFIG_DIR, {recursive: true});
+		try {
+			// 尝试创建配置目录
+			mkdirSync(CONFIG_DIR, {recursive: true});
+
+			// 验证目录是否成功创建且有写权限
+			try {
+				accessSync(CONFIG_DIR, constants.W_OK);
+			} catch (accessError) {
+				throw new Error(
+					`Configuration directory created but is not writable: ${CONFIG_DIR}`,
+				);
+			}
+		} catch (error) {
+			if (error instanceof Error) {
+				throw new Error(
+					`Failed to create configuration directory ${CONFIG_DIR}: ${error.message}`,
+				);
+			} else {
+				throw new Error(
+					`Failed to create configuration directory ${CONFIG_DIR}: ${String(
+						error,
+					)}`,
+				);
+			}
+		}
+	} else {
+		// 目录已存在，检查写权限
+		try {
+			accessSync(CONFIG_DIR, constants.W_OK);
+		} catch (accessError) {
+			throw new Error(
+				`Configuration directory exists but is not writable: ${CONFIG_DIR}`,
+			);
+		}
 	}
 }
 
