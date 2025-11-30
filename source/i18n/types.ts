@@ -256,6 +256,7 @@ export type TranslationKeys = {
 		codebaseTools: string;
 		terminalTools: string;
 		todoTools: string;
+		usefulInfoTools: string;
 		webSearchTools: string;
 		ideTools: string;
 		userInteractionTools: string;
