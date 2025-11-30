@@ -609,9 +609,10 @@ export function getSubAgent(id: string): SubAgent | null {
 function saveSubAgents(agents: SubAgent[]): void {
 	try {
 		ensureConfigDirectory();
-		// Filter out built-in agents (should never be saved to config)
-		const userAgents = agents.filter(agent => !agent.builtin);
-		const config: SubAgentsConfig = {agents: userAgents};
+
+		// Save all agents including modified built-in agents (from custom-subagents branch)
+		// but use TOML format (from toml-migration branch)
+		const config: SubAgentsConfig = {agents};
 
 		// 保存为TOML格式
 		writeToml(SUB_AGENTS_TOML_FILE, config);
