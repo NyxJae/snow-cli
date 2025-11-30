@@ -652,6 +652,10 @@ You are a versatile task execution agent with full tool access, capable of handl
 		// This ensures tools approved during execution are immediately recognized
 		const sessionApprovedTools = new Set<string>();
 
+		// 子代理内部空回复重试计数器
+		let emptyResponseRetryCount = 0;
+		const maxEmptyResponseRetries = 3; // 最多重试3次
+
 		// eslint-disable-next-line no-constant-condition
 		while (true) {
 			// Check abort signal before streaming
@@ -861,10 +865,40 @@ You are a versatile task execution agent with full tool access, capable of handl
 				!hasReceivedData ||
 				(!currentContent.trim() && toolCalls.length === 0)
 			) {
-				const emptyResponseError = new Error(
-					'Empty response received from API - no content or tool calls generated',
-				);
-				throw emptyResponseError;
+				// 子代理内部处理空回复重试，不抛出错误给主代理
+				emptyResponseRetryCount++;
+
+				if (emptyResponseRetryCount <= maxEmptyResponseRetries) {
+					// 发送重试状态消息
+					if (onMessage) {
+						onMessage({
+							type: 'sub_agent_message',
+							agentId: agent.id,
+							agentName: agent.name,
+							message: {
+								type: 'retry_status',
+								isRetrying: true,
+								attempt: emptyResponseRetryCount,
+								nextDelay: 1000, // 1秒延迟
+								errorMessage: `空回复重试 [${agent.name}]: 未收到内容或工具调用`,
+							},
+						});
+					}
+
+					// 等待1秒后重试
+					await new Promise(resolve => setTimeout(resolve, 1000));
+					continue; // 继续下一轮循环
+				} else {
+					// 超过最大重试次数，返回错误但不抛出异常
+					return {
+						success: false,
+						result: finalResponse,
+						error: `子代理空回复重试失败：已重试 ${maxEmptyResponseRetries} 次`,
+					};
+				}
+			} else {
+				// 重置重试计数器（成功收到数据）
+				emptyResponseRetryCount = 0;
 			}
 
 			// Add assistant response to conversation
@@ -1236,10 +1270,14 @@ You are a versatile task execution agent with full tool access, capable of handl
 			usage: totalUsage,
 		};
 	} catch (error) {
+		// 移除空回复错误处理，因为现在由子代理内部处理
+		const errorMessage =
+			error instanceof Error ? error.message : 'Unknown error';
+
 		return {
 			success: false,
 			result: '',
-			error: error instanceof Error ? error.message : 'Unknown error',
+			error: errorMessage,
 		};
 	}
 }

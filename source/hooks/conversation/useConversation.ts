@@ -23,6 +23,10 @@ import {unifiedHooksExecutor} from '../../utils/execution/unifiedHooksExecutor.j
 import {formatUsefulInfoContext} from '../../utils/core/usefulInfoPreprocessor.js';
 import type {Message} from '../../ui/components/MessageList.js';
 import {filterToolsBySensitivity} from '../../utils/execution/yoloPermissionChecker.js';
+import {
+	isEmptyResponse,
+	createEmptyResponseError,
+} from '../../utils/core/emptyResponseDetector.js';
 import {formatToolCallMessage} from '../../utils/ui/messageFormatter.js';
 import {resourceMonitor} from '../../utils/core/resourceMonitor.js';
 import {isToolNeedTwoStepDisplay} from '../../utils/config/toolDisplayConfig.js';
@@ -118,6 +122,7 @@ export async function handleConversationWithTools(
 
 			// 检查是否为可重试错误
 			const errorMessage = (error as Error).message.toLowerCase();
+			const errorCode = (error as any).code;
 			const isRetriable =
 				errorMessage.includes('network') ||
 				errorMessage.includes('timeout') ||
@@ -131,7 +136,9 @@ export async function handleConversationWithTools(
 				errorMessage.includes('500') ||
 				errorMessage.includes('502') ||
 				errorMessage.includes('503') ||
-				errorMessage.includes('504');
+				errorMessage.includes('504') ||
+				errorCode === 'EMPTY_RESPONSE' ||
+				errorMessage.includes('empty response');
 
 			// 如果不可重试或已达到最大重试次数，抛出错误
 			if (!isRetriable || retryCount >= MAX_RETRIES) {
@@ -521,6 +528,15 @@ async function executeWithInternalRetry(
 			if (controller.signal.aborted) {
 				freeEncoder();
 				break;
+			}
+
+			// 检测空回复：如果既没有内容也没有工具调用，抛出错误以触发重试
+			if (
+				(!streamedContent || isEmptyResponse(streamedContent)) &&
+				(!receivedToolCalls || receivedToolCalls.length === 0)
+			) {
+				freeEncoder();
+				throw createEmptyResponseError(streamedContent || '');
 			}
 
 			// If there are tool calls, we need to handle them specially
