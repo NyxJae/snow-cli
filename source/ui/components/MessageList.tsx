@@ -4,7 +4,7 @@ import {SelectedFile} from '../../utils/core/fileUtils.js';
 import MarkdownRenderer from './MarkdownRenderer.js';
 
 export interface Message {
-	role: 'user' | 'assistant' | 'command' | 'subagent';
+	role: 'user' | 'assistant' | 'command' | 'subagent' | 'subagent-result';
 	content: string;
 	streaming?: boolean;
 	discontinued?: boolean;
