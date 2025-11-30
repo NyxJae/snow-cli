@@ -31,10 +31,57 @@ export function readToml<T>(filePath: string): T | null {
  */
 export function writeToml<T>(filePath: string, data: T): void {
 	try {
-		const content = stringify(data as any);
+		// 验证输入数据
+		if (data === null || data === undefined) {
+			throw new Error('Data cannot be null or undefined');
+		}
+
+		// 尝试序列化为TOML
+		let content: string;
+		try {
+			content = stringify(data as any);
+		} catch (serializeError) {
+			throw new Error(
+				`Failed to serialize data to TOML: ${
+					serializeError instanceof Error
+						? serializeError.message
+						: String(serializeError)
+				}`,
+			);
+		}
+
+		// 验证序列化结果
+		if (!content || content.trim().length === 0) {
+			throw new Error('Serialized TOML content is empty');
+		}
+
+		// 写入文件
 		writeFileSync(filePath, content, 'utf8');
+
+		// 验证文件是否成功写入
+		if (!existsSync(filePath)) {
+			throw new Error('File was not created after write operation');
+		}
+
+		// 验证文件内容是否可以正确读取
+		try {
+			const verifyContent = readFileSync(filePath, 'utf8');
+			if (verifyContent !== content) {
+				throw new Error('Written content does not match expected content');
+			}
+		} catch (verifyError) {
+			throw new Error(
+				`Failed to verify written file: ${
+					verifyError instanceof Error
+						? verifyError.message
+						: String(verifyError)
+				}`,
+			);
+		}
 	} catch (error) {
-		throw new Error(`Failed to write TOML file ${filePath}: ${error}`);
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error(`Failed to write TOML file ${filePath}:`, errorMessage);
+		throw new Error(`Failed to write TOML file ${filePath}: ${errorMessage}`);
 	}
 }
 
@@ -45,6 +92,85 @@ export function writeToml<T>(filePath: string, data: T): void {
  */
 export function existsToml(filePath: string): boolean {
 	return existsSync(filePath);
+}
+
+/**
+ * 验证TOML数据的完整性
+ * @param data 要验证的数据
+ * @returns 验证结果和错误信息
+ */
+export function validateTomlData(data: any): {
+	isValid: boolean;
+	errors: string[];
+} {
+	const errors: string[] = [];
+
+	// 检查数据是否为null或undefined
+	if (data === null || data === undefined) {
+		errors.push('Data cannot be null or undefined');
+		return {isValid: false, errors};
+	}
+
+	// 检查数据是否为对象
+	if (typeof data !== 'object' || Array.isArray(data)) {
+		errors.push('Data must be an object');
+		return {isValid: false, errors};
+	}
+
+	// 尝试序列化以验证是否可以转换为TOML
+	try {
+		const serialized = stringify(data);
+		if (!serialized || serialized.trim().length === 0) {
+			errors.push('Data serialization resulted in empty content');
+		}
+
+		// 尝试反序列化以验证TOML格式的完整性
+		try {
+			const parsed = parse(serialized);
+			// 简单的数据比较检查
+			if (JSON.stringify(parsed) !== JSON.stringify(data)) {
+				errors.push(
+					'Data integrity check failed after serialization/deserialization',
+				);
+			}
+		} catch (parseError) {
+			errors.push(
+				`TOML parsing validation failed: ${
+					parseError instanceof Error ? parseError.message : String(parseError)
+				}`,
+			);
+		}
+	} catch (serializeError) {
+		errors.push(
+			`TOML serialization validation failed: ${
+				serializeError instanceof Error
+					? serializeError.message
+					: String(serializeError)
+			}`,
+		);
+	}
+
+	return {
+		isValid: errors.length === 0,
+		errors,
+	};
+}
+
+/**
+ * 安全写入TOML文件（带验证）
+ * @param filePath 文件路径
+ * @param data 要写入的数据
+ * @throws Error 验证失败或写入失败时抛出错误
+ */
+export function writeTomlSafe<T>(filePath: string, data: T): void {
+	// 首先验证数据
+	const validation = validateTomlData(data);
+	if (!validation.isValid) {
+		throw new Error(`Data validation failed: ${validation.errors.join(', ')}`);
+	}
+
+	// 使用改进的writeToml函数
+	writeToml(filePath, data);
 }
 
 /**
