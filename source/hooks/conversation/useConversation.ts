@@ -23,6 +23,10 @@ import {unifiedHooksExecutor} from '../../utils/execution/unifiedHooksExecutor.j
 import {formatUsefulInfoContext} from '../../utils/core/usefulInfoPreprocessor.js';
 import type {Message} from '../../ui/components/MessageList.js';
 import {filterToolsBySensitivity} from '../../utils/execution/yoloPermissionChecker.js';
+import {
+	isEmptyResponse,
+	createEmptyResponseError,
+} from '../../utils/core/emptyResponseDetector.js';
 import {formatToolCallMessage} from '../../utils/ui/messageFormatter.js';
 import {resourceMonitor} from '../../utils/core/resourceMonitor.js';
 import {isToolNeedTwoStepDisplay} from '../../utils/config/toolDisplayConfig.js';
@@ -523,6 +527,15 @@ async function executeWithInternalRetry(
 			if (controller.signal.aborted) {
 				freeEncoder();
 				break;
+			}
+
+			// 检测空回复：如果既没有内容也没有工具调用，抛出错误以触发重试
+			if (
+				(!streamedContent || isEmptyResponse(streamedContent)) &&
+				(!receivedToolCalls || receivedToolCalls.length === 0)
+			) {
+				freeEncoder();
+				throw createEmptyResponseError(streamedContent || '');
 			}
 
 			// If there are tool calls, we need to handle them specially
