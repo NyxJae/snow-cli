@@ -25,6 +25,53 @@ function replacePlaceholders(template: string): string {
 }
 
 /**
+ * Get the agents prompt, dynamically reading from AGENTS.md if it exists
+ * Priority: Global AGENTS.md (base) + Project AGENTS.md (supplement)
+ * Returns merged content with global content first, then project content
+ */
+export function getAgentsPrompt(): string {
+	try {
+		const cwd = process.cwd();
+		const agentsContents: string[] = [];
+
+		// 1. Check global AGENTS.md first (base content)
+		const globalAgentsFilePath = path.join(os.homedir(), '.snow', 'AGENTS.md');
+		if (fs.existsSync(globalAgentsFilePath)) {
+			const globalContent = fs
+				.readFileSync(globalAgentsFilePath, 'utf-8')
+				.trim();
+			if (globalContent) {
+				agentsContents.push(globalContent);
+			}
+		}
+
+		// 2. Check project-level AGENTS.md (supplemental content)
+		const projectAgentsFilePath = path.join(cwd, 'AGENTS.md');
+		if (fs.existsSync(projectAgentsFilePath)) {
+			const projectContent = fs
+				.readFileSync(projectAgentsFilePath, 'utf-8')
+				.trim();
+			if (projectContent) {
+				agentsContents.push(projectContent);
+			}
+		}
+
+		// 3. Return merged content or empty string if no files found
+		if (agentsContents.length > 0) {
+			// Join with double newline for clear separation
+			return agentsContents.join('\n\n');
+		}
+
+		// Return empty string if no AGENTS.md files exist
+		return '';
+	} catch (error) {
+		// If reading fails, log error and return empty string
+		console.error('Failed to read AGENTS.md:', error);
+		return '';
+	}
+}
+
+/**
  * Get the system prompt, dynamically reading from ROLE.md if it exists
  * Priority: Project ROLE.md > Global ROLE.md > Default system prompt
  * This function is called to get the current system prompt with ROLE.md content if available
@@ -38,7 +85,9 @@ function getSystemPromptWithRole(): string {
 		if (fs.existsSync(projectRoleFilePath)) {
 			const roleContent = fs.readFileSync(projectRoleFilePath, 'utf-8').trim();
 			if (roleContent) {
-				return replacePlaceholders(roleContent);
+				const basePrompt = replacePlaceholders(roleContent);
+				const agentsPrompt = getAgentsPrompt();
+				return agentsPrompt ? `${basePrompt}\n\n${agentsPrompt}` : basePrompt;
 			}
 		}
 
@@ -47,7 +96,9 @@ function getSystemPromptWithRole(): string {
 		if (fs.existsSync(globalRoleFilePath)) {
 			const roleContent = fs.readFileSync(globalRoleFilePath, 'utf-8').trim();
 			if (roleContent) {
-				return replacePlaceholders(roleContent);
+				const basePrompt = replacePlaceholders(roleContent);
+				const agentsPrompt = getAgentsPrompt();
+				return agentsPrompt ? `${basePrompt}\n\n${agentsPrompt}` : basePrompt;
 			}
 		}
 	} catch (error) {
@@ -56,7 +107,9 @@ function getSystemPromptWithRole(): string {
 	}
 
 	// 3. Fall back to default system prompt template
-	return replacePlaceholders(SYSTEM_PROMPT_TEMPLATE);
+	const basePrompt = replacePlaceholders(SYSTEM_PROMPT_TEMPLATE);
+	const agentsPrompt = getAgentsPrompt();
+	return agentsPrompt ? `${basePrompt}\n\n${agentsPrompt}` : basePrompt;
 }
 
 // Get system environment info

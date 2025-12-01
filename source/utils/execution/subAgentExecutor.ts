@@ -3,6 +3,7 @@ import {createStreamingResponse} from '../../api/responses.js';
 import {createStreamingGeminiCompletion} from '../../api/gemini.js';
 import {createStreamingChatCompletion} from '../../api/chat.js';
 import {getSubAgent} from '../config/subAgentConfig.js';
+import {getAgentsPrompt} from '../../api/systemPrompt.js';
 import {
 	collectAllMCPTools,
 	executeMCPTool,
@@ -631,10 +632,18 @@ You are a versatile task execution agent with full tool access, capable of handl
 			}
 		}
 
-		// Append role to prompt if configured
+		// Build final prompt with AGENTS.md and agent role
 		let finalPrompt = prompt;
+
+		// Append AGENTS.md content if available
+		const agentsPrompt = getAgentsPrompt();
+		if (agentsPrompt) {
+			finalPrompt = `${prompt}\n\n${agentsPrompt}`;
+		}
+
+		// Append agent-specific role if configured
 		if (agent.role) {
-			finalPrompt = `${prompt}\n\n${agent.role}`;
+			finalPrompt = `${finalPrompt}\n\n${agent.role}`;
 		}
 
 		messages.push({
