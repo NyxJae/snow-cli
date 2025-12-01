@@ -258,69 +258,6 @@ export class TodoService {
 	getTools(): Tool[] {
 		return [
 			{
-				name: 'todo-create',
-				description: ` RECOMMENDED: Create TODO list for structured task execution. Use this for ALL multi-step tasks!
-
-MANDATORY RULE - PARALLEL CALLS ONLY:
-NEVER call todo-create alone! MUST call with other tools in the SAME function call block.
-ALWAYS: todo-create + filesystem-read (or other action tool) in parallel
-FORBIDDEN: Call todo-create, wait for result, then call other tools
-
-##  DEFAULT USAGE - Use TODO by default for:
-ANY multi-file changes (always create TODO first)
-ANY feature implementation (plan with TODO)
-ANY refactoring work (track with TODO)
-Bug fixes involving 2+ files (use TODO)
-Tasks with 3+ distinct steps (create TODO)
-SKIP ONLY: Single-file trivial edits (1-2 lines)
-
-##  WHY CREATE TODO:
-- Ensures all requirements are addressed
-- Prevents missing critical steps
-- Provides clear progress tracking
-- Improves code quality through systematic approach
-- Builds user confidence with visible structure
-
-##  WHEN TO CALL:
-1. **NEW TASK**: Create TODO immediately when starting work (with parallel action)
-2. **NEW REQUIREMENT**: Delete old todos, create fresh list (with parallel action)
-3. **BEST PRACTICE**: Call todo-create + filesystem-read in parallel
-
-##  CREATION GUIDELINES:
-- Break work into 3-7 clear, actionable tasks
-- Order by logical dependencies
-- Be specific (e.g., "Modify validateInput in form.ts" not "fix validation")
-- Include verification step if critical
-- Creates root tasks only - use todo-add to create subtasks
-
-##  LIFECYCLE:
-This REPLACES the entire TODO list. For adding tasks to existing list, use "todo-add" instead.
-
-##  REMEMBER: MUST call with other tools - never alone!`,
-				inputSchema: {
-					type: 'object',
-					properties: {
-						todos: {
-							type: 'array',
-							items: {
-								type: 'object',
-								properties: {
-									content: {
-										type: 'string',
-										description:
-											'TODO item description - must be specific, actionable, and technically precise (e.g., "Modify handleSubmit function in ChatInput.tsx to validate user input before processing" NOT "fix input validation")',
-									},
-								},
-								required: ['content'],
-							},
-							description:
-								'Complete list of TODO items. Each item must represent a discrete, verifiable unit of work. For programming tasks, typical structure: analyze code → implement changes → test functionality → verify build → commit (if requested).',
-						},
-					},
-					required: ['todos'],
-				},
-			},
-			{
 				name: 'todo-get',
 				description: `Get current TODO list with task IDs, status, and hierarchy.
 
