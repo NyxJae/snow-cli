@@ -26,16 +26,26 @@ function replacePlaceholders(template: string): string {
 
 /**
  * Get the system prompt, dynamically reading from ROLE.md if it exists
+ * Priority: Project ROLE.md > Global ROLE.md > Default system prompt
  * This function is called to get the current system prompt with ROLE.md content if available
  */
 function getSystemPromptWithRole(): string {
 	try {
 		const cwd = process.cwd();
-		const roleFilePath = path.join(cwd, 'ROLE.md');
 
-		// Check if ROLE.md exists and is not empty
-		if (fs.existsSync(roleFilePath)) {
-			const roleContent = fs.readFileSync(roleFilePath, 'utf-8').trim();
+		// 1. Check project-level ROLE.md first (highest priority)
+		const projectRoleFilePath = path.join(cwd, 'ROLE.md');
+		if (fs.existsSync(projectRoleFilePath)) {
+			const roleContent = fs.readFileSync(projectRoleFilePath, 'utf-8').trim();
+			if (roleContent) {
+				return replacePlaceholders(roleContent);
+			}
+		}
+
+		// 2. Check global ROLE.md in user's .snow directory (fallback)
+		const globalRoleFilePath = path.join(os.homedir(), '.snow', 'ROLE.md');
+		if (fs.existsSync(globalRoleFilePath)) {
+			const roleContent = fs.readFileSync(globalRoleFilePath, 'utf-8').trim();
 			if (roleContent) {
 				return replacePlaceholders(roleContent);
 			}
@@ -45,6 +55,7 @@ function getSystemPromptWithRole(): string {
 		console.error('Failed to read ROLE.md:', error);
 	}
 
+	// 3. Fall back to default system prompt template
 	return replacePlaceholders(SYSTEM_PROMPT_TEMPLATE);
 }
 
