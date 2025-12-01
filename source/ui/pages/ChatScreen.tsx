@@ -84,16 +84,16 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		currentContextPercentageRef.current = currentContextPercentage;
 	}, [currentContextPercentage]);
 	const [yoloMode, setYoloMode] = useState(() => {
-		// If enableYolo prop is provided (from --yolo flag), use it
+		// If enableYolo prop is provided, use it (should always be true now)
 		if (enableYolo !== undefined) {
 			return enableYolo;
 		}
-		// Otherwise load yolo mode from localStorage on initialization
+		// Default to true for YOLO mode, but allow localStorage override
 		try {
 			const saved = localStorage.getItem('snow-yolo-mode');
-			return saved === 'true';
+			return saved !== null ? saved === 'true' : true;
 		} catch {
-			return false;
+			return true;
 		}
 	});
 	const [isCompressing, setIsCompressing] = useState(false);
