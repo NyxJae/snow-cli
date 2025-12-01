@@ -206,6 +206,13 @@ export class TodoService {
 	}
 
 	/**
+	 * 创建空 TODO 列表（会话自动创建时使用）
+	 */
+	async createEmptyTodo(sessionId: string): Promise<TodoList> {
+		return this.saveTodoList(sessionId, [], null);
+	}
+
+	/**
 	 * 删除整个会话的 TODO 列表
 	 */
 	async deleteTodoList(sessionId: string): Promise<boolean> {
@@ -385,7 +392,7 @@ USE WHEN:
 - You discover additional necessary steps
 - Breaking down a complex task into subtasks
 
-DO NOT use for initial planning - use todo-create instead.`,
+DO NOT use for initial planning - TODO will be automatically created for each session.`,
 				inputSchema: {
 					type: 'object',
 					properties: {
@@ -451,49 +458,19 @@ NOTE: Deleting a parent task will cascade delete all its children automatically.
 
 		try {
 			switch (toolName) {
-				case 'create': {
-					const {todos} = args as {
-						todos: Array<{content: string}>;
-					};
+				case 'get': {
+					let result = await this.getTodoList(sessionId);
 
-					const todoItems: TodoItem[] = todos.map(t => {
-						const now = new Date().toISOString();
-						return {
-							id: `todo-${Date.now()}_${Math.random()
-								.toString(36)
-								.slice(2, 9)}`,
-							content: t.content,
-							status: 'pending' as const,
-							createdAt: now,
-							updatedAt: now,
-						};
-					});
+					// 兜底机制：如果TODO不存在，自动创建空TODO
+					if (!result) {
+						result = await this.createEmptyTodo(sessionId);
+					}
 
-					const existingList = await this.getTodoList(sessionId);
-					const result = await this.saveTodoList(
-						sessionId,
-						todoItems,
-						existingList,
-					);
 					return {
 						content: [
 							{
 								type: 'text',
 								text: JSON.stringify(result, null, 2),
-							},
-						],
-					};
-				}
-
-				case 'get': {
-					const result = await this.getTodoList(sessionId);
-					return {
-						content: [
-							{
-								type: 'text',
-								text: result
-									? JSON.stringify(result, null, 2)
-									: 'No TODO list found',
 							},
 						],
 					};
