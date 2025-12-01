@@ -1,5 +1,6 @@
 import React from 'react';
 import {Box, Text} from 'ink';
+import MarkdownRenderer from './MarkdownRenderer.js';
 import {getSubAgent} from '../../utils/config/subAgentConfig.js';
 
 /**
@@ -98,7 +99,7 @@ export default function SubAgentResultDisplay({
 				paddingX={1}
 				marginLeft={0}
 			>
-				<Text>{content}</Text>
+				<MarkdownRenderer content={content || ' '} />
 			</Box>
 		</Box>
 	);
