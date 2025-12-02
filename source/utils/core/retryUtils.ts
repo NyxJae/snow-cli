@@ -114,6 +114,15 @@ function isRetriableError(error: Error): boolean {
 		return true;
 	}
 
+	// Fetch errors (including network-level fetch failures)
+	if (
+		errorMessage.includes('fetch failed') ||
+		errorMessage.includes('fetcherror') ||
+		errorMessage.includes('network fetch failed')
+	) {
+		return true;
+	}
+
 	// JSON parsing errors from streaming (incomplete or malformed tool calls)
 	if (
 		errorMessage.includes('invalid tool call json') ||

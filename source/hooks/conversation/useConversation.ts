@@ -137,6 +137,8 @@ export async function handleConversationWithTools(
 				errorMessage.includes('502') ||
 				errorMessage.includes('503') ||
 				errorMessage.includes('504') ||
+				errorMessage.includes('fetch failed') ||
+				errorMessage.includes('fetcherror') ||
 				errorCode === 'EMPTY_RESPONSE' ||
 				errorMessage.includes('empty response');
 
