@@ -118,20 +118,22 @@ export async function handleConversationWithTools(
 
 			// 检查是否为可重试错误
 			const errorMessage = (error as Error).message.toLowerCase();
+			const errorCode = (error as any).code;
 			const isRetriable =
-				errorMessage.includes('network') ||
 				errorMessage.includes('timeout') ||
-				errorMessage.includes('rate limit') ||
-				errorMessage.includes('server error') ||
+				errorMessage.includes('network') ||
 				errorMessage.includes('connection') ||
-				errorMessage.includes('stream terminated') ||
-				errorMessage.includes('incomplete data') ||
-				errorMessage.includes('sse stream') ||
-				errorMessage.includes('reader error') ||
+				errorMessage.includes('ENOTFOUND') ||
+				errorMessage.includes('ECONNRESET') ||
+				errorMessage.includes('ECONNREFUSED') ||
 				errorMessage.includes('500') ||
 				errorMessage.includes('502') ||
 				errorMessage.includes('503') ||
-				errorMessage.includes('504');
+				errorMessage.includes('504') ||
+				errorMessage.includes('fetch failed') ||
+				errorMessage.includes('fetcherror') ||
+				errorCode === 'EMPTY_RESPONSE' ||
+				errorMessage.includes('empty response');
 
 			// 如果不可重试或已达到最大重试次数，抛出错误
 			if (!isRetriable || retryCount >= MAX_RETRIES) {
