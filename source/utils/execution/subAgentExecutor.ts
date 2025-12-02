@@ -15,7 +15,7 @@ import {unifiedHooksExecutor} from './unifiedHooksExecutor.js';
 import {checkYoloPermission} from './yoloPermissionChecker.js';
 import type {ConfirmationResult} from '../../ui/components/ToolConfirmation.js';
 import type {MCPTool} from './mcpToolsManager.js';
-import type {ChatMessage} from '../../api/chat.js';
+import type {ChatMessage} from '../../api/types.js';
 import {formatUsefulInfoContext} from '../core/usefulInfoPreprocessor.js';
 
 export interface SubAgentMessage {
