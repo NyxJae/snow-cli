@@ -687,32 +687,33 @@ export function updateSubAgent(
 
 	const userAgents = getUserSubAgents();
 	const existingUserIndex = userAgents.findIndex(a => a.id === id);
-	const existingUserCopy = existingUserIndex >= 0 ? userAgents[existingUserIndex] : null;
+	const existingUserCopy =
+		existingUserIndex >= 0 ? userAgents[existingUserIndex] : null;
 	const now = new Date().toISOString();
 
 	// If it's a built-in agent, create or update user copy
 	if (agent.builtin) {
+		// For built-in agents, we need to check if we should clear the field completely
 		const userCopy: SubAgent = {
 			id: agent.id,
 			name: updates.name ?? existingUserCopy?.name ?? agent.name,
-			description: updates.description ?? existingUserCopy?.description ?? agent.description,
+			description:
+				updates.description ??
+				existingUserCopy?.description ??
+				agent.description,
 			role: updates.role ?? existingUserCopy?.role ?? agent.role,
 			tools: updates.tools ?? existingUserCopy?.tools ?? agent.tools,
 			createdAt: existingUserCopy?.createdAt ?? agent.createdAt ?? now,
 			updatedAt: now,
 			builtin: false,
 			configProfile:
-				updates.configProfile !== undefined
-					? updates.configProfile
-					: existingUserCopy?.configProfile ?? agent.configProfile,
+				updates.configProfile !== undefined ? updates.configProfile : undefined,
 			customSystemPrompt:
 				updates.customSystemPrompt !== undefined
 					? updates.customSystemPrompt
-					: existingUserCopy?.customSystemPrompt ?? agent.customSystemPrompt,
+					: undefined,
 			customHeaders:
-				updates.customHeaders !== undefined
-					? updates.customHeaders
-					: existingUserCopy?.customHeaders ?? agent.customHeaders,
+				updates.customHeaders !== undefined ? updates.customHeaders : undefined,
 		};
 
 		if (existingUserIndex >= 0) {
@@ -744,10 +745,14 @@ export function updateSubAgent(
 		createdAt: existingAgent.createdAt,
 		updatedAt: now,
 		builtin: existingAgent.builtin,
-		configProfile: updates.configProfile ?? existingAgent.configProfile,
+		configProfile:
+			updates.configProfile !== undefined ? updates.configProfile : undefined,
 		customSystemPrompt:
-			updates.customSystemPrompt ?? existingAgent.customSystemPrompt,
-		customHeaders: updates.customHeaders ?? existingAgent.customHeaders,
+			updates.customSystemPrompt !== undefined
+				? updates.customSystemPrompt
+				: undefined,
+		customHeaders:
+			updates.customHeaders !== undefined ? updates.customHeaders : undefined,
 	};
 
 	userAgents[existingUserIndex] = updatedAgent;
