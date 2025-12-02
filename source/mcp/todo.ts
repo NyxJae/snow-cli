@@ -174,13 +174,26 @@ export class TodoService {
 		const todoList = await this.getTodoList(sessionId);
 		const now = new Date().toISOString();
 
+		/**
+		 * 验证并修正 parentId
+		 * - 如果 parentId 为空或不存在于当前列表中，自动转为 undefined（创建根级任务）
+		 * - 如果 parentId 有效，保持原值（创建子任务）
+		 */
+		let validatedParentId: string | undefined;
+		if (parentId && parentId.trim() !== '' && todoList) {
+			const parentExists = todoList.todos.some(todo => todo.id === parentId);
+			if (parentExists) {
+				validatedParentId = parentId;
+			}
+		}
+
 		const newTodo: TodoItem = {
 			id: `todo-${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
 			content,
 			status: 'pending',
 			createdAt: now,
 			updatedAt: now,
-			parentId,
+			parentId: validatedParentId,
 		};
 
 		const todos = todoList ? [...todoList.todos, newTodo] : [newTodo];
@@ -329,7 +342,7 @@ USE WHEN:
 - You discover additional necessary steps
 - Breaking down a complex task into subtasks
 
-DO NOT use for initial planning - TODO will be automatically created for each session.`,
+TODO will be automatically created for each session.`,
 				inputSchema: {
 					type: 'object',
 					properties: {
