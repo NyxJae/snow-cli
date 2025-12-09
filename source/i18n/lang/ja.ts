@@ -269,7 +269,8 @@ export const ja: TranslationKeys = {
 		codebaseTools: 'コードベース検索ツール',
 		terminalTools: 'ターミナルツール',
 		todoTools: 'TODO管理ツール',
-		webSearchTools: 'Web検索ツール',
+		usefulInfoTools: '有用情報ツール',
+		webSearchTools: 'ウェブ検索ツール',
 		ideTools: 'IDE診断ツール',
 		userInteractionTools: 'ユーザー対話ツール',
 		skillTools: 'スキルツール',
@@ -301,6 +302,8 @@ export const ja: TranslationKeys = {
 		deleteConfirm: '"{name}" を削除しますか? (Y/N)',
 		deleteSuccess: 'サブエージェントを削除しました!',
 		deleteFailed: '組み込みサブエージェントは削除できません',
+		resetSuccess: 'エージェントをデフォルト設定にリセットしました',
+		resetFailed: 'エージェントのリセットに失敗しました',
 		navigationHint:
 			'↑↓: 移動 | Enter: 編集 | A: 新規追加 | D: 削除 | Esc: 戻る',
 	},

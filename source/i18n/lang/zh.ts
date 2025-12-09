@@ -257,6 +257,7 @@ export const zh: TranslationKeys = {
 		codebaseTools: '代码库搜索工具',
 		terminalTools: '终端工具',
 		todoTools: 'TODO 管理工具',
+		usefulInfoTools: '有用信息工具',
 		webSearchTools: '网络搜索工具',
 		ideTools: 'IDE 诊断工具',
 		userInteractionTools: '用户交互工具',
@@ -289,8 +290,10 @@ export const zh: TranslationKeys = {
 		deleteConfirm: '删除 "{name}"? (Y/N)',
 		deleteSuccess: '子代理删除成功!',
 		deleteFailed: '无法删除系统内置子代理',
+		resetSuccess: '代理已重置为默认配置',
+		resetFailed: '重置代理失败',
 		navigationHint:
-			'↑↓: 导航 | Enter: 编辑 | A: 添加新代理 | D: 删除 | Esc: 返回',
+			'↑↓: 导航 | Enter: 编辑 | A: 添加新代理 | D: 删除/重置 | Esc: 返回',
 	},
 	sensitiveCommandConfig: {
 		title: '敏感命令保护',

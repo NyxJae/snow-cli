@@ -1,4 +1,5 @@
 import {loadCodebaseConfig} from '../utils/config/codebaseConfig.js';
+import {logger} from '../utils/core/logger.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 
 export interface EmbeddingOptions {
@@ -50,17 +51,23 @@ export async function createEmbeddings(
 	const {input, task} = options;
 
 	if (!model) {
-		throw new Error('Embedding model name is required');
+		const errorMsg = '[API_ERROR] Embedding model name is required';
+		logger.error(errorMsg);
+		throw new Error(errorMsg);
 	}
 	if (!baseUrl) {
-		throw new Error('Embedding base URL is required');
+		const errorMsg = '[API_ERROR] Embedding base URL is required';
+		logger.error(errorMsg);
+		throw new Error(errorMsg);
 	}
 	// API key is optional for local deployments (e.g., Ollama)
 	// if (!apiKey) {
 	// 	throw new Error('Embedding API key is required');
 	// }
 	if (!input || input.length === 0) {
-		throw new Error('Input texts are required');
+		const errorMsg = '[API_ERROR] Input texts are required for embedding';
+		logger.error(errorMsg);
+		throw new Error(errorMsg);
 	}
 
 	// Build request body
@@ -117,7 +124,13 @@ export async function createEmbeddings(
 
 	if (!response.ok) {
 		const errorText = await response.text();
-		throw new Error(`Embedding API error (${response.status}): ${errorText}`);
+		const errorMsg = `[API_ERROR] Embedding API HTTP ${response.status}: ${errorText}`;
+		logger.error(errorMsg, {
+			status: response.status,
+			url,
+			model,
+		});
+		throw new Error(errorMsg);
 	}
 
 	const data = await response.json();

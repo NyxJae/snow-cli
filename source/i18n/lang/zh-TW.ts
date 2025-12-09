@@ -257,6 +257,7 @@ export const zhTW: TranslationKeys = {
 		codebaseTools: '代碼庫搜尋工具',
 		terminalTools: '終端工具',
 		todoTools: 'TODO 管理工具',
+		usefulInfoTools: '有用信息工具',
 		webSearchTools: '網路搜尋工具',
 		ideTools: 'IDE 診斷工具',
 		userInteractionTools: '用戶交互工具',
@@ -289,6 +290,8 @@ export const zhTW: TranslationKeys = {
 		deleteConfirm: '刪除 "{name}"? (Y/N)',
 		deleteSuccess: '子代理刪除成功!',
 		deleteFailed: '無法刪除系統內建子代理',
+		resetSuccess: '代理已重置為預設配置',
+		resetFailed: '重置代理失敗',
 		navigationHint:
 			'↑↓: 導航 | Enter: 編輯 | A: 新增新代理 | D: 刪除 | Esc: 返回',
 	},

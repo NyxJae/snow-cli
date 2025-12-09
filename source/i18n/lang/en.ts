@@ -279,6 +279,7 @@ export const en: TranslationKeys = {
 		codebaseTools: 'Codebase Search Tools',
 		terminalTools: 'Terminal Tools',
 		todoTools: 'TODO Management Tools',
+		usefulInfoTools: 'Useful Information Tools',
 		webSearchTools: 'Web Search Tools',
 		ideTools: 'IDE Diagnostics Tools',
 		userInteractionTools: 'User Interaction Tools',
@@ -311,6 +312,8 @@ export const en: TranslationKeys = {
 		deleteConfirm: 'Delete "{name}"? (Y/N)',
 		deleteSuccess: 'Sub-agent deleted successfully!',
 		deleteFailed: 'Cannot delete built-in sub-agents',
+		resetSuccess: 'Agent reset to default configuration',
+		resetFailed: 'Failed to reset agent',
 		navigationHint:
 			'↑↓: Navigate | Enter: Edit | A: Add New | D: Delete | Esc: Back',
 	},

@@ -1,5 +1,5 @@
 /**
- * System prompt configuration for Snow AI CLI
+ * Snow AI CLI 的系统提示配置
  */
 
 import fs from 'fs';
@@ -7,35 +7,137 @@ import path from 'path';
 import os from 'os';
 import {loadCodebaseConfig} from '../utils/config/codebaseConfig.js';
 
+// ============ 辅助工具函数 ============
+
 /**
- * Get the system prompt, dynamically reading from ROLE.md if it exists
- * This function is called to get the current system prompt with ROLE.md content if available
+ * 读取指定路径的文件内容(如果存在)
+ * @param filePath 文件路径
+ * @returns 文件内容或空字符串
  */
-function getSystemPromptWithRole(): string {
+function readFileIfExists(filePath: string): string {
 	try {
-		const cwd = process.cwd();
-		const roleFilePath = path.join(cwd, 'ROLE.md');
-
-		// Check if ROLE.md exists and is not empty
-		if (fs.existsSync(roleFilePath)) {
-			const roleContent = fs.readFileSync(roleFilePath, 'utf-8').trim();
-			if (roleContent) {
-				// Replace the default role description with ROLE.md content
-				return SYSTEM_PROMPT_TEMPLATE.replace(
-					'You are Snow AI CLI, an intelligent command-line assistant.',
-					roleContent,
-				);
-			}
+		if (fs.existsSync(filePath)) {
+			return fs.readFileSync(filePath, 'utf-8').trim();
 		}
+		return '';
 	} catch (error) {
-		// If reading fails, fall back to default
-		console.error('Failed to read ROLE.md:', error);
+		console.error(`Failed to read file ${filePath}:`, error);
+		return '';
 	}
-
-	return SYSTEM_PROMPT_TEMPLATE;
 }
 
-// Get system environment info
+/**
+ * 组合基础提示和代理提示
+ * @param basePrompt 基础提示
+ * @param agentsPrompt 代理提示
+ * @returns 组合后的提示
+ */
+function combinePrompts(basePrompt: string, agentsPrompt: string): string {
+	return agentsPrompt ? `${basePrompt}\n\n${agentsPrompt}` : basePrompt;
+}
+
+/**
+ * 获取 shell 环境信息
+ * @returns {shellPath, shellName} shell路径和小写名称
+ */
+function getShellInfo(): {shellPath: string; shellName: string} {
+	const shellPath = process.env['SHELL'] || process.env['ComSpec'] || '';
+	const shellName = path.basename(shellPath).toLowerCase();
+	return {shellPath, shellName};
+}
+
+/**
+ * 替换系统提示中的动态占位符
+ * 统一处理所有占位符的替换
+ */
+function replacePlaceholders(template: string): string {
+	const hasCodebase = isCodebaseEnabled();
+	return template
+		.replace(
+			'PLACEHOLDER_FOR_WORKFLOW_SECTION',
+			getWorkflowSection(hasCodebase),
+		)
+		.replace(
+			'PLACEHOLDER_FOR_CODE_SEARCH_SECTION',
+			getCodeSearchSection(hasCodebase),
+		)
+		.replace(
+			'PLACEHOLDER_FOR_PLATFORM_COMMANDS_SECTION',
+			getPlatformCommandsSection(),
+		);
+}
+
+// ============ 主要功能函数 ============
+
+/**
+ * 获取代理提示，动态读取 AGENTS.md（如果存在）
+ * 优先级：全局 AGENTS.md（基础）+ 项目 AGENTS.md（补充）
+ * 返回合并后的内容，全局内容在前，项目内容在后
+ */
+export function getAgentsPrompt(): string {
+	const agentsContents: string[] = [];
+
+	// 1. 首先读取全局 AGENTS.md（基础内容）
+	const globalContent = readFileIfExists(
+		path.join(os.homedir(), '.snow', 'AGENTS.md'),
+	);
+	if (globalContent) {
+		agentsContents.push(globalContent);
+	}
+
+	// 2. 读取项目级 AGENTS.md（补充内容）
+	const projectContent = readFileIfExists(
+		path.join(process.cwd(), 'AGENTS.md'),
+	);
+	if (projectContent) {
+		agentsContents.push(projectContent);
+	}
+
+	// 3. 返回替换占位符后的合并内容
+	if (agentsContents.length > 0) {
+		const mergedContent = agentsContents.join('\n\n');
+		return replacePlaceholders(mergedContent);
+	}
+
+	return '';
+}
+
+/**
+ * 获取系统提示，动态读取 ROLE.md（如果存在）
+ * 优先级：项目 ROLE.md > 全局 ROLE.md > 默认系统提示(高优先级覆盖低优先级)
+ * 此函数用于获取包含 ROLE.md 内容的当前系统提示
+ */
+function getSystemPromptWithRole(): string {
+	// 1. 首先检查项目级 ROLE.md（最高优先级）
+	const projectRoleContent = readFileIfExists(
+		path.join(process.cwd(), 'ROLE.md'),
+	);
+	if (projectRoleContent) {
+		return combinePrompts(
+			replacePlaceholders(projectRoleContent),
+			getAgentsPrompt(),
+		);
+	}
+
+	// 2. 检查用户 .snow 目录中的全局 ROLE.md（后备）
+	const globalRoleContent = readFileIfExists(
+		path.join(os.homedir(), '.snow', 'ROLE.md'),
+	);
+	if (globalRoleContent) {
+		return combinePrompts(
+			replacePlaceholders(globalRoleContent),
+			getAgentsPrompt(),
+		);
+	}
+
+	// 3. 后备：使用默认系统提示模板
+	return combinePrompts(
+		replacePlaceholders(SYSTEM_PROMPT_TEMPLATE),
+		getAgentsPrompt(),
+	);
+}
+
+// 获取系统环境信息
 function getSystemEnvironmentInfo(): string {
 	const platform = (() => {
 		const platformType = os.platform();
@@ -52,11 +154,10 @@ function getSystemEnvironmentInfo(): string {
 	})();
 
 	const shell = (() => {
-		const shellPath = process.env['SHELL'] || process.env['ComSpec'] || '';
-		const shellName = path.basename(shellPath).toLowerCase();
+		const {shellName} = getShellInfo();
 		if (shellName.includes('cmd')) return 'cmd.exe';
 		if (shellName.includes('powershell') || shellName.includes('pwsh')) {
-			// Detect PowerShell version
+			// 检测 PowerShell 版本
 			const psVersion = getPowerShellVersion();
 			return psVersion ? `PowerShell ${psVersion}` : 'PowerShell';
 		}
@@ -74,21 +175,21 @@ Shell: ${shell}
 Working Directory: ${workingDirectory}`;
 }
 
-// Get PowerShell version
+// 获取 PowerShell 版本
 function getPowerShellVersion(): string | null {
 	try {
 		const platformType = os.platform();
 		if (platformType !== 'win32') return null;
 
-		// Detect PowerShell version from shell path
+		// 从 shell 路径检测 PowerShell 版本
 		const shellPath = process.env['SHELL'] || process.env['ComSpec'] || '';
 		const shellName = path.basename(shellPath).toLowerCase();
 
-		// pwsh typically indicates PowerShell 7+
+		// pwsh 通常表示 PowerShell 7+
 		if (shellName.includes('pwsh')) {
 			return '7.x';
 		}
-		// powershell.exe is typically PowerShell 5.x
+		// powershell.exe 通常是 PowerShell 5.x
 		if (shellName.includes('powershell')) {
 			return '5.x';
 		}
@@ -100,14 +201,13 @@ function getPowerShellVersion(): string | null {
 }
 
 /**
- * Get platform-specific command requirements based on detected OS and shell
+ * 根据检测到的操作系统和 shell 获取平台特定的命令要求
  */
 function getPlatformCommandsSection(): string {
 	const platformType = os.platform();
-	const shellPath = process.env['SHELL'] || process.env['ComSpec'] || '';
-	const shellName = path.basename(shellPath).toLowerCase();
+	const {shellName} = getShellInfo();
 
-	// Windows with cmd.exe
+	// Windows 使用 cmd.exe
 	if (platformType === 'win32' && shellName.includes('cmd')) {
 		return `## Platform-Specific Command Requirements
 
@@ -119,7 +219,7 @@ function getPlatformCommandsSection(): string {
 - For complex tasks: Prefer Node.js scripts or npm packages`;
 	}
 
-	// Windows with PowerShell 5.x
+	// Windows 使用 PowerShell 5.x
 	if (
 		platformType === 'win32' &&
 		shellName.includes('powershell') &&
@@ -136,7 +236,7 @@ function getPlatformCommandsSection(): string {
 - For complex tasks: Prefer Node.js scripts or npm packages`;
 	}
 
-	// Windows with PowerShell 7.x+
+	// Windows 使用 PowerShell 7.x+
 	if (platformType === 'win32' && shellName.includes('pwsh')) {
 		return `## Platform-Specific Command Requirements
 
@@ -145,6 +245,17 @@ function getPlatformCommandsSection(): string {
 - Use: All PowerShell cmdlets (\`Remove-Item\`, \`Copy-Item\`, \`Move-Item\`, \`Select-String\`, \`Get-Content\`, etc.)
 - Shell operators: \`;\`, \`&&\`, \`||\`, \`-and\`, \`-or\` are all supported
 - Supports cross-platform scripting patterns
+- For complex tasks: Prefer Node.js scripts or npm packages`;
+	}
+	// Windows 使用 Bash
+	if (platformType === 'win32' && shellName.includes('bash')) {
+		return `## Platform-Specific Command Requirements
+
+**Current Environment: Windows with Bash**
+
+- Use: \`rm\`, \`cp\`, \`mv\`, \`grep\`, \`cat\`, \`ls\`, \`mkdir\`, \`rmdir\`, \`find\`, \`sed\`, \`awk\`
+- Supports: \`&&\`, \`||\`, pipes \`|\`, redirection \`>\`, \`<\`, \`>>\`
+- 推荐使用管道等手段预筛选出你关心的输出,以过滤掉于你无用的输出.
 - For complex tasks: Prefer Node.js scripts or npm packages`;
 	}
 
@@ -161,7 +272,7 @@ function getPlatformCommandsSection(): string {
 - For complex tasks: Prefer Node.js scripts or npm packages`;
 	}
 
-	// Fallback for unknown platforms
+	// 未知平台的后备选项
 	return `## Platform-Specific Command Requirements
 
 **Current Environment: ${platformType}**
@@ -323,21 +434,21 @@ Remember: **ACTION > ANALYSIS**. Write code first, investigate only when blocked
 You need to run in a Node.js, If the user wants to close the Node.js process, you need to explain this fact to the user and ask the user to confirm it for the second time.`;
 
 /**
- * Check if codebase functionality is enabled
- * Directly reads from codebase config instead of checking tools parameter
+ * 检查 codebase 功能是否启用
+ * 直接从 codebase 配置读取，而不是检查工具参数
  */
 function isCodebaseEnabled(): boolean {
 	try {
 		const config = loadCodebaseConfig();
 		return config.enabled;
 	} catch (error) {
-		// If config fails to load, assume disabled
+		// 如果配置加载失败，假定为禁用
 		return false;
 	}
 }
 
 /**
- * Generate workflow section based on available tools
+ * 根据可用工具生成工作流程部分
  */
 function getWorkflowSection(hasCodebase: boolean): string {
 	if (hasCodebase) {
@@ -374,11 +485,11 @@ When dealing with 2+ files, ALWAYS prefer batch operations:
 	}
 }
 /**
- * Generate code search section based on available tools
+ * 根据可用工具生成代码搜索部分
  */
 function getCodeSearchSection(hasCodebase: boolean): string {
 	if (hasCodebase) {
-		// When codebase tool is available, prioritize it heavily
+		// 当 codebase 工具可用时，优先使用它
 		return `**Code Search Strategy:**
 
 **PRIMARY TOOL - \`codebase-search\` (Semantic Search):**
@@ -395,7 +506,7 @@ function getCodeSearchSection(hasCodebase: boolean): string {
 
 **Golden rule:** Try codebase-search first, use ACE tools only for precise symbol lookup`;
 	} else {
-		// When codebase tool is NOT available, only show ACE
+		// 当 codebase 工具不可用时，只显示 ACE 工具
 		return `**Code Search Strategy:**
 - \`ace-semantic_search\` - Symbol search with fuzzy matching and filtering
 - \`ace-find_definition\` - Go to definition of a symbol
@@ -404,31 +515,17 @@ function getCodeSearchSection(hasCodebase: boolean): string {
 	}
 }
 
-// Export SYSTEM_PROMPT as a getter function for real-time ROLE.md updates
+// 导出 SYSTEM_PROMPT 作为 getter 函数，以便实时更新 ROLE.md
 export function getSystemPrompt(): string {
 	const basePrompt = getSystemPromptWithRole();
 	const systemEnv = getSystemEnvironmentInfo();
-	const hasCodebase = isCodebaseEnabled();
-	// Generate dynamic sections
-	const workflowSection = getWorkflowSection(hasCodebase);
-	const codeSearchSection = getCodeSearchSection(hasCodebase);
-	const platformCommandsSection = getPlatformCommandsSection();
 
-	// Get current year and month
+	// 获取当前年份和月份
 	const now = new Date();
 	const currentYear = now.getFullYear();
-	const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11
+	const currentMonth = now.getMonth() + 1; // getMonth() 返回 0-11
 
-	// Replace placeholders with actual content
-	const finalPrompt = basePrompt
-		.replace('PLACEHOLDER_FOR_WORKFLOW_SECTION', workflowSection)
-		.replace('PLACEHOLDER_FOR_CODE_SEARCH_SECTION', codeSearchSection)
-		.replace(
-			'PLACEHOLDER_FOR_PLATFORM_COMMANDS_SECTION',
-			platformCommandsSection,
-		);
-
-	return `${finalPrompt}
+	return `${basePrompt}
 
 ## System Environment
 

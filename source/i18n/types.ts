@@ -260,6 +260,7 @@ export type TranslationKeys = {
 		codebaseTools: string;
 		terminalTools: string;
 		todoTools: string;
+		usefulInfoTools: string;
 		webSearchTools: string;
 		ideTools: string;
 		userInteractionTools: string;
@@ -293,6 +294,8 @@ export type TranslationKeys = {
 		deleteConfirm: string;
 		deleteSuccess: string;
 		deleteFailed: string;
+		resetSuccess: string;
+		resetFailed: string;
 		navigationHint: string;
 	};
 	// Sensitive Command Config Screen

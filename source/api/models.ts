@@ -1,4 +1,5 @@
 import { getOpenAiConfig, getCustomHeaders } from '../utils/config/apiConfig.js';
+import { logger } from '../utils/core/logger.js';
 import { addProxyToFetchOptions } from '../utils/core/proxyUtils.js';
 
 export interface Model {
@@ -55,7 +56,9 @@ async function fetchOpenAIModels(baseUrl: string, apiKey: string, customHeaders:
 	const response = await fetch(url, fetchOptions);
 
 	if (!response.ok) {
-		throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+		const errorMsg = `[API_ERROR] Failed to fetch OpenAI models: HTTP ${response.status} ${response.statusText}`;
+		logger.error(errorMsg, {url, status: response.status});
+		throw new Error(errorMsg);
 	}
 
 	const data: ModelsResponse = await response.json();
@@ -76,9 +79,10 @@ async function fetchGeminiModels(baseUrl: string, apiKey: string): Promise<Model
 		},
 	});
 	const response = await fetch(url, fetchOptions);
-
-	if (!response.ok) {
-		throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+if (!response.ok) {
+		const errorMsg = `[API_ERROR] Failed to fetch Gemini models: HTTP ${response.status} ${response.statusText}`;
+		logger.error(errorMsg, {url, status: response.status});
+		throw new Error(errorMsg);
 	}
 
 	const data: GeminiModelsResponse = await response.json();
@@ -116,7 +120,9 @@ async function fetchAnthropicModels(baseUrl: string, apiKey: string, customHeade
 	const response = await fetch(url, fetchOptions);
 
 	if (!response.ok) {
-		throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+		const errorMsg = `[API_ERROR] Failed to fetch Anthropic models: HTTP ${response.status} ${response.statusText}`;
+		logger.error(errorMsg, {url, status: response.status});
+		throw new Error(errorMsg);
 	}
 
 	const data: any = await response.json();
@@ -154,7 +160,9 @@ export async function fetchAvailableModels(): Promise<Model[]> {
 	const config = getOpenAiConfig();
 
 	if (!config.baseUrl) {
-		throw new Error('Base URL not configured. Please configure API settings first.');
+		const errorMsg = '[API_ERROR] Base URL not configured. Please configure API settings first.';
+		logger.error(errorMsg);
+		throw new Error(errorMsg);
 	}
 
 	const customHeaders = getCustomHeaders();
@@ -164,18 +172,22 @@ export async function fetchAvailableModels(): Promise<Model[]> {
 
 		switch (config.requestMethod) {
 			case 'gemini':
-				if (!config.apiKey) {
-					throw new Error('API key is required for Gemini API');
-				}
-				models = await fetchGeminiModels(config.baseUrl.replace(/\/$/, ''), config.apiKey);
-				break;
+			if (!config.apiKey) {
+				const errorMsg = '[API_ERROR] API key is required for Gemini API';
+				logger.error(errorMsg);
+				throw new Error(errorMsg);
+			}
+			models = await fetchGeminiModels(config.baseUrl.replace(/\/$/, ''), config.apiKey);
+			break;
 
-			case 'anthropic':
-				if (!config.apiKey) {
-					throw new Error('API key is required for Anthropic API');
-				}
-				models = await fetchAnthropicModels(config.baseUrl.replace(/\/$/, ''), config.apiKey, customHeaders);
-				break;
+		case 'anthropic':
+			if (!config.apiKey) {
+				const errorMsg = '[API_ERROR] API key is required for Anthropic API';
+				logger.error(errorMsg);
+				throw new Error(errorMsg);
+			}
+			models = await fetchAnthropicModels(config.baseUrl.replace(/\/$/, ''), config.apiKey, customHeaders);
+			break;
 
 			case 'chat':
 			case 'responses':
@@ -189,9 +201,13 @@ export async function fetchAvailableModels(): Promise<Model[]> {
 		return models.sort((a, b) => a.id.localeCompare(b.id));
 	} catch (error) {
 		if (error instanceof Error) {
-			throw new Error(`Error fetching models: ${error.message}`);
+			const errorMsg = `[API_ERROR] Error fetching models: ${error.message}`;
+			logger.error(errorMsg);
+			throw new Error(errorMsg);
 		}
-		throw new Error('Unknown error occurred while fetching models');
+		const errorMsg = '[API_ERROR] Unknown error occurred while fetching models';
+		logger.error(errorMsg);
+		throw new Error(errorMsg);
 	}
 }
 

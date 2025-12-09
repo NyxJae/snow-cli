@@ -20,6 +20,8 @@ import {exportMessagesToFile} from '../../utils/session/chatExporter.js';
 export async function executeContextCompression(sessionId?: string): Promise<{
 	uiMessages: Message[];
 	usage: UsageInfo;
+	preservedMessages?: Array<any>;
+	summary?: string;
 } | null> {
 	try {
 		// 必须提供 sessionId 才能执行压缩，避免压缩错误的会话
@@ -215,6 +217,8 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 				completion_tokens: compressionResult.usage.completion_tokens,
 				total_tokens: compressionResult.usage.total_tokens,
 			},
+			preservedMessages: compressionResult.preservedMessages || [],
+			summary: compressionResult.summary,
 		};
 	} catch (error) {
 		console.error('Context compression failed:', error);

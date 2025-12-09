@@ -9,6 +9,7 @@ import {
 	parseJsonWithFix,
 } from '../utils/core/retryUtils.js';
 import type {ChatMessage, ChatCompletionTool, UsageInfo} from './types.js';
+import {logger} from '../utils/core/logger.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 import {saveUsageToFile} from '../utils/core/usageLogger.js';
 
@@ -473,13 +474,24 @@ export async function* createStreamingGeminiCompletion(
 
 			if (!response.ok) {
 				const errorText = await response.text();
-				throw new Error(
-					`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`,
-				);
+				const errorMsg = `[API_ERROR] Gemini API HTTP ${response.status}: ${response.statusText} - ${errorText}`;
+				logger.error(errorMsg, {
+					status: response.status,
+					statusText: response.statusText,
+					url,
+					model: requestBody.model,
+				});
+				throw new Error(errorMsg);
 			}
 
 			if (!response.body) {
-				throw new Error('No response body from Gemini API');
+				const errorMsg =
+					'[API_ERROR] No response body from Gemini API (empty response)';
+				logger.error(errorMsg, {
+					url,
+					model: requestBody.model,
+				});
+				throw new Error(errorMsg);
 			}
 
 			let contentBuffer = '';
@@ -511,12 +523,13 @@ export async function* createStreamingGeminiCompletion(
 						// ✅ 关键修复：检查buffer是否有残留数据
 						if (buffer.trim()) {
 							// 连接异常中断，抛出明确错误
-							throw new Error(
-								`Stream terminated unexpectedly with incomplete data: ${buffer.substring(
-									0,
-									100,
-								)}...`,
-							);
+							const errorMsg = `[API_ERROR] [RETRIABLE] Gemini stream terminated unexpectedly with incomplete data`;
+							const bufferPreview = buffer.substring(0, 100);
+							logger.error(errorMsg, {
+								bufferLength: buffer.length,
+								bufferPreview,
+							});
+							throw new Error(`${errorMsg}: ${bufferPreview}...`);
 						}
 						break; // 正常结束
 					}
@@ -638,11 +651,13 @@ export async function* createStreamingGeminiCompletion(
 					}
 				}
 			} catch (error) {
-				const {logger} = await import('../utils/core/logger.js');
-				logger.error('Gemini SSE stream parsing error:', {
-					error: error instanceof Error ? error.message : 'Unknown error',
-					remainingBuffer: buffer.substring(0, 200),
-				});
+				logger.error(
+					'[API_ERROR] [RETRIABLE] Gemini SSE stream parsing error:',
+					{
+						error: error instanceof Error ? error.message : 'Unknown error',
+						remainingBuffer: buffer.substring(0, 200),
+					},
+				);
 				throw error;
 			}
 
