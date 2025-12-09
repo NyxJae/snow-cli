@@ -3,14 +3,22 @@ import {createStreamingResponse} from '../../api/responses.js';
 import {createStreamingGeminiCompletion} from '../../api/gemini.js';
 import {createStreamingChatCompletion} from '../../api/chat.js';
 import {getSubAgent} from '../config/subAgentConfig.js';
-import {collectAllMCPTools, executeMCPTool} from './mcpToolsManager.js';
+import {getAgentsPrompt} from '../../api/systemPrompt.js';
+import {
+	collectAllMCPTools,
+	executeMCPTool,
+	getUsefulInfoService,
+	getTodoService,
+} from './mcpToolsManager.js';
 import {getOpenAiConfig} from '../config/apiConfig.js';
 import {sessionManager} from '../session/sessionManager.js';
 import {unifiedHooksExecutor} from './unifiedHooksExecutor.js';
 import {checkYoloPermission} from './yoloPermissionChecker.js';
 import type {ConfirmationResult} from '../../ui/components/tools/ToolConfirmation.js';
 import type {MCPTool} from './mcpToolsManager.js';
-import type {ChatMessage} from '../../api/chat.js';
+import type {ChatMessage} from '../../api/types.js';
+import {formatUsefulInfoContext} from '../core/usefulInfoPreprocessor.js';
+import {formatTodoContext} from '../core/todoPreprocessor.js';
 
 export interface SubAgentMessage {
 	type: 'sub_agent_message';
@@ -610,18 +618,57 @@ You are a versatile task execution agent with full tool access, capable of handl
 		}
 
 		// Build conversation history for sub-agent
-		// Append role to prompt if configured
-		let finalPrompt = prompt;
-		if (agent.role) {
-			finalPrompt = `${prompt}\n\n${agent.role}`;
+		const messages: ChatMessage[] = [];
+
+		// Add useful information context if available (SAME AS MAIN AGENT)
+		const currentSession = sessionManager.getCurrentSession();
+		if (currentSession) {
+			const usefulInfoService = getUsefulInfoService();
+			const usefulInfoList = await usefulInfoService.getUsefulInfoList(
+				currentSession.id,
+			);
+
+			if (usefulInfoList && usefulInfoList.items.length > 0) {
+				const usefulInfoContext = await formatUsefulInfoContext(
+					usefulInfoList.items,
+				);
+				messages.push({
+					role: 'user',
+					content: usefulInfoContext,
+				});
+			}
+
+			// Add TODO context if available (SAME AS MAIN AGENT BUT WITH SUB-AGENT PROMPT)
+			const todoService = getTodoService();
+			const existingTodoList = await todoService.getTodoList(currentSession.id);
+
+			if (existingTodoList && existingTodoList.todos.length > 0) {
+				const todoContext = formatTodoContext(existingTodoList.todos, true); // isSubAgent=true
+				messages.push({
+					role: 'user',
+					content: todoContext,
+				});
+			}
 		}
 
-		const messages: ChatMessage[] = [
-			{
-				role: 'user',
-				content: finalPrompt,
-			},
-		];
+		// Build final prompt with AGENTS.md and agent role
+		let finalPrompt = prompt;
+
+		// Append AGENTS.md content if available
+		const agentsPrompt = getAgentsPrompt();
+		if (agentsPrompt) {
+			finalPrompt = `${prompt}\n\n${agentsPrompt}`;
+		}
+
+		// Append agent-specific role if configured
+		if (agent.role) {
+			finalPrompt = `${finalPrompt}\n\n${agent.role}`;
+		}
+
+		messages.push({
+			role: 'user',
+			content: finalPrompt,
+		});
 
 		// Stream sub-agent execution
 		let finalResponse = '';
@@ -632,6 +679,10 @@ You are a versatile task execution agent with full tool access, capable of handl
 		// Local session-approved tools for this sub-agent execution
 		// This ensures tools approved during execution are immediately recognized
 		const sessionApprovedTools = new Set<string>();
+
+		// 子代理内部空回复重试计数器
+		let emptyResponseRetryCount = 0;
+		const maxEmptyResponseRetries = 3; // 最多重试3次
 
 		// eslint-disable-next-line no-constant-condition
 		while (true) {
@@ -692,6 +743,32 @@ You are a versatile task execution agent with full tool access, capable of handl
 				model = config.advancedModel || 'gpt-5';
 			}
 
+			// 重试回调函数 - 为子智能体提供流中断重试支持
+			const onRetry = (error: Error, attempt: number, nextDelay: number) => {
+				console.log(
+					`🔄 子智能体 ${
+						agent.name
+					} 重试 (${attempt}/${5}): ${error.message.substring(0, 100)}...`,
+				);
+				// 通过 onMessage 将重试状态传递给主会话
+				if (onMessage) {
+					onMessage({
+						type: 'sub_agent_message',
+						agentId: agent.id,
+						agentName: agent.name,
+						message: {
+							type: 'retry_status',
+							isRetrying: true,
+							attempt,
+							nextDelay,
+							errorMessage: `流中断重试 [${
+								agent.name
+							}]: ${error.message.substring(0, 50)}...`,
+						},
+					});
+				}
+			};
+
 			// Call API with sub-agent's tools - choose API based on config
 			// Apply sub-agent configuration overrides (model already loaded from configProfile above)
 			const stream =
@@ -710,7 +787,8 @@ You are a versatile task execution agent with full tool access, capable of handl
 								customHeaders: agent.customHeaders,
 							},
 							abortSignal,
-					  )
+							onRetry,
+					)
 					: config.requestMethod === 'gemini'
 					? createStreamingGeminiCompletion(
 							{
@@ -723,6 +801,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 								customHeaders: agent.customHeaders,
 							},
 							abortSignal,
+							onRetry,
 					  )
 					: config.requestMethod === 'responses'
 					? createStreamingResponse(
@@ -737,6 +816,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 								customHeaders: agent.customHeaders,
 							},
 							abortSignal,
+							onRetry,
 					  )
 					: createStreamingChatCompletion(
 							{
@@ -749,7 +829,8 @@ You are a versatile task execution agent with full tool access, capable of handl
 								customHeaders: agent.customHeaders,
 							},
 							abortSignal,
-					  );
+							onRetry,
+					);
 
 			let currentContent = '';
 			let toolCalls: any[] = [];
@@ -765,8 +846,17 @@ You are a versatile task execution agent with full tool access, capable of handl
 						encrypted_content?: string;
 				  }
 				| undefined; // Responses API reasoning data
+			let hasReceivedData = false; // 标记是否收到过任何数据
 
 			for await (const event of stream) {
+				// 检测是否收到有效数据
+				if (
+					event.type === 'content' ||
+					event.type === 'tool_calls' ||
+					event.type === 'usage'
+				) {
+					hasReceivedData = true;
+				}
 				// Forward message to UI (but don't save to main conversation)
 				if (onMessage) {
 					onMessage({
@@ -828,12 +918,45 @@ You are a versatile task execution agent with full tool access, capable of handl
 				}
 			}
 
-			if (hasError) {
-				return {
-					success: false,
-					result: finalResponse,
-					error: errorMessage,
-				};
+			// 检查空回复情况
+			if (
+				!hasReceivedData ||
+				(!currentContent.trim() && toolCalls.length === 0)
+			) {
+				// 子代理内部处理空回复重试，不抛出错误给主代理
+				emptyResponseRetryCount++;
+
+				if (emptyResponseRetryCount <= maxEmptyResponseRetries) {
+					// 发送重试状态消息
+					if (onMessage) {
+						onMessage({
+							type: 'sub_agent_message',
+							agentId: agent.id,
+							agentName: agent.name,
+							message: {
+								type: 'retry_status',
+								isRetrying: true,
+								attempt: emptyResponseRetryCount,
+								nextDelay: 1000, // 1秒延迟
+								errorMessage: `空回复重试 [${agent.name}]: 未收到内容或工具调用`,
+							},
+						});
+					}
+
+					// 等待1秒后重试
+					await new Promise(resolve => setTimeout(resolve, 1000));
+					continue; // 继续下一轮循环
+				} else {
+					// 超过最大重试次数，返回错误但不抛出异常
+					return {
+						success: false,
+						result: finalResponse,
+						error: `子代理空回复重试失败：已重试 ${maxEmptyResponseRetries} 次`,
+					};
+				}
+			} else {
+				// 重置重试计数器（成功收到数据）
+				emptyResponseRetryCount = 0;
 			}
 
 			// Add assistant response to conversation
@@ -865,6 +988,14 @@ You are a versatile task execution agent with full tool access, capable of handl
 
 				messages.push(assistantMessage);
 				finalResponse = currentContent;
+			}
+
+			if (hasError) {
+				return {
+					success: false,
+					result: finalResponse,
+					error: errorMessage,
+				};
 			}
 			// If no tool calls, we're done
 			if (toolCalls.length === 0) {
@@ -933,6 +1064,41 @@ You are a versatile task execution agent with full tool access, capable of handl
 					}
 				} catch (error) {
 					console.error('onSubAgentComplete hook execution failed:', error);
+				}
+
+				// 发送结果消息给UI显示（只发送前100个字符）
+				if (onMessage && finalResponse) {
+					// 格式化内容，截取前100个字符
+					let displayContent = finalResponse;
+					if (displayContent.length > 100) {
+						// 尝试在单词边界截断
+						const truncated = displayContent.substring(0, 100);
+						const lastSpace = truncated.lastIndexOf(' ');
+						const lastNewline = truncated.lastIndexOf('\n');
+						const cutPoint = Math.max(lastSpace, lastNewline);
+
+						if (cutPoint > 80) {
+							displayContent = truncated.substring(0, cutPoint) + '...';
+						} else {
+							displayContent = truncated + '...';
+						}
+					}
+
+					onMessage({
+						type: 'sub_agent_message',
+						agentId: agent.id,
+						agentName: agent.name,
+						message: {
+							type: 'subagent_result',
+							agentType: agent.id.replace('agent_', ''),
+							content: displayContent,
+							originalContent: finalResponse,
+							status: 'success',
+							timestamp: Date.now(),
+							// @ts-ignore
+							isResult: true,
+						},
+					});
 				}
 
 				break;
@@ -1207,10 +1373,14 @@ You are a versatile task execution agent with full tool access, capable of handl
 			usage: totalUsage,
 		};
 	} catch (error) {
+		// 移除空回复错误处理，因为现在由子代理内部处理
+		const errorMessage =
+			error instanceof Error ? error.message : 'Unknown error';
+
 		return {
 			success: false,
 			result: '',
-			error: error instanceof Error ? error.message : 'Unknown error',
+			error: errorMessage,
 		};
 	}
 }

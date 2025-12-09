@@ -107,7 +107,7 @@ export default function SubAgentConfigScreen({
 	const [mcpServices, setMcpServices] = useState<MCPServiceTools[]>([]);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const isEditMode = !!agentId;
-	const [isBuiltinAgent, setIsBuiltinAgent] = useState(false);
+	const [, setIsBuiltinAgent] = useState(false);
 
 	// 选择器状态（索引）- 用于键盘导航
 	const [selectedSystemPromptIndex, setSelectedSystemPromptIndex] = useState(0);
@@ -157,6 +157,11 @@ export default function SubAgentConfigScreen({
 			name: t.subAgentConfig.todoTools,
 			tools: ['todo-get', 'todo-update', 'todo-add', 'todo-delete'],
 		},
+		{
+			name: t.subAgentConfig.usefulInfoTools || 'Useful Information',
+			tools: ['useful-info-add', 'useful-info-delete', 'useful-info-list'],
+		},
+
 		{
 			name: t.subAgentConfig.webSearchTools,
 			tools: ['websearch-search', 'websearch-fetch'],
@@ -1045,23 +1050,20 @@ export default function SubAgentConfigScreen({
 						}
 					>
 						{t.subAgentConfig.agentName}
-						{isBuiltinAgent && (
+						{/* {isBuiltinAgent && (
 							<Text color={theme.colors.menuSecondary} dimColor>
 								{t.subAgentConfig.builtinReadonly}
 							</Text>
-						)}
+						)} */}
 					</Text>
 					<Box marginLeft={2}>
-						{isBuiltinAgent ? (
-							<Text color={theme.colors.menuNormal}>{agentName}</Text>
-						) : (
-							<TextInput
-								value={agentName}
-								onChange={value => setAgentName(stripFocusArtifacts(value))}
-								placeholder={t.subAgentConfig.agentNamePlaceholder}
-								focus={currentField === 'name'}
-							/>
-						)}
+						<TextInput
+							value={agentName}
+							onChange={value => setAgentName(stripFocusArtifacts(value))}
+							placeholder={t.subAgentConfig.agentNamePlaceholder}
+							focus={currentField === 'name'}
+							// 内置代理也可以编辑,修改后会保存到用户配置覆盖内置配置
+						/>
 					</Box>
 				</Box>
 
@@ -1076,23 +1078,20 @@ export default function SubAgentConfigScreen({
 						}
 					>
 						{t.subAgentConfig.description}
-						{isBuiltinAgent && (
+						{/* {isBuiltinAgent && (
 							<Text color={theme.colors.menuSecondary} dimColor>
 								{t.subAgentConfig.builtinReadonly}
 							</Text>
-						)}
+						)} */}
 					</Text>
 					<Box marginLeft={2}>
-						{isBuiltinAgent ? (
-							<Text color={theme.colors.menuNormal}>{description}</Text>
-						) : (
-							<TextInput
-								value={description}
-								onChange={value => setDescription(stripFocusArtifacts(value))}
-								placeholder={t.subAgentConfig.descriptionPlaceholder}
-								focus={currentField === 'description'}
-							/>
-						)}
+						<TextInput
+							value={description}
+							onChange={value => setDescription(stripFocusArtifacts(value))}
+							placeholder={t.subAgentConfig.descriptionPlaceholder}
+							focus={currentField === 'description'}
+							// 内置代理也可以编辑,修改后会保存到用户配置覆盖内置配置
+						/>
 					</Box>
 				</Box>
 
@@ -1107,12 +1106,7 @@ export default function SubAgentConfigScreen({
 						}
 					>
 						{t.subAgentConfig.roleOptional}
-						{isBuiltinAgent && (
-							<Text color={theme.colors.menuSecondary} dimColor>
-								{t.subAgentConfig.builtinReadonly}
-							</Text>
-						)}
-						{!isBuiltinAgent && role && role.length > 100 && (
+						{role && role.length > 100 && (
 							<Text color={theme.colors.menuSecondary} dimColor>
 								{' '}
 								{t.subAgentConfig.roleExpandHint.replace(
@@ -1125,21 +1119,13 @@ export default function SubAgentConfigScreen({
 						)}
 					</Text>
 					<Box marginLeft={2} flexDirection="column">
-						{isBuiltinAgent ? (
-							role && role.length > 100 && !roleExpanded ? (
-								<Text color={theme.colors.menuNormal}>
-									{role.substring(0, 100)}...
-									<Text color={theme.colors.menuSecondary} dimColor>
-										{' '}
-										{t.subAgentConfig.roleViewFull}
-									</Text>
-								</Text>
-							) : (
-								<Text color={theme.colors.menuNormal}>{role}</Text>
-							)
-						) : role && role.length > 100 && !roleExpanded ? (
+						{role && role.length > 100 && !roleExpanded ? (
 							<Text color={theme.colors.menuNormal}>
 								{role.substring(0, 100)}...
+								<Text color={theme.colors.menuSecondary} dimColor>
+									{' '}
+									{t.subAgentConfig.roleViewFull}
+								</Text>
 							</Text>
 						) : (
 							<TextInput
@@ -1147,6 +1133,7 @@ export default function SubAgentConfigScreen({
 								onChange={value => setRole(stripFocusArtifacts(value))}
 								placeholder={t.subAgentConfig.rolePlaceholder}
 								focus={currentField === 'role'}
+								// 内置代理也可以编辑,修改后会保存到用户配置覆盖内置配置
 							/>
 						)}
 					</Box>

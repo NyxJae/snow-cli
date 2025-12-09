@@ -4,6 +4,8 @@ import {Alert} from '@inkjs/ui';
 import {
 	getSubAgents,
 	deleteSubAgent,
+	isAgentUserModified,
+	resetBuiltinAgent,
 	type SubAgent,
 } from '../../utils/config/subAgentConfig.js';
 import {useTerminalSize} from '../../hooks/ui/useTerminalSize.js';
@@ -35,6 +37,8 @@ export default function SubAgentListScreen({
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const [deleteSuccess, setDeleteSuccess] = useState(false);
 	const [deleteFailed, setDeleteFailed] = useState(false);
+	const [resetSuccess, setResetSuccess] = useState(false);
+	const [resetFailed, setResetFailed] = useState(false);
 
 	// Sync with parent's defaultSelectedIndex when it changes
 	useEffect(() => {
@@ -126,9 +130,22 @@ export default function SubAgentListScreen({
 			if (agents.length > 0) {
 				const agent = agents[selectedIndex];
 				if (agent?.builtin) {
-					// 系统内置子代理直接显示错误提示
-					setDeleteFailed(true);
-					setTimeout(() => setDeleteFailed(false), 2000);
+					if (isAgentUserModified(agent.id)) {
+						// 重置被修改的内置代理
+						const success = resetBuiltinAgent(agent.id);
+						if (success) {
+							setResetSuccess(true);
+							setTimeout(() => setResetSuccess(false), 2000);
+							loadAgents();
+						} else {
+							setResetFailed(true);
+							setTimeout(() => setResetFailed(false), 2000);
+						}
+					} else {
+						// 未修改的内置代理，显示错误提示
+						setDeleteFailed(true);
+						setTimeout(() => setDeleteFailed(false), 2000);
+					}
 				} else {
 					setShowDeleteConfirm(true);
 				}
@@ -155,6 +172,18 @@ export default function SubAgentListScreen({
 			{deleteFailed && (
 				<Box marginBottom={1}>
 					<Alert variant="error">{t.subAgentList.deleteFailed}</Alert>
+				</Box>
+			)}
+
+			{resetSuccess && (
+				<Box marginBottom={1}>
+					<Alert variant="success">{t.subAgentList.resetSuccess}</Alert>
+				</Box>
+			)}
+
+			{resetFailed && (
+				<Box marginBottom={1}>
+					<Alert variant="error">{t.subAgentList.resetFailed}</Alert>
 				</Box>
 			)}
 
@@ -190,6 +219,10 @@ export default function SubAgentListScreen({
 
 						{agents.map((agent, index) => {
 							const isSelected = index === selectedIndex;
+							const displayName =
+								agent.builtin && isAgentUserModified(agent.id)
+									? `${agent.name} (已自定义)`
+									: agent.name;
 							return (
 								<Box key={agent.id} flexDirection="column">
 									<Box>
@@ -202,7 +235,7 @@ export default function SubAgentListScreen({
 											bold={isSelected}
 										>
 											{isSelected ? '❯ ' : '  '}
-											{agent.name}
+											{displayName}
 										</Text>
 									</Box>
 									{isSelected && (
