@@ -78,6 +78,7 @@ function isRetriableError(error: Error): boolean {
 		errorMessage.includes('502') ||
 		errorMessage.includes('503') ||
 		errorMessage.includes('504') ||
+		errorMessage.includes('524') ||
 		errorMessage.includes('internal server error') ||
 		errorMessage.includes('bad gateway') ||
 		errorMessage.includes('service unavailable') ||
@@ -94,6 +95,15 @@ function isRetriableError(error: Error): boolean {
 		return true;
 	}
 
+	// API specific errors
+	if (
+		errorMessage.includes('bad_response_status_code') ||
+		errorMessage.includes('openai_error') ||
+		errorMessage.includes('status code')
+	) {
+		return true;
+	}
+
 	// Connection terminated by server
 	if (
 		errorMessage.includes('terminated') ||
@@ -103,10 +113,32 @@ function isRetriableError(error: Error): boolean {
 		return true;
 	}
 
+	// Fetch errors (including network-level fetch failures)
+	if (
+		errorMessage.includes('fetch failed') ||
+		errorMessage.includes('fetcherror') ||
+		errorMessage.includes('network fetch failed')
+	) {
+		return true;
+	}
+
 	// JSON parsing errors from streaming (incomplete or malformed tool calls)
 	if (
 		errorMessage.includes('invalid tool call json') ||
 		errorMessage.includes('incomplete tool call json')
+	) {
+		return true;
+	}
+
+	// SSE stream parsing errors and stream interruption
+	if (
+		errorMessage.includes('stream terminated unexpectedly') ||
+		errorMessage.includes('sse stream parsing error') ||
+		errorMessage.includes('incomplete data') ||
+		errorMessage.includes('reader error') ||
+		errorMessage.includes('stream parsing') ||
+		errorMessage.includes('empty response') ||
+		(errorMessage.includes('buffer') && errorMessage.includes('incomplete'))
 	) {
 		return true;
 	}
@@ -216,8 +248,14 @@ export async function* withRetryGenerator<T>(
 				throw lastError;
 			}
 
-			// 如果已经产生过数据，不再重试（避免重复数据）
-			if (hasYielded) {
+			// 如果已经产生过数据，需要特殊处理流中断
+			// 对于流中断错误，即使已经产生数据，也可以尝试重试
+			const isStreamInterruption =
+				/Stream terminated unexpectedly|incomplete data|reader error/i.test(
+					lastError.message,
+				);
+
+			if (hasYielded && !isStreamInterruption) {
 				throw lastError;
 			}
 
