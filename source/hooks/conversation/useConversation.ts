@@ -1585,7 +1585,7 @@ async function executeWithInternalRetry(
 							// 1. 添加系统消息
 							conversationMessages.push({
 								role: 'system',
-								content: getSystemPrompt(),
+								content: getSystemPromptForMode(options.planMode || false),
 							});
 
 							// 2. 如果有TODOs，添加TODO上下文
@@ -1888,7 +1888,7 @@ async function executeWithInternalRetry(
 									// 1. 添加系统消息
 									conversationMessages.push({
 										role: 'system',
-										content: getSystemPrompt(),
+										content: getSystemPromptForMode(options.planMode || false),
 									});
 
 									// 2. 如果有TODOs，添加TODO上下文
