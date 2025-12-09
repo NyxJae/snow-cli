@@ -10,6 +10,7 @@ import {getSystemPromptForMode} from '../../api/systemPrompt.js';
 import {
 	collectAllMCPTools,
 	getTodoService,
+	getUsefulInfoService,
 } from '../../utils/execution/mcpToolsManager.js';
 import {
 	executeToolCalls,
@@ -19,8 +20,13 @@ import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
 import {formatTodoContext} from '../../utils/core/todoPreprocessor.js';
 import {unifiedHooksExecutor} from '../../utils/execution/unifiedHooksExecutor.js';
+import {formatUsefulInfoContext} from '../../utils/core/usefulInfoPreprocessor.js';
 import type {Message} from '../../ui/components/chat/MessageList.js';
 import {filterToolsBySensitivity} from '../../utils/execution/yoloPermissionChecker.js';
+import {
+	isEmptyResponse,
+	createEmptyResponseError,
+} from '../../utils/core/emptyResponseDetector.js';
 import {formatToolCallMessage} from '../../utils/ui/messageFormatter.js';
 import {resourceMonitor} from '../../utils/core/resourceMonitor.js';
 import {isToolNeedTwoStepDisplay} from '../../utils/config/toolDisplayConfig.js';
@@ -179,6 +185,83 @@ function cleanOrphanedToolCalls(messages: ChatMessage[]): void {
 export async function handleConversationWithTools(
 	options: ConversationHandlerOptions,
 ): Promise<{usage: any | null}> {
+	const {controller, setRetryStatus} = options;
+
+	// 外层重试机制：最多10次，5秒间隔，确保流中断时自动重新发起请求
+	const MAX_RETRIES = 10;
+	const RETRY_DELAY = 5000; // 5秒间隔
+	let retryCount = 0;
+	let lastError: Error | null = null;
+
+	// 外层重试循环
+	while (retryCount <= MAX_RETRIES) {
+		try {
+			// 检查用户中止信号
+			if (controller.signal.aborted) {
+				throw new Error('Request aborted by user');
+			}
+
+			// 清除重试状态（如果存在）
+			if (retryCount > 0 && setRetryStatus) {
+				setRetryStatus(null);
+			}
+
+			// 执行内层逻辑（原有代码）
+			return await executeWithInternalRetry(options);
+		} catch (error) {
+			lastError = error as Error;
+
+			// 检查是否为可重试错误
+			const errorMessage = (error as Error).message.toLowerCase();
+			const errorCode = (error as any).code;
+			const isRetriable =
+				errorMessage.includes('timeout') ||
+				errorMessage.includes('network') ||
+				errorMessage.includes('connection') ||
+				errorMessage.includes('ENOTFOUND') ||
+				errorMessage.includes('ECONNRESET') ||
+				errorMessage.includes('ECONNREFUSED') ||
+				errorMessage.includes('500') ||
+				errorMessage.includes('502') ||
+				errorMessage.includes('503') ||
+				errorMessage.includes('504') ||
+				errorMessage.includes('fetch failed') ||
+				errorMessage.includes('fetcherror') ||
+				errorCode === 'EMPTY_RESPONSE' ||
+				errorMessage.includes('empty response');
+
+			// 如果不可重试或已达到最大重试次数，抛出错误
+			if (!isRetriable || retryCount >= MAX_RETRIES) {
+				throw error;
+			}
+
+			// 更新重试状态
+			retryCount++;
+			if (setRetryStatus) {
+				setRetryStatus({
+					isRetrying: true,
+					attempt: retryCount,
+					nextDelay: RETRY_DELAY,
+					remainingSeconds: Math.floor(RETRY_DELAY / 1000),
+					errorMessage: `网络或服务错误，正在重试 (${retryCount}/${MAX_RETRIES})...`,
+				});
+			}
+
+			// 等待重试
+			await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+		}
+	}
+
+	// 不应该到达这里
+	throw lastError || new Error('Unknown error occurred');
+}
+
+/**
+ * 内层重试逻辑（原有代码）
+ */
+async function executeWithInternalRetry(
+	options: ConversationHandlerOptions,
+): Promise<{usage: any | null}> {
 	const {
 		userContent,
 		imageContents,
@@ -231,6 +314,22 @@ export async function handleConversationWithTools(
 		conversationMessages.push({
 			role: 'user',
 			content: todoContext,
+		});
+	}
+
+	// Add useful information context if available
+	const usefulInfoService = getUsefulInfoService();
+	const usefulInfoList = await usefulInfoService.getUsefulInfoList(
+		currentSession.id,
+	);
+
+	if (usefulInfoList && usefulInfoList.items.length > 0) {
+		const usefulInfoContext = await formatUsefulInfoContext(
+			usefulInfoList.items,
+		);
+		conversationMessages.push({
+			role: 'user',
+			content: usefulInfoContext,
 		});
 	}
 
@@ -420,8 +519,7 @@ export async function handleConversationWithTools(
 			for await (const chunk of streamGenerator) {
 				if (controller.signal.aborted) break;
 
-				// Clear retry status after a delay when first chunk arrives
-				// This gives users time to see the retry message (500ms delay)
+				// 首次接收数据后延迟清除重试状态，确保用户能看到重试提示
 				chunkCount++;
 				if (setRetryStatus && chunkCount === 1) {
 					setTimeout(() => {
@@ -450,8 +548,7 @@ export async function handleConversationWithTools(
 						// Ignore encoding errors
 					}
 				} else if (chunk.type === 'content' && chunk.content) {
-					// Accumulate content and update token count
-					// When content starts, reasoning is done
+					// 内容开始时推理阶段结束
 					setIsReasoning?.(false);
 					streamedContent += chunk.content;
 					try {
@@ -463,8 +560,7 @@ export async function handleConversationWithTools(
 						// Ignore encoding errors
 					}
 				} else if (chunk.type === 'tool_call_delta' && chunk.delta) {
-					// Accumulate tool call deltas and update token count in real-time
-					// When tool calls start, reasoning is done (OpenAI generally doesn't output text content during tool calls)
+					// 工具调用开始时推理阶段结束（OpenAI通常不会在工具调用期间输出文本内容）
 					setIsReasoning?.(false);
 					toolCallAccumulator += chunk.delta;
 					try {
@@ -493,8 +589,7 @@ export async function handleConversationWithTools(
 					// Capture usage information both in state and locally
 					setContextUsage(chunk.usage);
 
-					// Note: Usage is now saved at API layer (chat.ts, anthropic.ts, etc.)
-					// No need to call onUsageUpdate here to avoid duplicate saves
+					// Usage已在API层保存，此处仅用于UI显示
 
 					// Accumulate for final return (UI display purposes)
 					if (!accumulatedUsage) {
@@ -541,6 +636,15 @@ export async function handleConversationWithTools(
 			if (controller.signal.aborted) {
 				freeEncoder();
 				break;
+			}
+
+			// 检测空回复：如果既没有内容也没有工具调用，抛出错误以触发重试
+			if (
+				(!streamedContent || isEmptyResponse(streamedContent)) &&
+				(!receivedToolCalls || receivedToolCalls.length === 0)
+			) {
+				freeEncoder();
+				throw createEmptyResponseError(streamedContent || '');
 			}
 
 			// If there are tool calls, we need to handle them specially
@@ -1218,25 +1322,54 @@ export async function handleConversationWithTools(
 								} catch (e) {
 									// Ignore encoding errors
 								}
-							} else if (subAgentMessage.message.type === 'done') {
-								// Mark as complete and reset token counter
-								subAgentContentAccumulator = '';
-								setStreamTokenCount(0);
-								if (existingIndex !== -1) {
-									const updated = [...prev];
-									const existing = updated[existingIndex];
-									if (existing && existing.subAgent) {
-										updated[existingIndex] = {
-											...existing,
-											subAgent: {
-												...existing.subAgent,
-												isComplete: true,
+							} else if (
+								subAgentMessage.message.type === 'done' ||
+								subAgentMessage.message.isResult
+							) {
+								// Handle completion message or result message
+								if (subAgentMessage.message.isResult) {
+									// This is a sub-agent result message - add as subagent-result type
+									const resultData = subAgentMessage.message;
+									return [
+										...prev.filter(
+											m =>
+												m.role !== 'subagent' ||
+												m.subAgent?.agentId !== subAgentMessage.agentId ||
+												!m.subAgent?.isComplete,
+										),
+										{
+											role: 'subagent-result' as const,
+											content: resultData.content || '',
+											streaming: false,
+											subAgentResult: {
+												agentType: resultData.agentType || 'general',
+												originalContent: resultData.originalContent,
+												timestamp: resultData.timestamp || Date.now(),
+												executionTime: resultData.executionTime,
+												status: resultData.status || 'success',
 											},
-										};
+										},
+									];
+								} else {
+									// Regular done message - mark as complete and reset token counter
+									subAgentContentAccumulator = '';
+									setStreamTokenCount(0);
+									if (existingIndex !== -1) {
+										const updated = [...prev];
+										const existing = updated[existingIndex];
+										if (existing && existing.subAgent) {
+											updated[existingIndex] = {
+												...existing,
+												subAgent: {
+													...existing.subAgent,
+													isComplete: true,
+												},
+											};
+										}
+										return updated;
 									}
-									return updated;
+									return prev;
 								}
-								return prev;
 							}
 
 							if (existingIndex !== -1) {
@@ -1448,8 +1581,89 @@ export async function handleConversationWithTools(
 							// 压缩后需要重新构建conversationMessages
 							conversationMessages = [];
 							const session = sessionManager.getCurrentSession();
+
+							// 1. 添加系统消息
+							conversationMessages.push({
+								role: 'system',
+								content: getSystemPrompt(),
+							});
+
+							// 2. 如果有TODOs，添加TODO上下文
+							if (existingTodoList && existingTodoList.todos.length > 0) {
+								const todoContext = formatTodoContext(existingTodoList.todos);
+								conversationMessages.push({
+									role: 'user',
+									content: todoContext,
+								});
+							}
+
+							// 3. 压缩后重新获取并添加有用信息上下文
+							const usefulInfoService = getUsefulInfoService();
+							const updatedUsefulInfoList =
+								await usefulInfoService.getUsefulInfoList(session?.id || '');
+
+							if (
+								updatedUsefulInfoList &&
+								updatedUsefulInfoList.items.length > 0
+							) {
+								const usefulInfoContext = await formatUsefulInfoContext(
+									updatedUsefulInfoList.items,
+								);
+								conversationMessages.push({
+									role: 'user',
+									content: usefulInfoContext,
+								});
+							}
+
+							// 4. 添加压缩摘要
+							conversationMessages.push({
+								role: 'user',
+								content: `[Context Summary from Previous Conversation]\n\n${compressionResult.summary}`,
+							});
+
+							// 5. 添加保留的消息（未完成的工具调用链）
+							if (
+								compressionResult.preservedMessages &&
+								compressionResult.preservedMessages.length > 0
+							) {
+								for (const msg of compressionResult.preservedMessages) {
+									conversationMessages.push(msg);
+								}
+							}
+
+							// 6. 添加会话中的其他消息（排除已保留的）
 							if (session && session.messages.length > 0) {
-								conversationMessages.push(...session.messages);
+								// 获取已保留的消息ID集合，避免重复
+								const preservedIds = new Set(
+									compressionResult.preservedMessages?.map(
+										msg =>
+											msg.tool_call_id ||
+											(msg.tool_calls && msg.tool_calls[0]?.id) ||
+											`${msg.role}-${msg.content.slice(0, 20)}`,
+									) || [],
+								);
+
+								for (const sessionMsg of session.messages) {
+									const msgId =
+										sessionMsg.tool_call_id ||
+										(sessionMsg.tool_calls && sessionMsg.tool_calls[0]?.id) ||
+										`${sessionMsg.role}-${sessionMsg.content.slice(0, 20)}`;
+
+									// 跳过已保留的消息和工具消息
+									if (!preservedIds.has(msgId) && sessionMsg.role !== 'tool') {
+										conversationMessages.push({
+											role: sessionMsg.role,
+											content: sessionMsg.content,
+											...(sessionMsg.tool_calls && {
+												tool_calls: sessionMsg.tool_calls,
+											}),
+											...(sessionMsg.images && {images: sessionMsg.images}),
+											...(sessionMsg.reasoning && {
+												reasoning: sessionMsg.reasoning,
+											}),
+										});
+									}
+								}
 							}
 						}
 					} catch (error) {
@@ -1670,8 +1884,89 @@ export async function handleConversationWithTools(
 									// 压缩后需要重新构建conversationMessages
 									conversationMessages = [];
 									const session = sessionManager.getCurrentSession();
+
+									// 1. 添加系统消息
+									conversationMessages.push({
+										role: 'system',
+										content: getSystemPrompt(),
+									});
+
+									// 2. 如果有TODOs，添加TODO上下文
+									if (existingTodoList && existingTodoList.todos.length > 0) {
+										const todoContext = formatTodoContext(
+											existingTodoList.todos,
+										);
+										conversationMessages.push({
+											role: 'user',
+											content: todoContext,
+										});
+									}
+
+									// 3. 压缩后重新获取并添加有用信息上下文
+									const usefulInfoService = getUsefulInfoService();
+									const updatedUsefulInfoList =
+										await usefulInfoService.getUsefulInfoList(
+											session?.id || '',
+										);
+
+									if (
+										updatedUsefulInfoList &&
+										updatedUsefulInfoList.items.length > 0
+									) {
+										const usefulInfoContext = await formatUsefulInfoContext(
+											updatedUsefulInfoList.items,
+										);
+										conversationMessages.push({
+											role: 'user',
+											content: usefulInfoContext,
+										});
+									}
+
+									// 4. 添加压缩摘要
+									conversationMessages.push({
+										role: 'user',
+										content: `[Context Summary from Previous Conversation]\n\n${compressionResult.summary}`,
+									});
+
+									// 5. 添加保留的消息（未完成的工具调用链）
+									if (
+										compressionResult.preservedMessages &&
+										compressionResult.preservedMessages.length > 0
+									) {
+										for (const msg of compressionResult.preservedMessages) {
+											conversationMessages.push(msg);
+										}
+									}
+
+									// 6. 添加会话中的其他消息（排除已保留的）
 									if (session && session.messages.length > 0) {
-										conversationMessages.push(...session.messages);
+										// 获取已保留的消息ID集合，避免重复
+										const preservedIds = new Set(
+											compressionResult.preservedMessages?.map(
+												msg =>
+													msg.tool_call_id ||
+													(msg.tool_calls && msg.tool_calls[0]?.id) ||
+													`${msg.role}-${msg.content.slice(0, 20)}`,
+											) || [],
+										);
+
+										for (const sessionMsg of session.messages) {
+											const msgId =
+												sessionMsg.tool_call_id ||
+												(sessionMsg.tool_calls &&
+													sessionMsg.tool_calls[0]?.id) ||
+												`${sessionMsg.role}-${sessionMsg.content.slice(0, 20)}`;
+
+											// 跳过已保留的消息和工具消息
+											if (
+												preservedIds.has(msgId) ||
+												sessionMsg.role === 'tool'
+											) {
+												continue;
+											}
+
+											conversationMessages.push(sessionMsg);
+										}
 									}
 								}
 							} catch (error) {
