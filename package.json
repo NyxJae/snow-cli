@@ -127,6 +127,11 @@
 		}
 	},
 	"prettier": "@vdemedes/prettier-config",
+	"dependencies": {
+		"@iarna/toml": "^2.2.5",
+		"@types/markdown-it": "^14.1.2",
+		"cli-table3": "^0.6.5"
+	},
 	"optionalDependencies": {
 		"sharp": "^0.34.5"
 	}
