@@ -270,6 +270,7 @@ export const ja: TranslationKeys = {
 		terminalTools: 'ターミナルツール',
 		todoTools: 'TODO管理ツール',
 		usefulInfoTools: '有用情報ツール',
+		notebookTools: 'ノートブックツール',
 		webSearchTools: 'ウェブ検索ツール',
 		ideTools: 'IDE診断ツール',
 		userInteractionTools: 'ユーザー対話ツール',

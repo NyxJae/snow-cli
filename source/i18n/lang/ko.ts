@@ -263,6 +263,7 @@ export const ko: TranslationKeys = {
 		terminalTools: '터미널 도구',
 		todoTools: 'TODO 관리 도구',
 		usefulInfoTools: '유용한 정보 도구',
+		notebookTools: '노트북 도구',
 		webSearchTools: '웹 검색 도구',
 		ideTools: 'IDE 진단 도구',
 		userInteractionTools: '사용자 상호작용 도구',

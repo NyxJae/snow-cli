@@ -299,6 +299,7 @@ export const es: TranslationKeys = {
 		terminalTools: 'Herramientas de Terminal',
 		todoTools: 'Herramientas de Gestión de TODO',
 		usefulInfoTools: 'Herramientas de Información Útil',
+		notebookTools: 'Herramientas de Cuaderno',
 		webSearchTools: 'Herramientas de Búsqueda Web',
 		ideTools: 'Herramientas de Diagnóstico IDE',
 		userInteractionTools: 'Herramientas de Interacción del Usuario',

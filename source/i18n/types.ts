@@ -264,6 +264,7 @@ export type TranslationKeys = {
 		webSearchTools: string;
 		ideTools: string;
 		userInteractionTools: string;
+		notebookTools: string;
 		skillTools: string;
 		configProfile: string;
 		customSystemPrompt: string;

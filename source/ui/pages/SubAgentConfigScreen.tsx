@@ -161,7 +161,16 @@ export default function SubAgentConfigScreen({
 			name: t.subAgentConfig.usefulInfoTools || 'Useful Information',
 			tools: ['useful-info-add', 'useful-info-delete', 'useful-info-list'],
 		},
-
+		{
+			name: t.subAgentConfig.notebookTools || 'Notebook',
+			tools: [
+				'notebook-add',
+				'notebook-query',
+				'notebook-update',
+				'notebook-delete',
+				'notebook-list',
+			],
+		},
 		{
 			name: t.subAgentConfig.webSearchTools,
 			tools: ['websearch-search', 'websearch-fetch'],

@@ -280,6 +280,7 @@ export const en: TranslationKeys = {
 		terminalTools: 'Terminal Tools',
 		todoTools: 'TODO Management Tools',
 		usefulInfoTools: 'Useful Information Tools',
+		notebookTools: 'Notebook Tools',
 		webSearchTools: 'Web Search Tools',
 		ideTools: 'IDE Diagnostics Tools',
 		userInteractionTools: 'User Interaction Tools',

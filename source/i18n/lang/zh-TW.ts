@@ -258,6 +258,7 @@ export const zhTW: TranslationKeys = {
 		terminalTools: '終端工具',
 		todoTools: 'TODO 管理工具',
 		usefulInfoTools: '有用信息工具',
+		notebookTools: '筆記本工具',
 		webSearchTools: '網路搜尋工具',
 		ideTools: 'IDE 診斷工具',
 		userInteractionTools: '用戶交互工具',
