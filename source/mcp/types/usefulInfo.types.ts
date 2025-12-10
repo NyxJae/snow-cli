@@ -54,8 +54,8 @@ export type GetCurrentSessionId = () => string | null;
  */
 export interface AddUsefulInfoRequest {
 	filePath: string;
-	startLine?: number; // 可选，默认为1
-	endLine?: number; // 可选，默认为文件末尾
+	startLine: number; // 必须参数，起始行号（1-indexed）
+	endLine: number; // 必须参数，结束行号（1-indexed）
 	description?: string; // 可选描述
 }
 

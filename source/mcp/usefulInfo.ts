@@ -214,46 +214,71 @@ export class UsefulInfoService {
 		const failed: Array<{filePath: string; reason: string}> = [];
 
 		for (const req of requests) {
+			// 验证必须参数
+			if (req.startLine === undefined || req.endLine === undefined) {
+				failed.push({
+					filePath: req.filePath,
+					reason:
+						'❌ Missing required parameters: startLine and endLine are required. Both startLine and endLine must be specified for each section.',
+				});
+				continue;
+			}
+
+			// 验证行号为正数
+			if (req.startLine < 1 || req.endLine < 1) {
+				failed.push({
+					filePath: req.filePath,
+					reason: `❌ Invalid line numbers: startLine (${req.startLine}) and endLine (${req.endLine}) must be positive integers (≥ 1). Line numbers start from 1.`,
+				});
+				continue;
+			}
+
+			// 验证行号范围有效性
+			if (req.startLine > req.endLine) {
+				failed.push({
+					filePath: req.filePath,
+					reason: `❌ Invalid line range: startLine (${req.startLine}) cannot be greater than endLine (${req.endLine}). Ensure startLine ≤ endLine.`,
+				});
+				continue;
+			}
+
 			// 验证文件是否存在
 			const fileExists = await this.validateFileExists(req.filePath);
 			if (!fileExists) {
 				failed.push({
 					filePath: req.filePath,
-					reason: 'File not found',
+					reason: `❌ File not found: "${req.filePath}". Check if the file path is correct and the file exists.`,
 				});
 				continue;
 			}
 
-			// 确定行号范围
-			let startLine = req.startLine || 1;
-			let endLine = req.endLine;
-
-			if (!endLine) {
-				try {
-					const content = await fs.readFile(req.filePath, 'utf-8');
-					const lines = content.split('\n');
-					endLine = lines.length;
-				} catch (error) {
-					failed.push({
-						filePath: req.filePath,
-						reason: `Failed to read file: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					});
-					continue;
-				}
+			// 验证行数限制 - 每个段落最多50行
+			const requestedLines = req.endLine - req.startLine + 1;
+			if (requestedLines > 50) {
+				failed.push({
+					filePath: req.filePath,
+					reason: `❌ Line count limit exceeded: requested ${requestedLines} lines, but each section must be ≤50 lines. Please split large sections into smaller parts (≤50 lines each) and add only the most relevant content.`,
+				});
+				continue;
 			}
+
+			// 直接使用提供的行号范围
+			const startLine = req.startLine;
+			const endLine = req.endLine;
 
 			try {
 				const content = await fs.readFile(req.filePath, 'utf-8');
 				const totalLines = content.split('\n').length;
 
-				if (startLine < 1) startLine = 1;
-				if (endLine > totalLines) endLine = totalLines;
-				if (startLine > endLine) {
+				let finalStartLine = startLine;
+				let finalEndLine = endLine;
+
+				if (finalStartLine < 1) finalStartLine = 1;
+				if (finalEndLine > totalLines) finalEndLine = totalLines;
+				if (finalStartLine > finalEndLine) {
 					failed.push({
 						filePath: req.filePath,
-						reason: `Invalid line range: ${startLine}-${endLine}`,
+						reason: `❌ Invalid line range after adjustment: ${finalStartLine}-${finalEndLine}. The file may have fewer lines than requested.`,
 					});
 					continue;
 				}
@@ -262,8 +287,8 @@ export class UsefulInfoService {
 				const newItem: UsefulInfoItem = {
 					id: `info-${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
 					filePath: req.filePath,
-					startLine,
-					endLine,
+					startLine: finalStartLine,
+					endLine: finalEndLine,
 					createdAt: now,
 					updatedAt: now,
 					description: req.description,
@@ -273,9 +298,9 @@ export class UsefulInfoService {
 			} catch (error) {
 				failed.push({
 					filePath: req.filePath,
-					reason: `Failed to validate file: ${
+					reason: `❌ Failed to read or validate file: ${
 						error instanceof Error ? error.message : String(error)
-					}`,
+					}. Check file permissions and try again.`,
 				});
 				continue;
 			}
@@ -413,29 +438,26 @@ export class UsefulInfoService {
 
 ⚠️ CRITICAL USAGE RULES:
 - Useful information is SHARED across main agent and all sub-agents in this session
-- Add PRECISELY - do NOT add entire files unless absolutely necessary
 - MUST add/update useful info after editing files
 - Use line ranges to add only relevant code sections
+- ⚠️ MAX 50 LINES PER SECTION.
 
 ## 🎯 WHEN TO ADD:
-✅ After editing a file - add the modified section
-✅ Key code sections needed for context
-✅ Important configurations or constants
-✅ Complex logic that needs to be referenced
-❌ DO NOT add entire files without good reason
+✅ After editing a file - add the modified section (max 50 lines)
+✅ Key code sections needed for context (max 50 lines)
+✅ Important configurations or constants (max 50 lines)
+✅ Complex logic that needs to be referenced (max 50 lines)
+❌ DO NOT add entire files
 ❌ DO NOT add trivial or obvious code
-
-## 📋 FEATURES:
-- Supports batch adding (array of items)
-- Auto-merges overlapping or adjacent line ranges
-- Skips non-existent files automatically
-- Caches file content for performance
+❌ DO NOT exceed 50 lines per section - split large sections if needed
 
 ## 💡 BEST PRACTICES:
 - Add specific functions/classes, not whole files
 - Update after each significant edit
 - Use descriptions to explain why this is useful
-- Keep the useful info list focused and relevant`,
+- Keep the useful info list focused and relevant
+- ⚠️ REQUIRED: Always specify startLine and endLine parameters
+- ⚠️ LIMIT: Each section must be ≤50 lines (endLine - startLine + 1 ≤ 50)`,
 				inputSchema: {
 					type: 'object',
 					properties: {
@@ -450,13 +472,11 @@ export class UsefulInfoService {
 									},
 									startLine: {
 										type: 'number',
-										description:
-											'Starting line number (1-indexed, optional, defaults to 1)',
+										description: 'Starting line number (1-indexed, REQUIRED)',
 									},
 									endLine: {
 										type: 'number',
-										description:
-											'Ending line number (1-indexed, optional, defaults to end of file)',
+										description: 'Ending line number (1-indexed, REQUIRED)',
 									},
 									description: {
 										type: 'string',
@@ -464,7 +484,7 @@ export class UsefulInfoService {
 											'Optional description explaining why this is useful',
 									},
 								},
-								required: ['filePath'],
+								required: ['filePath', 'startLine', 'endLine'],
 							},
 							description:
 								'Array of file sections to add to useful information',
