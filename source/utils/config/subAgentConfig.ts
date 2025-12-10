@@ -571,11 +571,16 @@ export function getSubAgents(): SubAgent[] {
 	const result: SubAgent[] = [];
 	const overriddenIds = new Set<string>();
 
-	// Add user overrides for built-in agents first (preserve other fields, mark as builtin)
+	// Add user overrides for built-in agents first (preserve ALL user fields, ensure builtin: true)
 	for (const userAgent of userAgents) {
 		const builtinAgent = BUILTIN_AGENTS.find(ba => ba.id === userAgent.id);
 		if (builtinAgent) {
-			result.push({...userAgent, builtin: true});
+			// 保留用户副本的所有字段,确保 builtin: true
+			// 兼容旧版本: 如果 TOML 中没有 builtin 字段,强制设置为 true
+			result.push({
+				...userAgent,
+				builtin: true, // 确保内置代理的用户副本标记为 builtin: true
+			});
 			overriddenIds.add(userAgent.id);
 		}
 	}
@@ -709,16 +714,19 @@ export function updateSubAgent(
 			tools: updates.tools ?? existingUserCopy?.tools ?? agent.tools,
 			createdAt: existingUserCopy?.createdAt ?? agent.createdAt ?? now,
 			updatedAt: now,
-			builtin: false, // Must be false to allow saving to config file
-			configProfile:
-				updates.configProfile !== undefined ? updates.configProfile : undefined,
-			customSystemPrompt:
-				'customSystemPrompt' in updates
-					? updates.customSystemPrompt
-					: undefined,
-			customHeaders:
-				updates.customHeaders !== undefined ? updates.customHeaders : undefined,
+			builtin: true, // 保持 true,表示这是内置代理的用户副本
 		};
+
+		// 只有在 updates 中明确包含这些字段时才添加到 userCopy
+		if ('configProfile' in updates) {
+			userCopy.configProfile = updates.configProfile;
+		}
+		if ('customSystemPrompt' in updates) {
+			userCopy.customSystemPrompt = updates.customSystemPrompt;
+		}
+		if ('customHeaders' in updates) {
+			userCopy.customHeaders = updates.customHeaders;
+		}
 
 		if (existingUserIndex >= 0) {
 			userAgents[existingUserIndex] = userCopy;
@@ -749,15 +757,18 @@ export function updateSubAgent(
 		createdAt: existingAgent.createdAt,
 		updatedAt: now,
 		builtin: existingAgent.builtin,
-		configProfile:
-			updates.configProfile !== undefined ? updates.configProfile : undefined,
-		customSystemPrompt:
-			updates.customSystemPrompt !== undefined
-				? updates.customSystemPrompt
-				: undefined,
-		customHeaders:
-			updates.customHeaders !== undefined ? updates.customHeaders : undefined,
 	};
+
+	// 只有在 updates 中明确包含这些字段时才添加到 updatedAgent
+	if ('configProfile' in updates) {
+		updatedAgent.configProfile = updates.configProfile;
+	}
+	if ('customSystemPrompt' in updates) {
+		updatedAgent.customSystemPrompt = updates.customSystemPrompt;
+	}
+	if ('customHeaders' in updates) {
+		updatedAgent.customHeaders = updates.customHeaders;
+	}
 	userAgents[existingUserIndex] = updatedAgent;
 	saveSubAgents(userAgents);
 

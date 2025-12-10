@@ -265,6 +265,15 @@ export default function SubAgentConfigScreen({
 				].includes(agentId);
 				setIsBuiltinAgent(isBuiltin);
 
+				// 检查是否已有用户副本(用于判断是否第一次编辑内置代理)
+				// 现在 TOML 中保存的用户副本也是 builtin: true
+				// 所以通过 getUserSubAgents() 来判断是否真的有用户副本
+				const {
+					getUserSubAgents,
+				} = require('../../utils/config/subAgentConfig.js');
+				const userAgents = getUserSubAgents();
+				const hasUserCopy = userAgents.some((a: any) => a.id === agentId);
+
 				setAgentName(agent.name);
 				setDescription(agent.description);
 				setRole(agent.role || '');
@@ -279,7 +288,7 @@ export default function SubAgentConfigScreen({
 						setSelectedConfigProfileIndex(profileIndex);
 						setConfirmedConfigProfileIndex(profileIndex);
 					}
-				} else if (agent.builtin) {
+				} else if (agent.builtin && !hasUserCopy) {
 					// 第一次编辑内置代理（创建副本），使用全局配置作为默认值
 					const activeProfile = getActiveProfileName();
 					if (activeProfile && availableProfiles.length > 0) {
@@ -304,7 +313,7 @@ export default function SubAgentConfigScreen({
 						setSelectedSystemPromptIndex(promptIndex);
 						setConfirmedSystemPromptIndex(promptIndex);
 					}
-				} else if (agent.builtin) {
+				} else if (agent.builtin && !hasUserCopy) {
 					// 第一次编辑内置代理（创建副本），使用全局配置作为默认值
 					const systemPromptConfig = getSystemPromptConfig();
 					if (systemPromptConfig?.active && availableSystemPrompts.length > 0) {
@@ -336,7 +345,7 @@ export default function SubAgentConfigScreen({
 							setConfirmedCustomHeadersIndex(headerIndex);
 						}
 					}
-				} else if (agent.builtin) {
+				} else if (agent.builtin && !hasUserCopy) {
 					// 第一次编辑内置代理（创建副本），使用全局配置作为默认值
 					const customHeadersConfig = getCustomHeadersConfig();
 					if (
@@ -498,15 +507,21 @@ export default function SubAgentConfigScreen({
 
 			if (isEditMode && agentId) {
 				// Update existing agent
-				updateSubAgent(agentId, {
+				// 构建更新对象，只包含实际需要更新的字段
+				const updateData: any = {
 					name: agentName,
 					description: description,
 					role: role || undefined,
 					tools: Array.from(selectedTools),
-					configProfile: selectedProfile || undefined,
-					customSystemPrompt: systemPromptId,
-					customHeaders: customHeadersObj,
-				});
+				};
+
+				// 只有在用户明确选择或取消选择时才包含这些字段
+				// 使用 'in' 操作符确保 undefined 值也能被正确传递
+				updateData.configProfile = selectedProfile;
+				updateData.customSystemPrompt = systemPromptId;
+				updateData.customHeaders = customHeadersObj;
+
+				updateSubAgent(agentId, updateData);
 			} else {
 				// Create new agent
 				createSubAgent(
@@ -514,7 +529,7 @@ export default function SubAgentConfigScreen({
 					description,
 					Array.from(selectedTools),
 					role || undefined,
-					selectedProfile || undefined,
+					selectedProfile,
 					systemPromptId,
 					customHeadersObj,
 				);
