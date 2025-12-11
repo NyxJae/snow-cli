@@ -191,14 +191,13 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			import('../../utils/commands/clear.js'),
 			import('../../utils/commands/resume.js'),
 			import('../../utils/commands/mcp.js'),
-
+			import('../../utils/commands/home.js'),
+			import('../../utils/commands/ide.js'),
+			import('../../utils/commands/yolo.js'),
 			import('../../utils/commands/team.js'),
 			import('../../utils/commands/init.js'),
-
 			import('../../utils/commands/compact.js'),
-
 			import('../../utils/commands/review.js'),
-
 			import('../../utils/commands/usage.js'),
 			import('../../utils/commands/export.js'),
 			import('../../utils/commands/agent.js'),
