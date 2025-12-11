@@ -5,7 +5,8 @@ import {
 	getCustomHeaders,
 	type ThinkingConfig,
 } from '../utils/config/apiConfig.js';
-import {getSystemPromptForMode} from './systemPrompt.js';
+import {mainAgentManager} from '../utils/MainAgentManager.js';
+
 import {
 	withRetryGenerator,
 	parseJsonWithFix,
@@ -334,7 +335,7 @@ function convertToAnthropicMessages(
 				content: [
 					{
 						type: 'text',
-						text: getSystemPromptForMode(),
+						text: mainAgentManager.getSystemPrompt(),
 						cache_control: {type: 'ephemeral', ttl: cacheTTL},
 					},
 				] as any,
@@ -342,7 +343,7 @@ function convertToAnthropicMessages(
 		}
 	} else if (!systemContent && includeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
-		systemContent = getSystemPromptForMode();
+		systemContent = mainAgentManager.getSystemPrompt();
 	}
 
 	let lastUserMessageIndex = -1;

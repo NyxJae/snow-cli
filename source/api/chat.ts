@@ -3,7 +3,7 @@ import {
 	getCustomSystemPrompt,
 	getCustomHeaders,
 } from '../utils/config/apiConfig.js';
-import {getSystemPromptForMode} from './systemPrompt.js';
+import {mainAgentManager} from '../utils/MainAgentManager.js';
 import {
 	withRetryGenerator,
 	parseJsonWithFix,
@@ -222,7 +222,7 @@ function convertToOpenAIMessages(
 				} as ChatCompletionMessageParam,
 				{
 					role: 'user',
-					content: getSystemPromptForMode(),
+					content: mainAgentManager.getSystemPrompt(),
 				} as ChatCompletionMessageParam,
 				...result,
 			];
@@ -241,7 +241,7 @@ function convertToOpenAIMessages(
 		result = [
 			{
 				role: 'system',
-				content: getSystemPromptForMode(),
+				content: mainAgentManager.getSystemPrompt(),
 			} as ChatCompletionMessageParam,
 			...result,
 		];

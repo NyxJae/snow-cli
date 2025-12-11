@@ -3,7 +3,8 @@ import {
 	getCustomSystemPrompt,
 	getCustomHeaders,
 } from '../utils/config/apiConfig.js';
-import {getSystemPromptForMode} from './systemPrompt.js';
+import {mainAgentManager} from '../utils/MainAgentManager.js';
+
 import {
 	withRetryGenerator,
 	parseJsonWithFix,
@@ -326,12 +327,12 @@ function convertToGeminiMessages(
 			// Prepend default system prompt as first user message
 			contents.unshift({
 				role: 'user',
-				parts: [{text: getSystemPromptForMode()}],
+				parts: [{text: mainAgentManager.getSystemPrompt()}],
 			});
 		}
 	} else if (!systemInstruction && includeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
-		systemInstruction = getSystemPromptForMode();
+		systemInstruction = mainAgentManager.getSystemPrompt();
 	}
 
 	return {systemInstruction, contents};

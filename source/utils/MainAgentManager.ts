@@ -5,8 +5,6 @@
  * 实现4状态循环（YOLO → YOLO+Team → Team → General）的主代理状态管理和切换逻辑
  * 完全替代现有的Plan模式系统，转用可配置的主代理系统
  */
-
-import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {loadMainAgentConfig} from './MainAgentConfigIO.js';
@@ -16,6 +14,7 @@ import type {
 	MainAgentRuntimeState,
 } from '../types/MainAgentConfig.js';
 import type {ChatCompletionTool} from '../api/types.js';
+import {getAgentsPrompt} from './agentsPromptUtils.js';
 
 /**
  * 主代理模式枚举（4状态循环）
@@ -44,22 +43,6 @@ const MODE_AGENT_MAPPING: Record<MainAgentMode, string[]> = {
 // ============ 辅助工具函数 ============
 
 /**
- * 读取指定路径的文件内容(如果存在)
- * @param filePath 文件路径
- * @returns 文件内容或空字符串
- */
-function readFileIfExists(filePath: string): string {
-	try {
-		if (fs.existsSync(filePath)) {
-			return fs.readFileSync(filePath, 'utf-8').trim();
-		}
-		return '';
-	} catch (error) {
-		console.error(`Failed to read file ${filePath}:`, error);
-		return '';
-	}
-}
-
 /**
  * 获取 shell 环境信息
  * @returns {shellPath, shellName} shell路径和小写名称
@@ -148,39 +131,6 @@ function getPlatformCommandsSection(): string {
 **Current Environment: ${platformType}**
 
 For cross-platform compatibility, prefer Node.js scripts or npm packages when possible.`;
-}
-
-/**
- * 获取代理提示，动态读取 AGENTS.md（如果存在）
- * 优先级：全局 AGENTS.md（基础）+ 项目 AGENTS.md（补充）
- * 返回合并后的内容，全局内容在前，项目内容在后
- */
-function getAgentsPrompt(): string {
-	const agentsContents: string[] = [];
-
-	// 1. 首先读取全局 AGENTS.md（基础内容）
-	const globalContent = readFileIfExists(
-		path.join(os.homedir(), '.snow', 'AGENTS.md'),
-	);
-	if (globalContent) {
-		agentsContents.push(globalContent);
-	}
-
-	// 2. 读取项目级 AGENTS.md（补充内容）
-	const projectContent = readFileIfExists(
-		path.join(process.cwd(), 'AGENTS.md'),
-	);
-	if (projectContent) {
-		agentsContents.push(projectContent);
-	}
-
-	// 3. 返回合并内容
-	if (agentsContents.length > 0) {
-		const mergedContent = agentsContents.join('\n\n');
-		return mergedContent;
-	}
-
-	return '';
 }
 
 /**
@@ -536,19 +486,6 @@ Month: ${now.getMonth() + 1}`;
  * 全局主代理管理器实例
  */
 export const mainAgentManager = new MainAgentManager();
-
-/**
- * 获取当前系统提示词（替代getSystemPromptForMode）
- *
- * 为了保持向后兼容性，提供这个过渡函数
- *
- * @param planMode 旧的planMode参数（已废弃）
- * @returns 当前模式的系统提示词
- */
-export function getCurrentSystemPrompt(_planMode?: boolean): string {
-	// 忽略planMode参数，使用新的主代理管理器
-	return mainAgentManager.getSystemPrompt();
-}
 
 /**
  * 切换主代理模式（替代Ctrl+Y的planMode切换）

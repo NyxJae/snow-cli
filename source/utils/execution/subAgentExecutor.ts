@@ -3,7 +3,7 @@ import {createStreamingResponse} from '../../api/responses.js';
 import {createStreamingGeminiCompletion} from '../../api/gemini.js';
 import {createStreamingChatCompletion} from '../../api/chat.js';
 import {getSubAgent} from '../config/subAgentConfig.js';
-import {getAgentsPrompt} from '../../api/systemPrompt.js';
+import {getAgentsPrompt} from '../agentsPromptUtils.js';
 import {
 	collectAllMCPTools,
 	executeMCPTool,
@@ -788,7 +788,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 							},
 							abortSignal,
 							onRetry,
-					)
+					  )
 					: config.requestMethod === 'gemini'
 					? createStreamingGeminiCompletion(
 							{
@@ -830,7 +830,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 							},
 							abortSignal,
 							onRetry,
-					);
+					  );
 
 			let currentContent = '';
 			let toolCalls: any[] = [];

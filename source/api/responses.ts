@@ -3,7 +3,7 @@ import {
 	getCustomSystemPrompt,
 	getCustomHeaders,
 } from '../utils/config/apiConfig.js';
-import {getSystemPromptForMode} from './systemPrompt.js';
+import {mainAgentManager} from '../utils/MainAgentManager.js';
 import {
 	withRetryGenerator,
 	parseJsonWithFix,
@@ -307,7 +307,7 @@ function convertToResponseInput(
 						type: 'input_text',
 						text:
 							'<environment_context>' +
-							getSystemPromptForMode() +
+							mainAgentManager.getSystemPrompt() +
 							'</environment_context>',
 					},
 				],
@@ -315,7 +315,7 @@ function convertToResponseInput(
 		}
 	} else if (includeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
-		systemInstructions = getSystemPromptForMode();
+		systemInstructions = mainAgentManager.getSystemPrompt();
 	} else {
 		// 既没有自定义系统提示词，也不需要添加默认系统提示词
 		systemInstructions = 'You are a helpful assistant.';

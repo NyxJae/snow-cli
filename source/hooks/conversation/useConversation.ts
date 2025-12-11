@@ -6,7 +6,7 @@ import {
 import {createStreamingResponse} from '../../api/responses.js';
 import {createStreamingGeminiCompletion} from '../../api/gemini.js';
 import {createStreamingAnthropicCompletion} from '../../api/anthropic.js';
-import {getSystemPromptForMode} from '../../api/systemPrompt.js';
+import {mainAgentManager} from '../../utils/MainAgentManager.js';
 import {
 	collectAllMCPTools,
 	getTodoService,
@@ -304,7 +304,7 @@ async function executeWithInternalRetry(
 	let conversationMessages: ChatMessage[] = [
 		{
 			role: 'system',
-			content: getSystemPromptForMode(),
+			content: mainAgentManager.getSystemPrompt(),
 		},
 	];
 
@@ -1585,7 +1585,7 @@ async function executeWithInternalRetry(
 							// 1. 添加系统消息
 							conversationMessages.push({
 								role: 'system',
-								content: getSystemPromptForMode(),
+								content: mainAgentManager.getSystemPrompt(),
 							});
 
 							// 2. 如果有TODOs，添加TODO上下文
@@ -1888,7 +1888,7 @@ async function executeWithInternalRetry(
 									// 1. 添加系统消息
 									conversationMessages.push({
 										role: 'system',
-										content: getSystemPromptForMode(),
+										content: mainAgentManager.getSystemPrompt(),
 									});
 
 									// 2. 如果有TODOs，添加TODO上下文
