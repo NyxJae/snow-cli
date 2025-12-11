@@ -106,14 +106,13 @@ export const BUILTIN_MAIN_AGENTS = {
 } as const;
 
 /**
- * 默认工具权限配置 - 简化为字符串数组格式
+ * 默认General主代理的工具权限配置
  */
-export const DEFAULT_TOOL_PERMISSIONS: string[] = [
+export const DEFAULT_TOOL_PERMISSIONS_FOR_GENERAL: string[] = [
 	// 文件系统工具
 	'filesystem-read',
 	'filesystem-create',
 	'filesystem-edit_search',
-	'filesystem-edit',
 
 	// 终端工具
 	'terminal-execute',
@@ -139,17 +138,38 @@ export const DEFAULT_TOOL_PERMISSIONS: string[] = [
 	// 笔记工具
 	'notebook-add',
 
-	// 用户交互工具
-	'askuser-ask_question',
-
 	// IDE工具
 	'ide-get_diagnostics',
 ] as const;
 
 /**
- * 默认子代理配置
+ * 默认Team主代理的工具权限配置
  */
-export const DEFAULT_SUB_AGENTS: string[] = [
+export const DEFAULT_TOOL_PERMISSIONS_FOR_TEAM: string[] = [
+	// 文件系统工具
+	'filesystem-read',
+	// 任务管理工具
+	'todo-get',
+	'todo-update',
+	'todo-add',
+	'todo-delete',
+	// IDE工具
+	'ide-get_diagnostics',
+] as const;
+
+
+/**
+ * 默认general主代理的子代理配置
+ */
+export const DEFAULT_SUB_AGENTS_FOR_GENERAL: string[] = [
+	'agent_explore',
+	'agent_general',
+] as const;
+
+/**
+ * 默认Team主代理的子代理配置
+ */
+export const DEFAULT_SUB_AGENTS_FOR_TEAM: string[] = [
 	'agent_explore',
 	'agent_plan',
 	'agent_general',
