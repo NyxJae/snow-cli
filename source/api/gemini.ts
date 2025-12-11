@@ -13,7 +13,6 @@ import type {ChatMessage, ChatCompletionTool, UsageInfo} from './types.js';
 import {logger} from '../utils/core/logger.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 import {saveUsageToFile} from '../utils/core/usageLogger.js';
-import {filterToolsByMainAgent} from '../utils/core/toolFilterUtils.js';
 
 export interface GeminiOptions {
 	model: string;
@@ -401,9 +400,6 @@ export async function* createStreamingGeminiCompletion(
 				// Pass teamMode to use correct system prompt (deprecated)
 			);
 
-			// 使用通用工具筛选函数
-			const {filteredTools} = filterToolsByMainAgent({tools: options.tools});
-
 			// Build request payload
 			const requestBody: any = {
 				contents,
@@ -423,7 +419,7 @@ export async function* createStreamingGeminiCompletion(
 			}
 
 			// Add tools if provided
-			const geminiTools = convertToolsToGemini(filteredTools);
+			const geminiTools = convertToolsToGemini(options.tools);
 			if (geminiTools) {
 				requestBody.tools = geminiTools;
 			}

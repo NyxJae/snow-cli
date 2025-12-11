@@ -193,6 +193,8 @@ export default function MainAgentConfigScreen({
 			setSystemPrompt(agent.systemPrompt || '');
 			// 处理工具配置：MainAgentConfig的tools已经是string[]类型
 			const tools = Array.isArray(agent.tools) ? agent.tools : [];
+			// 注意：这里不进行反向映射，因为主代理配置界面需要等待MCP服务加载
+			// 反向映射将在MCP服务加载后的useEffect中处理
 			setSelectedTools(new Set(tools));
 
 			// 处理子代理配置：过滤掉不存在的子代理
@@ -228,6 +230,86 @@ export default function MainAgentConfigScreen({
 
 		loadMCPServices();
 	}, []);
+
+	// Load and convert agent tools when MCP services are loaded
+	useEffect(() => {
+		if (mcpServices.length > 0) {
+			// 检查配置文件是否存在
+			const hasConfigFile = existsMainAgentConfig();
+			let agent: MainAgentConfig | undefined;
+			if (hasConfigFile) {
+				// 有配置文件：加载用户自定义配置
+				const configFile = loadMainAgentConfig();
+				agent = configFile.agents[agentId];
+			} else {
+				// 没有配置文件：使用代码内置配置
+				const builtinConfigs = getBuiltinMainAgentConfigs();
+				agent = builtinConfigs[agentId];
+			}
+
+			if (agent && agent.tools && agent.tools.length > 0) {
+				// 反向映射：将完整格式的工具名转换为UI显示的纯工具名
+				const reverseToolMapping = new Map<string, string>();
+
+				// 为每个MCP服务创建反向映射
+				for (const service of mcpServices) {
+					if (
+						!service.isBuiltIn &&
+						service.connected &&
+						service.tools.length > 0
+					) {
+						for (const tool of service.tools) {
+							const fullName = `${service.serviceName}-${tool.name}`;
+							reverseToolMapping.set(fullName, tool.name); // 完整名 -> 纯名
+						}
+					}
+				}
+
+				// 转换存储的工具名
+				const convertedTools = agent.tools.map(toolName => {
+					// 如果是内置工具，直接返回 - 使用静态检查避免依赖问题
+					const isBuiltIn = [
+						'filesystem-read',
+						'filesystem-create',
+						'filesystem-edit',
+						'filesystem-edit_search',
+						'ace-find_definition',
+						'ace-find_references',
+						'ace-semantic_search',
+						'ace-text_search',
+						'ace-file_outline',
+						'codebase-search',
+						'terminal-execute',
+						'todo-get',
+						'todo-update',
+						'todo-add',
+						'todo-delete',
+						'useful-info-add',
+						'useful-info-delete',
+						'useful-info-list',
+						'notebook-add',
+						'notebook-query',
+						'notebook-update',
+						'notebook-delete',
+						'notebook-list',
+						'websearch-search',
+						'websearch-fetch',
+						'ide-get_diagnostics',
+						'askuser-ask_question',
+						'skill-execute',
+					].includes(toolName);
+
+					if (isBuiltIn) {
+						return toolName;
+					}
+					// 尝试反向映射
+					return reverseToolMapping.get(toolName) || toolName;
+				});
+
+				setSelectedTools(new Set(convertedTools));
+			}
+		}
+	}, [agentId, mcpServices]); // 移除 toolCategories 依赖
 
 	// Combine built-in and MCP tool categories
 	const allToolCategories = useMemo(() => {
@@ -399,9 +481,53 @@ export default function MainAgentConfigScreen({
 					availableSubAgentIds.has(subId),
 				);
 
-				// 清理无效的工具ID
-				const availableToolIds = new Set(allTools);
-				const validTools = Array.from(selectedTools).filter(toolId =>
+				// 创建工具名映射，将用户选择的纯工具名转换为完整格式
+				const toolNameMapping = new Map<string, string>();
+
+				// 为每个MCP服务创建工具名映射
+				for (const service of mcpServices) {
+					if (
+						!service.isBuiltIn &&
+						service.connected &&
+						service.tools.length > 0
+					) {
+						for (const tool of service.tools) {
+							const fullName = `${service.serviceName}-${tool.name}`;
+							toolNameMapping.set(tool.name, fullName);
+						}
+					}
+				}
+
+				// 获取所有内置工具名列表（用于精确匹配）
+				const builtInToolNames = new Set<string>();
+				for (const category of toolCategories) {
+					for (const tool of category.tools) {
+						builtInToolNames.add(tool);
+					}
+				}
+
+				// 映射选中的工具名
+				const mappedSelectedTools = Array.from(selectedTools).map(toolId => {
+					// 如果是内置工具，直接返回
+					if (builtInToolNames.has(toolId)) {
+						return toolId;
+					}
+					// 尝试映射用户选择的纯工具名
+					return toolNameMapping.get(toolId) || toolId;
+				});
+
+				// 创建包含完整格式工具ID的可用工具集合，用于验证映射后的工具
+				const availableToolIds = new Set([
+					// 内置工具使用纯名称
+					...toolCategories.flatMap(cat => cat.tools),
+					// MCP工具使用完整格式
+					...mcpServices
+						.filter(service => !service.isBuiltIn && service.connected)
+						.flatMap(service =>
+							service.tools.map(tool => `${service.serviceName}-${tool.name}`),
+						),
+				]);
+				const validTools = mappedSelectedTools.filter(toolId =>
 					availableToolIds.has(toolId),
 				);
 

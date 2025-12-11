@@ -601,11 +601,8 @@ You are a versatile task execution agent with full tool access, capable of handl
 				const normalizedToolName = toolName.replace(/_/g, '-');
 				const normalizedAllowedTool = allowedTool.replace(/_/g, '-');
 
-				// Support both exact match and prefix match (e.g., "filesystem" matches "filesystem-read")
-				return (
-					normalizedToolName === normalizedAllowedTool ||
-					normalizedToolName.startsWith(`${normalizedAllowedTool}-`)
-				);
+				// Use exact match only - configs should store full names with prefixes
+				return normalizedToolName === normalizedAllowedTool;
 			});
 		});
 

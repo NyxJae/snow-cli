@@ -16,7 +16,6 @@ import type {
 } from './types.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 import {saveUsageToFile} from '../utils/core/usageLogger.js';
-import {filterToolsByMainAgent} from '../utils/core/toolFilterUtils.js';
 
 export interface ResponseOptions {
 	model: string;
@@ -463,14 +462,11 @@ export async function* createStreamingResponse(
 	// 使用重试包装生成器
 	yield* withRetryGenerator(
 		async function* () {
-			// 使用通用工具筛选函数
-			const {filteredTools} = filterToolsByMainAgent({tools: options.tools});
-
 			const requestPayload: any = {
 				model: options.model || config.advancedModel,
 				instructions: systemInstructions,
 				input: requestInput,
-				tools: convertToolsForResponses(filteredTools),
+				tools: convertToolsForResponses(options.tools),
 				tool_choice: options.tool_choice,
 				parallel_tool_calls: false,
 				// 只有当 reasoning 启用时才添加 reasoning 字段

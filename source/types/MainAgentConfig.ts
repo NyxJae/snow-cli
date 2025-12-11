@@ -157,20 +157,19 @@ export const DEFAULT_TOOL_PERMISSIONS_FOR_TEAM: string[] = [
 	'ide-get_diagnostics',
 ] as const;
 
-
 /**
  * 默认general主代理的子代理配置
  */
 export const DEFAULT_SUB_AGENTS_FOR_GENERAL: string[] = [
-	'agent_explore',
-	'agent_general',
+	'subagent-agent_explore',
+	'subagent-agent_general',
 ] as const;
 
 /**
  * 默认Team主代理的子代理配置
  */
 export const DEFAULT_SUB_AGENTS_FOR_TEAM: string[] = [
-	'agent_explore',
-	'agent_plan',
-	'agent_general',
+	'subagent-agent_explore',
+	'subagent-agent_plan',
+	'subagent-agent_general',
 ] as const;

@@ -12,6 +12,7 @@ import {
 	getTodoService,
 	getUsefulInfoService,
 } from '../../utils/execution/mcpToolsManager.js';
+import {filterToolsByMainAgent} from '../../utils/core/toolFilterUtils.js';
 import {
 	executeToolCalls,
 	type ToolCall,
@@ -299,7 +300,11 @@ async function executeWithInternalRetry(
 	const existingTodoList = await todoService.getTodoList(currentSession.id);
 
 	// Collect all MCP tools
-	const mcpTools = await collectAllMCPTools();
+	const allMcpTools = await collectAllMCPTools();
+
+	// Filter tools based on main agent configuration
+	const {filteredTools} = filterToolsByMainAgent({tools: allMcpTools});
+	const mcpTools = filteredTools;
 	// Build conversation history with TODO context as pinned user message
 	let conversationMessages: ChatMessage[] = [
 		{

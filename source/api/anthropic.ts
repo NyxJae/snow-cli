@@ -16,7 +16,6 @@ import {logger} from '../utils/core/logger.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 import {saveUsageToFile} from '../utils/core/usageLogger.js';
 import {isDevMode, getDevUserId} from '../utils/core/devMode.js';
-import {filterToolsByMainAgent} from '../utils/core/toolFilterUtils.js';
 
 export interface AnthropicOptions {
 	model: string;
@@ -550,15 +549,13 @@ export async function* createStreamingAnthropicCompletion(
 
 			// Use persistent userId that remains the same until application restart
 			const userId = getPersistentUserId();
-			// 使用通用工具筛选函数
-			const {filteredTools} = filterToolsByMainAgent({tools: options.tools});
 
 			const requestBody: any = {
 				model: options.model || config.advancedModel,
 				max_tokens: options.max_tokens || 4096,
 				system,
 				messages,
-				tools: convertToolsToAnthropic(filteredTools),
+				tools: convertToolsToAnthropic(options.tools),
 				metadata: {
 					user_id: userId,
 				},

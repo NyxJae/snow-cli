@@ -164,6 +164,7 @@ export class MainAgentManager {
 	 * 获取当前可用的子代理列表
 	 *
 	 * 注意：这个列表用于原生工具调用筛选，不包含在系统提示词中
+	 * 返回的子代理名称直接使用存储的全称格式
 	 *
 	 * @returns 当前主代理配置的子代理列表
 	 */
@@ -172,7 +173,8 @@ export class MainAgentManager {
 			return [];
 		}
 
-		return this.currentState.currentConfig.availableSubAgents;
+		// 每个子代理名称前都带加 agent_ 前缀
+		return this.currentState.currentConfig.availableSubAgents.map(agentName => `subagent-${agentName}`);
 	}
 
 	/**

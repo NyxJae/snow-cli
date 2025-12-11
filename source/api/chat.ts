@@ -18,7 +18,6 @@ import type {
 import {logger} from '../utils/core/logger.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 import {saveUsageToFile} from '../utils/core/usageLogger.js';
-import {filterToolsByMainAgent} from '../utils/core/toolFilterUtils.js';
 
 export type {
 	ChatMessage,
@@ -427,9 +426,6 @@ export async function* createStreamingChatCompletion(
 	// 使用重试包装生成器
 	yield* withRetryGenerator(
 		async function* () {
-			// 使用通用工具筛选函数
-			const {filteredTools} = filterToolsByMainAgent({tools: options.tools});
-
 			const requestBody = {
 				model: options.model || config.advancedModel,
 				messages: convertToOpenAIMessages(
@@ -442,7 +438,7 @@ export async function* createStreamingChatCompletion(
 				stream_options: {include_usage: true},
 				temperature: options.temperature || 0.7,
 				max_tokens: options.max_tokens,
-				tools: filteredTools,
+				tools: options.tools,
 				tool_choice: options.tool_choice,
 			};
 

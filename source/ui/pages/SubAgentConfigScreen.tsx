@@ -403,6 +403,74 @@ export default function SubAgentConfigScreen({
 		loadMCPServices();
 	}, []);
 
+	// Load and convert agent tools when MCP services are loaded and in edit mode
+	useEffect(() => {
+		if (agentId && mcpServices.length > 0) {
+			const agent = getSubAgent(agentId);
+			if (agent && agent.tools && agent.tools.length > 0) {
+				// 反向映射：将完整格式的工具名转换为UI显示的纯工具名
+				const reverseToolMapping = new Map<string, string>();
+
+				// 为每个MCP服务创建反向映射
+				for (const service of mcpServices) {
+					if (
+						!service.isBuiltIn &&
+						service.connected &&
+						service.tools.length > 0
+					) {
+						for (const tool of service.tools) {
+							const fullName = `${service.serviceName}-${tool.name}`;
+							reverseToolMapping.set(fullName, tool.name); // 完整名 -> 纯名
+						}
+					}
+				}
+
+				// 转换存储的工具名
+				const convertedTools = agent.tools.map(toolName => {
+					// 如果是内置工具，直接返回 - 使用静态检查避免依赖问题
+					const isBuiltIn = [
+						'filesystem-read',
+						'filesystem-create',
+						'filesystem-edit',
+						'filesystem-edit_search',
+						'ace-find_definition',
+						'ace-find_references',
+						'ace-semantic_search',
+						'ace-text_search',
+						'ace-file_outline',
+						'codebase-search',
+						'terminal-execute',
+						'todo-get',
+						'todo-update',
+						'todo-add',
+						'todo-delete',
+						'useful-info-add',
+						'useful-info-delete',
+						'useful-info-list',
+						'notebook-add',
+						'notebook-query',
+						'notebook-update',
+						'notebook-delete',
+						'notebook-list',
+						'websearch-search',
+						'websearch-fetch',
+						'ide-get_diagnostics',
+						'askuser-ask_question',
+						'skill-execute',
+					].includes(toolName);
+
+					if (isBuiltIn) {
+						return toolName;
+					}
+					// 尝试反向映射
+					return reverseToolMapping.get(toolName) || toolName;
+				});
+
+				setSelectedTools(new Set(convertedTools));
+			}
+		}
+	}, [agentId, mcpServices]); // 移除 toolCategories 依赖
+
 	// Combine built-in and MCP tool categories
 	const allToolCategories = useMemo(() => {
 		const categories = [...toolCategories];
@@ -514,6 +582,41 @@ export default function SubAgentConfigScreen({
 					? availableSystemPrompts[confirmedSystemPromptIndex]?.id
 					: undefined;
 
+			// 创建工具名映射，将用户选择的纯工具名转换为完整格式
+			const toolNameMapping = new Map<string, string>();
+
+			// 为每个MCP服务创建工具名映射
+			for (const service of mcpServices) {
+				if (
+					!service.isBuiltIn &&
+					service.connected &&
+					service.tools.length > 0
+				) {
+					for (const tool of service.tools) {
+						const fullName = `${service.serviceName}-${tool.name}`;
+						toolNameMapping.set(tool.name, fullName);
+					}
+				}
+			}
+
+			// 获取所有内置工具名列表（用于精确匹配）
+			const builtInToolNames = new Set<string>();
+			for (const category of toolCategories) {
+				for (const tool of category.tools) {
+					builtInToolNames.add(tool);
+				}
+			}
+
+			// 映射选中的工具名
+			const mappedSelectedTools = Array.from(selectedTools).map(toolId => {
+				// 如果是内置工具，直接返回
+				if (builtInToolNames.has(toolId)) {
+					return toolId;
+				}
+				// 尝试映射用户选择的纯工具名
+				return toolNameMapping.get(toolId) || toolId;
+			});
+
 			if (isEditMode && agentId) {
 				// Update existing agent
 				// 构建更新对象，只包含实际需要更新的字段
@@ -521,7 +624,7 @@ export default function SubAgentConfigScreen({
 					name: agentName,
 					description: description,
 					role: role || undefined,
-					tools: Array.from(selectedTools),
+					tools: mappedSelectedTools,
 				};
 
 				// 只有在用户明确选择或取消选择时才包含这些字段
@@ -536,7 +639,7 @@ export default function SubAgentConfigScreen({
 				createSubAgent(
 					agentName,
 					description,
-					Array.from(selectedTools),
+					mappedSelectedTools,
 					role || undefined,
 					selectedProfile,
 					systemPromptId,
