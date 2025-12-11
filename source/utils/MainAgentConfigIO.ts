@@ -83,6 +83,12 @@ export function loadMainAgentConfig(configPath?: string): MainAgentConfigFile {
 		throw new Error(`配置文件读取失败: ${filePath}`);
 	}
 
+	// 检查配置文件是否为空对象（当用户手动清空文件时会出现这种情况）
+	if (typeof configFile === 'object' && Object.keys(configFile).length === 0) {
+		// 空文件当作没有配置文件处理，返回默认配置
+		return createDefaultMainAgentConfigFile();
+	}
+
 	// 验证配置文件的基本结构
 	if (!configFile.agents || typeof configFile.agents !== 'object') {
 		throw new Error(`配置文件格式错误: 缺少agents字段或agents不是对象`);

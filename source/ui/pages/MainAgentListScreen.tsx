@@ -70,11 +70,33 @@ export default function MainAgentListScreen({
 				mergedAgents[id] = config;
 			});
 
-			// 只有当配置文件存在时，才标记为自定义
+			// 当配置文件存在时，检查配置是否真的被自定义了
 			if (configExists) {
 				Object.entries(configFile.agents).forEach(([id, config]) => {
 					mergedAgents[id] = config;
-					customAgents.add(id); // 标记为自定义
+
+					// 检查配置是否与内置默认配置相同
+					const builtinConfig = builtinConfigs[id];
+					if (builtinConfig) {
+						// 简单比较：检查关键字段是否相同
+						const isSameAsBuiltin =
+							config.basicInfo.name === builtinConfig.basicInfo.name &&
+							config.basicInfo.description ===
+								builtinConfig.basicInfo.description &&
+							config.systemPrompt === builtinConfig.systemPrompt &&
+							JSON.stringify(config.tools) ===
+								JSON.stringify(builtinConfig.tools) &&
+							JSON.stringify(config.availableSubAgents) ===
+								JSON.stringify(builtinConfig.availableSubAgents);
+
+						// 只有当配置与内置配置不同时，才标记为自定义
+						if (!isSameAsBuiltin) {
+							customAgents.add(id);
+						}
+					} else {
+						// 如果内置配置中没有这个代理，说明是用户添加的自定义代理
+						customAgents.add(id);
+					}
 				});
 			}
 
