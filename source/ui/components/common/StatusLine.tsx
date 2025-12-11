@@ -4,6 +4,7 @@ import Spinner from 'ink-spinner';
 import {useI18n} from '../../../i18n/index.js';
 import {useTheme} from '../../contexts/ThemeContext.js';
 import {getSimpleMode} from '../../../utils/config/themeConfig.js';
+import {calculateContextPercentage} from '../chat/ChatInput.js';
 
 // 根据平台返回快捷键显示文本: Windows使用 Alt+P, macOS使用 Ctrl+P
 const getProfileShortcut = () =>
@@ -62,23 +63,6 @@ type Props = {
 	// Profile 信息
 	currentProfileName?: string;
 };
-
-function calculateContextPercentage(contextUsage: ContextUsage): number {
-	const isAnthropic =
-		(contextUsage.cacheCreationTokens || 0) > 0 ||
-		(contextUsage.cacheReadTokens || 0) > 0;
-
-	const totalInputTokens = isAnthropic
-		? contextUsage.inputTokens +
-		  (contextUsage.cacheCreationTokens || 0) +
-		  (contextUsage.cacheReadTokens || 0)
-		: contextUsage.inputTokens;
-
-	return Math.min(
-		100,
-		(totalInputTokens / contextUsage.maxContextTokens) * 100,
-	);
-}
 
 export default function StatusLine({
 	yoloMode = false,
@@ -386,7 +370,7 @@ export default function StatusLine({
 			{planMode && (
 				<Box>
 					<Text color="#60A5FA" dimColor>
-						{t.chatScreen.planModeActive}
+						{t.chatScreen.teamModeActive}
 					</Text>
 				</Box>
 			)}

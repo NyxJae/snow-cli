@@ -6,7 +6,7 @@ import MarkdownRenderer from '../common/MarkdownRenderer.js';
 import DiffViewer from '../tools/DiffViewer.js';
 import ToolResultPreview from '../tools/ToolResultPreview.js';
 import {HookErrorDisplay} from '../special/HookErrorDisplay.js';
-import SubAgentResultDisplay from './SubAgentResultDisplay.js';
+import SubAgentResultDisplay from '../SubAgentResultDisplay.js';
 
 type Props = {
 	message: Message;

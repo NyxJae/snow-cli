@@ -1,6 +1,6 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import MarkdownRenderer from './MarkdownRenderer.js';
+import MarkdownRenderer from './common/MarkdownRenderer.js';
 import {getSubAgent} from '../../utils/config/subAgentConfig.js';
 
 /**
