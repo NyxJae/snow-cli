@@ -22,6 +22,8 @@ export const en: TranslationKeys = {
 		customHeadersSettingsInfo: 'Configure custom HTTP headers for API requests',
 		mcpSettings: 'MCP Settings',
 		mcpSettingsInfo: 'Configure Model Context Protocol servers',
+		mainAgentSettings: 'Main Agent Settings',
+		mainAgentSettingsInfo: 'Configure main agent tools and system prompt',
 		subAgentSettings: 'Sub-Agent Settings',
 		subAgentSettingsInfo: 'Configure sub-agents with custom tool permissions',
 		sensitiveCommands: 'Sensitive Commands',
@@ -417,7 +419,7 @@ export const en: TranslationKeys = {
 		selectItem: 'Tab/Enter - Select item in pickers',
 		cancelClose: 'ESC - Cancel/close pickers or interrupt AI response',
 		toggleYolo:
-			'Shift+Tab/Ctrl+Y - Toggle YOLO/Plan modes (cycle: YOLO → YOLO+Plan → Plan → Off)',
+			'Shift+Tab/Ctrl+Y - Toggle YOLO/Team modes (cycle: YOLO → YOLO+Team → Off)',
 		tipsTitle: '💡 Tips:',
 		tipUseHelp: 'Use /help anytime to see this information',
 		tipShowCommands: 'Type / to see all available commands',
@@ -438,14 +440,14 @@ export const en: TranslationKeys = {
 			resume: 'Resume a conversation',
 			mcp: 'Show Model Context Protocol services and tools',
 			yolo: 'Toggle unattended mode (auto-approve all tools)',
-			plan: 'Toggle Plan mode (specialized planning assistant)',
+			plan: 'Toggle Team mode (specialized planning assistant)',
 			init: 'Analyze project and generate/update AGENTS.md documentation',
 			ide: 'Connect to VSCode editor and sync context',
 			compact: 'Compress conversation history using compact model',
 			home: 'Return to welcome screen to modify settings',
 			review:
 				'Review git changes and identify potential issues. Support: /review [optional note]',
-			role: 'Open or create ROLE.md file to customize AI assistant role',
+
 			usage: 'View token usage statistics with interactive charts',
 			export: 'Export chat conversation to text file with save dialog',
 			custom: 'Add custom command and save to ~/.snow/commands',
@@ -733,8 +735,8 @@ export const en: TranslationKeys = {
 			'Type to filter files • Tab/Enter to select • ESC to cancel',
 		yoloModeActive:
 			'❁ YOLO MODE ACTIVE - All tools will be auto-approved without confirmation',
-		planModeActive:
-			'⚐ Plan mode active - Specialized planning and coordination agent',
+		teamModeActive:
+			'⚐ Team mode active - Specialized planning and coordination agent',
 		tokens: ' tokens',
 		cached: 'cached',
 		newCache: 'new cache',
@@ -858,6 +860,34 @@ export const en: TranslationKeys = {
 		error: 'Error: {error}',
 		tabToSwitch: '- Tab to switch',
 		noDataForPeriod: 'No usage data for this period',
+		},
+	mainAgent: {
+		title: '❆ Main Agent Configuration',
+		type: {
+			general: 'General',
+			team: 'Team',
+		},
+		status: {
+			builtin: 'Built-in',
+			custom: 'Custom',
+		},
+		instructions: '↑↓: Select | Enter: Edit | D: Reset | Esc: Back',
+		reset: {
+			success: '{agentName} main agent reset successfully',
+			failed: '{agentName} main agent reset failed',
+		},
+		edit: {
+			title: 'Edit Main Agent',
+			saveSuccess: '{agentName} main agent configuration saved successfully',
+			saveError: 'Save failed',
+			confirmReset:
+				'Confirm reset {agentName} main agent to default configuration?',
+			tools: 'Tools',
+			subAgents: 'Sub-Agents',
+			systemPrompt: 'System Prompt',
+			name: 'Agent Name',
+			description: 'Description',
+		}
 	},
 	workingDirectoryPanel: {
 		title: 'Working Directories',

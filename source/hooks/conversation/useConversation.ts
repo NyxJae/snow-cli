@@ -304,7 +304,7 @@ async function executeWithInternalRetry(
 	let conversationMessages: ChatMessage[] = [
 		{
 			role: 'system',
-			content: getSystemPromptForMode(options.planMode || false),
+			content: getSystemPromptForMode(),
 		},
 	];
 
@@ -470,7 +470,7 @@ async function executeWithInternalRetry(
 								sessionId: currentSession?.id,
 								// Disable thinking for basicModel (e.g., init command)
 								disableThinking: options.useBasicModel,
-								planMode: options.planMode, // Pass planMode to use correct system prompt
+								teamMode: options.planMode, // Pass teamMode to use correct system prompt
 							},
 							controller.signal,
 							onRetry,
@@ -482,7 +482,7 @@ async function executeWithInternalRetry(
 								messages: conversationMessages,
 								temperature: 0,
 								tools: mcpTools.length > 0 ? mcpTools : undefined,
-								planMode: options.planMode, // Pass planMode to use correct system prompt
+								teamMode: options.planMode, // Pass teamMode to use correct system prompt
 							},
 							controller.signal,
 							onRetry,
@@ -499,7 +499,7 @@ async function executeWithInternalRetry(
 								// Don't pass reasoning for basicModel (small models may not support it)
 								// Pass null to explicitly disable reasoning in API call
 								reasoning: options.useBasicModel ? null : undefined,
-								planMode: options.planMode, // Pass planMode to use correct system prompt
+								teamMode: options.planMode, // Pass teamMode to use correct system prompt
 							},
 							controller.signal,
 							onRetry,
@@ -510,7 +510,7 @@ async function executeWithInternalRetry(
 								messages: conversationMessages,
 								temperature: 0,
 								tools: mcpTools.length > 0 ? mcpTools : undefined,
-								planMode: options.planMode, // Pass planMode to use correct system prompt
+								teamMode: options.planMode, // Pass teamMode to use correct system prompt
 							},
 							controller.signal,
 							onRetry,
@@ -1585,7 +1585,7 @@ async function executeWithInternalRetry(
 							// 1. 添加系统消息
 							conversationMessages.push({
 								role: 'system',
-								content: getSystemPromptForMode(options.planMode || false),
+								content: getSystemPromptForMode(),
 							});
 
 							// 2. 如果有TODOs，添加TODO上下文
@@ -1888,7 +1888,7 @@ async function executeWithInternalRetry(
 									// 1. 添加系统消息
 									conversationMessages.push({
 										role: 'system',
-										content: getSystemPromptForMode(options.planMode || false),
+										content: getSystemPromptForMode(),
 									});
 
 									// 2. 如果有TODOs，添加TODO上下文

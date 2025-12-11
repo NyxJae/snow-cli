@@ -127,8 +127,29 @@ export function validateTomlData(data: any): {
 		// 尝试反序列化以验证TOML格式的完整性
 		try {
 			const parsed = parse(serialized);
-			// 简单的数据比较检查
-			if (JSON.stringify(parsed) !== JSON.stringify(data)) {
+			// 深度比较函数，用于检查数据完整性
+			const deepEqual = (obj1: any, obj2: any): boolean => {
+				if (obj1 === obj2) return true;
+				if (obj1 == null || obj2 == null) return false;
+				if (typeof obj1 !== typeof obj2) return false;
+
+				if (typeof obj1 !== 'object') return obj1 === obj2;
+
+				const keys1 = Object.keys(obj1);
+				const keys2 = Object.keys(obj2);
+
+				if (keys1.length !== keys2.length) return false;
+
+				for (const key of keys1) {
+					if (!keys2.includes(key)) return false;
+					if (!deepEqual(obj1[key], obj2[key])) return false;
+				}
+
+				return true;
+			};
+
+			// 使用深度比较检查数据完整性
+			if (!deepEqual(data, parsed)) {
 				errors.push(
 					'Data integrity check failed after serialization/deserialization',
 				);

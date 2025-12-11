@@ -12,6 +12,7 @@ import type {ChatMessage, ChatCompletionTool, UsageInfo} from './types.js';
 import {logger} from '../utils/core/logger.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 import {saveUsageToFile} from '../utils/core/usageLogger.js';
+import {filterToolsByMainAgent} from '../utils/core/toolFilterUtils.js';
 
 export interface GeminiOptions {
 	model: string;
@@ -19,7 +20,7 @@ export interface GeminiOptions {
 	temperature?: number;
 	tools?: ChatCompletionTool[];
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
-	planMode?: boolean; // 启用 Plan 模式（使用 Plan 模式系统提示词）
+	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
 	// Sub-agent configuration overrides
 	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
 	customSystemPromptId?: string; // 自定义系统提示词 ID
@@ -109,7 +110,7 @@ function convertToGeminiMessages(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
 	customSystemPromptOverride?: string, // Allow override for sub-agents
-	planMode: boolean = false, // When true, use Plan mode system prompt
+	// When true, use Team mode system prompt (deprecated)
 ): {
 	systemInstruction?: string;
 	contents: any[];
@@ -325,12 +326,12 @@ function convertToGeminiMessages(
 			// Prepend default system prompt as first user message
 			contents.unshift({
 				role: 'user',
-				parts: [{text: getSystemPromptForMode(planMode)}],
+				parts: [{text: getSystemPromptForMode()}],
 			});
 		}
 	} else if (!systemInstruction && includeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
-		systemInstruction = getSystemPromptForMode(planMode);
+		systemInstruction = getSystemPromptForMode();
 	}
 
 	return {systemInstruction, contents};
@@ -396,8 +397,11 @@ export async function* createStreamingGeminiCompletion(
 				options.messages,
 				options.includeBuiltinSystemPrompt !== false, // 默认为 true
 				customSystemPromptContent, // 传递自定义系统提示词
-				options.planMode || false, // Pass planMode to use correct system prompt
+				// Pass teamMode to use correct system prompt (deprecated)
 			);
+
+			// 使用通用工具筛选函数
+			const {filteredTools} = filterToolsByMainAgent({tools: options.tools});
 
 			// Build request payload
 			const requestBody: any = {
@@ -418,7 +422,7 @@ export async function* createStreamingGeminiCompletion(
 			}
 
 			// Add tools if provided
-			const geminiTools = convertToolsToGemini(options.tools);
+			const geminiTools = convertToolsToGemini(filteredTools);
 			if (geminiTools) {
 				requestBody.tools = geminiTools;
 			}

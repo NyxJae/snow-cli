@@ -22,6 +22,9 @@ export const ja: TranslationKeys = {
 		customHeadersSettingsInfo: 'APIリクエスト用のカスタムHTTPヘッダーを構成',
 		mcpSettings: 'MCP設定',
 		mcpSettingsInfo: 'Model Context Protocolサーバーを構成',
+		mainAgentSettings: 'メインエージェント構成',
+		mainAgentSettingsInfo:
+			'メインエージェントのツール権限とシステムプロンプトを構成',
 		subAgentSettings: 'サブエージェント設定',
 		subAgentSettingsInfo: 'カスタムツール権限を持つサブエージェントを構成',
 		sensitiveCommands: '機密コマンド',
@@ -406,7 +409,7 @@ export const ja: TranslationKeys = {
 		selectItem: 'Tab/Enter - セレクターで項目を選択',
 		cancelClose: 'ESC - セレクターをキャンセル/閉じる、またはAI応答を中断',
 		toggleYolo:
-			'Shift+Tab/Ctrl+Y - YOLO/Planモードを切替(サイクル: YOLO → YOLO+Plan → Plan → オフ)',
+			'Shift+Tab/Ctrl+Y - YOLO/Teamモードを切替(サイクル: YOLO → YOLO+Team → オフ)',
 		tipsTitle: '💡 ヒント:',
 		tipUseHelp: 'いつでも /help でこの情報を表示',
 		tipShowCommands: '/ を入力してすべての利用可能なコマンドを表示',
@@ -426,14 +429,14 @@ export const ja: TranslationKeys = {
 			resume: '会話を再開',
 			mcp: 'Model Context Protocolサービスとツールを表示',
 			yolo: '無人モードを切替(すべてのツールを自動承認)',
-			plan: 'プランモードを切替(専門的な計画アシスタント)',
+			plan: 'チームモードを切替(専門的な計画アシスタント)',
 			init: 'プロジェクトを分析してAGENTS.mdドキュメントを生成/更新',
 			ide: 'VSCodeエディタに接続してコンテキストを同期',
 			compact: 'コンパクトモデルを使用して会話履歴を圧縮',
 			home: 'ウェルカム画面に戻って設定を変更',
 			review:
 				'git変更をレビューして潜在的な問題を特定。サポート: /review [オプションのメモ]',
-			role: 'ROLE.mdファイルを開くまたは作成してAIアシスタントのロールをカスタマイズ',
+
 			usage: 'インタラクティブグラフ付きのトークン使用統計を表示',
 			export:
 				'チャット会話を保存ダイアログ付きのテキストファイルにエクスポート',
@@ -723,7 +726,7 @@ export const ja: TranslationKeys = {
 			'入力してファイルをフィルタ • Tab/Enter 選択 • ESC キャンセル',
 		yoloModeActive:
 			'❁ YOLOモード有効 - すべてのツールが確認なしで自動承認されます',
-		planModeActive: '⚐ Planモード有効 - 専門的な計画・調整エージェント',
+		teamModeActive: '⚐ Teamモード有効 - 専門的な計画・調整エージェント',
 		tokens: 'トークン',
 		cached: 'キャッシュ済み',
 		newCache: '新規キャッシュ',
@@ -844,6 +847,34 @@ export const ja: TranslationKeys = {
 		error: 'エラー: {error}',
 		tabToSwitch: '- Tab で切り替え',
 		noDataForPeriod: 'この期間のデータはありません',
+	},
+	mainAgent: {
+		title: '❆ メインエージェント構成',
+		type: {
+			general: '一般',
+			team: 'チーム',
+		},
+		status: {
+			builtin: '組み込み',
+			custom: 'カスタム',
+		},
+		instructions: '↑↓: 選択 | Enter: 編集 | D: リセット | Esc: 戻る',
+		reset: {
+			success: '{agentName}メインエージェントが正常にリセットされました',
+			failed: '{agentName}メインエージェントのリセットに失敗しました',
+		},
+		edit: {
+			title: 'メインエージェント編集',
+			saveSuccess: '{agentName}メインエージェント設定が正常に保存されました',
+			saveError: '保存に失敗しました',
+			confirmReset:
+				'{agentName}メインエージェントをデフォルト設定にリセットしてもよろしいですか？',
+			tools: 'ツール',
+			subAgents: 'サブエージェント',
+			systemPrompt: 'システムプロンプト',
+			name: 'エージェント名',
+			description: '説明',
+		},
 	},
 	workingDirectoryPanel: {
 		title: 'ワーキングディレクトリ',

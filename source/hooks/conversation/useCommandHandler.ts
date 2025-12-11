@@ -618,8 +618,8 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				// Toggle YOLO mode without adding command message
 				options.setYoloMode(prev => !prev);
 				// Don't add command message to keep UI clean
-			} else if (result.success && result.action === 'togglePlan') {
-				// Toggle Plan mode without adding command message
+			} else if (result.success && result.action === 'toggleTeam') {
+				// Toggle Team mode without adding command message
 				options.setPlanMode(prev => !prev);
 				// Don't add command message to keep UI clean
 			} else if (
@@ -748,7 +748,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					}
 				}
 			} else if (result.message) {
-				// For commands that just return a message (like /role, /init without AGENTS.md, etc.)
+				// For commands that just return a message (like /init without AGENTS.md, etc.)
 				// Display the message as a command message
 				const commandMessage: Message = {
 					role: 'command',

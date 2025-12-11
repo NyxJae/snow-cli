@@ -37,10 +37,6 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 				description: t.commandPanel.commands.review,
 			},
 			{
-				name: 'role',
-				description: t.commandPanel.commands.role,
-			},
-			{
 				name: 'usage',
 				description: t.commandPanel.commands.usage,
 			},

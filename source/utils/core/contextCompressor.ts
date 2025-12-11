@@ -242,7 +242,7 @@ function prepareMessagesForCompression(
 	} else {
 		// No custom system prompt: default as system
 		// Default to false for compression (no Plan mode in compression context)
-		messages.push({role: 'system', content: getSystemPromptForMode(false)});
+		messages.push({role: 'system', content: getSystemPromptForMode()});
 	}
 
 	// Add all conversation history for compression

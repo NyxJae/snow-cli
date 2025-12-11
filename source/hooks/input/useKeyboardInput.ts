@@ -207,38 +207,119 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			return;
 		}
 
-		// Shift+Tab - Toggle YOLO modes in cycle: YOLO -> YOLO+Plan -> Plan -> All Off
+		// Shift+Tab - Toggle main agent modes (same as Ctrl+Y)
 		if (key.shift && key.tab) {
-			if (yoloMode && !planMode) {
-				// YOLO only -> YOLO + Plan
-				setPlanMode(true);
-			} else if (yoloMode && planMode) {
-				// YOLO + Plan -> Plan only
-				setYoloMode(false);
-			} else if (!yoloMode && planMode) {
-				// Plan only -> All off
-				setPlanMode(false);
-			} else if (!yoloMode && !planMode) {
-				// All off -> YOLO only
-				setYoloMode(true);
+			try {
+				const {
+					switchMainAgentMode,
+					mainAgentManager,
+				} = require('../../utils/MainAgentManager.js');
+				switchMainAgentMode();
+				const currentMode = mainAgentManager.getCurrentMode();
+
+				// 根据新模式设置 yoloMode 和 planMode 的兼容状态
+				switch (currentMode) {
+					case 'yolo':
+						// YOLO模式：通用主代理，工具自动通过
+						setYoloMode(true);
+						setPlanMode(false);
+						break;
+					case 'yolo-team':
+						// Yolo+Team模式：Team主代理，工具自动通过
+						setYoloMode(true);
+						setPlanMode(true);
+						break;
+					case 'team':
+						// Team模式：Team主代理，工具需要用户审核
+						setYoloMode(false);
+						setPlanMode(true);
+						break;
+					case 'general':
+						// General模式：通用主代理，工具需要用户审核
+						setYoloMode(false);
+						setPlanMode(false);
+						break;
+				}
+
+				// console.log(`主代理模式切换: ${modeDescription}`);
+			} catch (error) {
+				// console.warn('主代理管理器切换失败，使用备用逻辑:', error);
+
+				// 备用逻辑：保持原有的3状态循环
+				if (!yoloMode && !planMode) {
+					// All off -> YOLO only
+					setYoloMode(true);
+				} else if (yoloMode && !planMode) {
+					// YOLO only -> YOLO + Plan
+					setPlanMode(true);
+				} else if (yoloMode && planMode) {
+					// YOLO + Plan -> All off
+					setYoloMode(false);
+					setPlanMode(false);
+				} else if (!yoloMode && planMode) {
+					// Plan only (edge case) -> YOLO only
+					setPlanMode(false);
+					setYoloMode(true);
+				}
 			}
 			return;
 		}
 
-		// Ctrl+Y - Toggle YOLO modes in cycle: YOLO -> YOLO+Plan -> Plan -> All Off
+		// Ctrl+Y - Toggle main agent modes in 4-state cycle: YOLO → Yolo+Team → Team → General → YOLO
 		if (key.ctrl && input === 'y') {
-			if (yoloMode && !planMode) {
-				// YOLO only -> YOLO + Plan
-				setPlanMode(true);
-			} else if (yoloMode && planMode) {
-				// YOLO + Plan -> Plan only
-				setYoloMode(false);
-			} else if (!yoloMode && planMode) {
-				// Plan only -> All off
-				setPlanMode(false);
-			} else if (!yoloMode && !planMode) {
-				// All off -> YOLO only
-				setYoloMode(true);
+			try {
+				const {
+					switchMainAgentMode,
+					mainAgentManager,
+				} = require('../../utils/MainAgentManager.js');
+				switchMainAgentMode();
+				const currentMode = mainAgentManager.getCurrentMode();
+
+				// 根据新模式设置 yoloMode 和 planMode 的兼容状态
+				switch (currentMode) {
+					case 'yolo':
+						// YOLO模式：通用主代理，工具自动通过
+						setYoloMode(true);
+						setPlanMode(false);
+						break;
+					case 'yolo-team':
+						// Yolo+Team模式：Team主代理，工具自动通过
+						setYoloMode(true);
+						setPlanMode(true);
+						break;
+					case 'team':
+						// Team模式：Team主代理，工具需要用户审核
+						setYoloMode(false);
+						setPlanMode(true);
+						break;
+					case 'general':
+						// General模式：通用主代理，工具需要用户审核
+						setYoloMode(false);
+						setPlanMode(false);
+						break;
+				}
+
+				// 可以在这里添加用户反馈，显示当前切换到的模式
+				// console.log(`主代理模式切换: ${modeDescription}`);
+			} catch (error) {
+				// console.warn('主代理管理器切换失败，使用备用逻辑:', error);
+
+				// 备用逻辑：保持原有的3状态循环
+				if (!yoloMode && !planMode) {
+					// All off -> YOLO only
+					setYoloMode(true);
+				} else if (yoloMode && !planMode) {
+					// YOLO only -> YOLO + Plan
+					setPlanMode(true);
+				} else if (yoloMode && planMode) {
+					// YOLO + Plan -> All off
+					setYoloMode(false);
+					setPlanMode(false);
+				} else if (!yoloMode && planMode) {
+					// Plan only (edge case) -> YOLO only
+					setPlanMode(false);
+					setYoloMode(true);
+				}
 			}
 			return;
 		}

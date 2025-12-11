@@ -106,16 +106,16 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		}
 		// Default to true for YOLO mode, but allow localStorage override
 		try {
-			const saved = localStorage.getItem('snow-yolo-mode');
+			const saved = localStorage.getItem('yolo-mode');
 			return saved !== null ? saved === 'true' : true;
 		} catch {
 			return true;
 		}
 	});
 	const [planMode, setPlanMode] = useState(() => {
-		// Load plan mode from localStorage on initialization
+		// Load team mode from localStorage on initialization
 		try {
-			const saved = localStorage.getItem('snow-plan-mode');
+			const saved = localStorage.getItem('team-mode');
 			return saved === 'true';
 		} catch {
 			return false;
@@ -191,14 +191,14 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			import('../../utils/commands/clear.js'),
 			import('../../utils/commands/resume.js'),
 			import('../../utils/commands/mcp.js'),
-			import('../../utils/commands/yolo.js'),
-			import('../../utils/commands/plan.js'),
+
+			import('../../utils/commands/team.js'),
 			import('../../utils/commands/init.js'),
-			import('../../utils/commands/ide.js'),
+
 			import('../../utils/commands/compact.js'),
-			import('../../utils/commands/home.js'),
+
 			import('../../utils/commands/review.js'),
-			import('../../utils/commands/role.js'),
+
 			import('../../utils/commands/usage.js'),
 			import('../../utils/commands/export.js'),
 			import('../../utils/commands/agent.js'),
@@ -410,16 +410,16 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	// Persist yolo mode to localStorage
 	useEffect(() => {
 		try {
-			localStorage.setItem('snow-yolo-mode', String(yoloMode));
+			localStorage.setItem('yolo-mode', String(yoloMode));
 		} catch {
 			// Ignore localStorage errors
 		}
 	}, [yoloMode]);
 
-	// Persist plan mode to localStorage
+	// Persist team mode to localStorage
 	useEffect(() => {
 		try {
-			localStorage.setItem('snow-plan-mode', String(planMode));
+			localStorage.setItem('team-mode', String(planMode));
 		} catch {
 			// Ignore localStorage errors
 		}

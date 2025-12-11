@@ -21,6 +21,8 @@ export type TranslationKeys = {
 		customHeadersSettingsInfo: string;
 		mcpSettings: string;
 		mcpSettingsInfo: string;
+		mainAgentSettings: string;
+		mainAgentSettingsInfo: string;
 		subAgentSettings: string;
 		subAgentSettingsInfo: string;
 		sensitiveCommands: string;
@@ -422,7 +424,6 @@ export type TranslationKeys = {
 			compact: string;
 			home: string;
 			review: string;
-			role: string;
 			usage: string;
 			export: string;
 			custom: string;
@@ -702,7 +703,7 @@ export type TranslationKeys = {
 		contentSearchHint: string;
 		fileSearchHint: string;
 		yoloModeActive: string;
-		planModeActive: string;
+		teamModeActive: string;
 		tokens: string;
 		cached: string;
 		newCache: string;
@@ -817,6 +818,34 @@ export type TranslationKeys = {
 		error: string;
 		tabToSwitch: string;
 		noDataForPeriod: string;
+	},
+	// Main Agent Management
+	mainAgent: {
+		title: string;
+		type: {
+			general: string;
+			team: string;
+		};
+		status: {
+			builtin: string;
+			custom: string;
+		};
+		instructions: string;
+		reset: {
+			success: string;
+			failed: string;
+		};
+		edit: {
+			title: string;
+			saveSuccess: string;
+			saveError: string;
+			confirmReset: string;
+			tools: string;
+			subAgents: string;
+			systemPrompt: string;
+			name: string;
+			description: string;
+		};
 	};
 	// Working Directory Panel
 	workingDirectoryPanel: {

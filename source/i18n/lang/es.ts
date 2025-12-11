@@ -23,8 +23,11 @@ export const es: TranslationKeys = {
 		customHeadersSettings: 'Configuración de Encabezados Personalizados',
 		customHeadersSettingsInfo:
 			'Configurar encabezados HTTP personalizados para solicitudes API',
-		mcpSettings: 'Configuración MCP',
-		mcpSettingsInfo: 'Configurar servidores de Protocolo de Contexto de Modelo',
+		mcpSettings: 'Configuración de MCP',
+		mcpSettingsInfo: 'Configurar servidores de Model Context Protocol',
+		mainAgentSettings: 'Configuración de Agente Principal',
+		mainAgentSettingsInfo:
+			'Configurar permisos de herramientas y prompts del sistema del agente principal',
 		subAgentSettings: 'Configuración de Sub-Agentes',
 		subAgentSettingsInfo:
 			'Configurar sub-agentes con permisos de herramientas personalizados',
@@ -441,7 +444,7 @@ export const es: TranslationKeys = {
 		selectItem: 'Tab/Enter - Seleccionar elemento en el selector',
 		cancelClose: 'ESC - Cancelar/Cerrar selector o interrumpir respuesta de IA',
 		toggleYolo:
-			'Shift+Tab/Ctrl+Y - Alternar modos YOLO/Plan (ciclo: YOLO → YOLO+Plan → Plan → Apagado)',
+			'Shift+Tab/Ctrl+Y - Alternar modos YOLO/Team (ciclo: YOLO → YOLO+Team → Apagado)',
 		tipsTitle: '💡 Consejos:',
 		tipUseHelp: 'Usa /help en cualquier momento para ver esta información',
 		tipShowCommands: 'Escribe / para ver todos los comandos disponibles',
@@ -462,14 +465,14 @@ export const es: TranslationKeys = {
 			resume: 'Reanudar conversación',
 			mcp: 'Mostrar servicios y herramientas del Protocolo de Contexto de Modelo',
 			yolo: 'Alternar modo desatendido (aprobar automáticamente todas las herramientas)',
-			plan: 'Alternar modo Plan (asistente de planificación especializado)',
+			plan: 'Alternar modo Team (asistente de planificación especializado)',
 			init: 'Analizar proyecto y generar/actualizar documento AGENTS.md',
 			ide: 'Conectar al editor VSCode y sincronizar contexto',
 			compact: 'Comprimir historial de conversación usando modelo compacto',
 			home: 'Volver a la pantalla de bienvenida para modificar configuración',
 			review:
 				'Revisar cambios de git e identificar posibles problemas. Soporta: /review [nota opcional]',
-			role: 'Abrir o crear archivo ROLE.md para personalizar el rol del asistente IA',
+
 			usage: 'Ver estadísticas de uso de tokens con gráficos interactivos',
 			export:
 				'Exportar conversación de chat a archivo de texto con diálogo de guardado',
@@ -764,8 +767,8 @@ export const es: TranslationKeys = {
 			'Escribe para filtrar archivos • Tab/Enter Seleccionar • ESC Cancelar',
 		yoloModeActive:
 			'❁ MODO YOLO ACTIVO - Todas las herramientas serán aprobadas automáticamente sin confirmación',
-		planModeActive:
-			'⚐ Modo Plan activo - Agente especializado en planificación y coordinación',
+		teamModeActive:
+			'⚐ Modo Team activo - Agente especializado en planificación y coordinación',
 		tokens: ' tokens',
 		cached: 'en caché',
 		newCache: 'nuevo caché',
@@ -891,6 +894,36 @@ export const es: TranslationKeys = {
 		error: 'Error: {error}',
 		tabToSwitch: '- Tab para cambiar',
 		noDataForPeriod: 'No hay datos de uso para este período',
+	},
+	mainAgent: {
+		title: '❆ Configuración de Agente Principal',
+		type: {
+			general: 'General',
+			team: 'Equipo',
+		},
+		status: {
+			builtin: 'Integrado',
+			custom: 'Personalizado',
+		},
+		instructions:
+			'↑↓: Seleccionar | Enter: Editar | D: Restablecer | Esc: Volver',
+		reset: {
+			success: 'Agente principal {agentName} reiniciado con éxito',
+			failed: 'Error al reiniciar el agente principal {agentName}',
+		},
+		edit: {
+			title: 'Editar Agente Principal',
+			saveSuccess:
+				'Configuración del agente principal {agentName} guardada exitosamente',
+			saveError: 'Error al guardar',
+			confirmReset:
+				'¿Confirmar restablecer el agente principal {agentName} a la configuración predeterminada?',
+			tools: 'Herramientas',
+			subAgents: 'Sub-Agentes',
+			systemPrompt: 'Mensaje del Sistema',
+			name: 'Nombre del Agente',
+			description: 'Descripción',
+		},
 	},
 	workingDirectoryPanel: {
 		title: 'Directorios de Trabajo',

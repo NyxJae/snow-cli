@@ -15,6 +15,7 @@ import {logger} from '../utils/core/logger.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 import {saveUsageToFile} from '../utils/core/usageLogger.js';
 import {isDevMode, getDevUserId} from '../utils/core/devMode.js';
+import {filterToolsByMainAgent} from '../utils/core/toolFilterUtils.js';
 
 export interface AnthropicOptions {
 	model: string;
@@ -25,7 +26,7 @@ export interface AnthropicOptions {
 	sessionId?: string; // Session ID for user tracking and caching
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
 	disableThinking?: boolean; // 禁用 Extended Thinking 功能（用于 agents 等场景，默认 false）
-	planMode?: boolean; // 启用 Plan 模式（使用 Plan 模式系统提示词）
+	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
 	// Sub-agent configuration overrides
 	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
 	customSystemPromptId?: string; // 自定义系统提示词 ID
@@ -162,7 +163,7 @@ function convertToAnthropicMessages(
 	customSystemPromptOverride?: string, // Allow override for sub-agents
 	cacheTTL: '5m' | '1h' = '5m', // Cache TTL configuration
 	disableThinking: boolean = false, // When true, strip thinking blocks from messages
-	planMode: boolean = false, // When true, use Plan mode system prompt
+	// When true, use Team mode system prompt (deprecated)
 ): {
 	system?: any;
 	messages: AnthropicMessageParam[];
@@ -333,7 +334,7 @@ function convertToAnthropicMessages(
 				content: [
 					{
 						type: 'text',
-						text: getSystemPromptForMode(planMode),
+						text: getSystemPromptForMode(),
 						cache_control: {type: 'ephemeral', ttl: cacheTTL},
 					},
 				] as any,
@@ -341,7 +342,7 @@ function convertToAnthropicMessages(
 		}
 	} else if (!systemContent && includeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
-		systemContent = getSystemPromptForMode(planMode);
+		systemContent = getSystemPromptForMode();
 	}
 
 	let lastUserMessageIndex = -1;
@@ -543,18 +544,20 @@ export async function* createStreamingAnthropicCompletion(
 				customSystemPromptContent, // 传递自定义系统提示词
 				config.anthropicCacheTTL || '5m', // 使用配置的 TTL，默认 5m
 				options.disableThinking || false, // Strip thinking blocks when thinking is disabled
-				options.planMode || false, // Use Plan mode system prompt if enabled
+				// Use Team mode system prompt if enabled (deprecated)
 			);
 
 			// Use persistent userId that remains the same until application restart
 			const userId = getPersistentUserId();
+			// 使用通用工具筛选函数
+			const {filteredTools} = filterToolsByMainAgent({tools: options.tools});
 
 			const requestBody: any = {
 				model: options.model || config.advancedModel,
 				max_tokens: options.max_tokens || 4096,
 				system,
 				messages,
-				tools: convertToolsToAnthropic(options.tools),
+				tools: convertToolsToAnthropic(filteredTools),
 				metadata: {
 					user_id: userId,
 				},

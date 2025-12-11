@@ -1,12 +1,12 @@
 import { registerCommand, type CommandResult } from '../execution/commandExecutor.js';
 
-// Plan command handler - toggles plan mode
-registerCommand('plan', {
+// Team command handler - toggles team mode
+registerCommand('team', {
 	execute: (): CommandResult => {
 		return {
 			success: true,
-			action: 'togglePlan',
-			message: 'Toggling Plan mode'
+			action: 'toggleTeam',
+			message: 'Toggling Team mode'
 		};
 	}
 });

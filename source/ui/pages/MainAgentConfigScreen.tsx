@@ -1,0 +1,1027 @@
+import React, {useState, useCallback, useMemo, useEffect} from 'react';
+import {Box, Text, useInput} from 'ink';
+import {existsSync, unlinkSync} from 'fs';
+import TextInput from 'ink-text-input';
+import {Alert, Spinner} from '@inkjs/ui';
+import {getMCPServicesInfo} from '../../utils/execution/mcpToolsManager.js';
+import type {MCPServiceTools} from '../../utils/execution/mcpToolsManager.js';
+import {
+	loadMainAgentConfig,
+	saveMainAgentConfig,
+	existsMainAgentConfig,
+	getMainAgentConfigPath,
+} from '../../utils/MainAgentConfigIO.js';
+import type {MainAgentConfig} from '../../types/MainAgentConfig.js';
+import {getSubAgents} from '../../utils/config/subAgentConfig.js';
+import {getBuiltinMainAgentConfigs} from '../../config/DefaultMainAgentConfig.js';
+import {useI18n} from '../../i18n/index.js';
+import {useTheme} from '../contexts/ThemeContext.js';
+
+// Focus event handling - prevent terminal focus events from appearing as input
+const focusEventTokenRegex = /(?:\x1b)?\[[0-9;]*[IO]/g;
+
+const isFocusEventInput = (value?: string) => {
+	if (!value) {
+		return false;
+	}
+
+	if (
+		value === '\x1b[I' ||
+		value === '\x1b[O' ||
+		value === '[I' ||
+		value === '[O'
+	) {
+		return true;
+	}
+
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return false;
+	}
+
+	const tokens = trimmed.match(focusEventTokenRegex);
+	if (!tokens) {
+		return false;
+	}
+
+	const normalized = trimmed.replace(/\s+/g, '');
+	const tokensCombined = tokens.join('');
+	return tokensCombined === normalized;
+};
+
+const stripFocusArtifacts = (value: string) => {
+	if (!value) {
+		return '';
+	}
+
+	return value
+		.replace(/\x1b\[[0-9;]*[IO]/g, '')
+		.replace(/\[[0-9;]*[IO]/g, '')
+		.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+};
+
+type Props = {
+	onBack: () => void;
+	onSave: () => void;
+	inlineMode?: boolean;
+	agentId: string; // 主代理ID（general 或 team）
+};
+
+type ToolCategory = {
+	name: string;
+	tools: string[];
+};
+
+type FormField =
+	| 'name'
+	| 'description'
+	| 'systemPrompt'
+	| 'tools'
+	| 'subAgents';
+
+export default function MainAgentConfigScreen({
+	onBack,
+	onSave,
+	inlineMode = false,
+	agentId,
+}: Props) {
+	const {theme} = useTheme();
+	const {t} = useI18n();
+	const [agentName, setAgentName] = useState('');
+	const [description, setDescription] = useState('');
+	const [systemPrompt, setSystemPrompt] = useState('');
+	const [systemPromptExpanded, setSystemPromptExpanded] = useState(false);
+	const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
+	const [selectedSubAgents, setSelectedSubAgents] = useState<Set<string>>(
+		new Set(),
+	);
+	const [currentField, setCurrentField] = useState<FormField>('name');
+	const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
+	const [selectedToolIndex, setSelectedToolIndex] = useState(0);
+	const [selectedSubAgentIndex, setSelectedSubAgentIndex] = useState(0);
+	const [showSuccess, setShowSuccess] = useState(false);
+	const [saveError, setSaveError] = useState<string | null>(null);
+	const [isLoadingMCP, setIsLoadingMCP] = useState(true);
+	const [mcpServices, setMcpServices] = useState<MCPServiceTools[]>([]);
+	const [loadError, setLoadError] = useState<string | null>(null);
+
+	// Tool categories with translations
+	const toolCategories: ToolCategory[] = [
+		{
+			name: t.subAgentConfig.filesystemTools,
+			tools: [
+				'filesystem-read',
+				'filesystem-create',
+				'filesystem-edit',
+				'filesystem-edit_search',
+			],
+		},
+		{
+			name: t.subAgentConfig.terminalTools,
+			tools: ['terminal-execute'],
+		},
+		{
+			name: t.subAgentConfig.aceTools,
+			tools: [
+				'ace-find_definition',
+				'ace-find_references',
+				'ace-semantic_search',
+				'ace-text_search',
+				'ace-file_outline',
+			],
+		},
+		{
+			name: t.subAgentConfig.codebaseTools,
+			tools: ['codebase-search'],
+		},
+		{
+			name: t.subAgentConfig.todoTools,
+			tools: ['todo-get', 'todo-update', 'todo-add', 'todo-delete'],
+		},
+		{
+			name: t.subAgentConfig.usefulInfoTools || 'Useful Information',
+			tools: ['useful-info-add', 'useful-info-delete', 'useful-info-list'],
+		},
+		{
+			name: t.subAgentConfig.notebookTools || 'Notebook',
+			tools: [
+				'notebook-add',
+				'notebook-query',
+				'notebook-update',
+				'notebook-delete',
+				'notebook-list',
+			],
+		},
+		{
+			name: t.subAgentConfig.ideTools,
+			tools: ['ide-get_diagnostics'],
+		},
+		{
+			name: t.subAgentConfig.userInteractionTools || 'User Interaction',
+			tools: ['askuser-ask_question'],
+		},
+	];
+
+	// Load available sub-agents
+	const availableSubAgents = useMemo(() => {
+		const agents = getSubAgents();
+		return agents.map(agent => ({
+			id: agent.id,
+			name: agent.name,
+		}));
+	}, []);
+
+	// Load agent data on mount
+	useEffect(() => {
+		// 检查配置文件是否存在
+		const hasConfigFile = existsMainAgentConfig();
+		let agent: MainAgentConfig | undefined;
+
+		if (hasConfigFile) {
+			// 有配置文件：加载用户自定义配置
+			const configFile = loadMainAgentConfig();
+			agent = configFile.agents[agentId];
+		} else {
+			// 没有配置文件：使用代码内置配置
+			const builtinConfigs = getBuiltinMainAgentConfigs();
+			agent = builtinConfigs[agentId];
+		}
+
+		if (agent) {
+			setAgentName(agent.basicInfo.name);
+			setDescription(agent.basicInfo.description);
+			setSystemPrompt(agent.systemPrompt || '');
+			// 处理工具配置：MainAgentConfig的tools已经是string[]类型
+			const tools = Array.isArray(agent.tools) ? agent.tools : [];
+			setSelectedTools(new Set(tools));
+
+			// 处理子代理配置：过滤掉不存在的子代理
+			const availableSubAgents = getSubAgents();
+			const availableSubAgentIds = new Set(
+				availableSubAgents.map(sub => sub.id),
+			);
+			const validSubAgents = (agent.availableSubAgents || []).filter(subId =>
+				availableSubAgentIds.has(subId),
+			);
+			setSelectedSubAgents(new Set(validSubAgents));
+		}
+	}, [agentId]);
+
+	// Load MCP services on mount
+	useEffect(() => {
+		const loadMCPServices = async () => {
+			try {
+				setIsLoadingMCP(true);
+				setLoadError(null);
+				const services = await getMCPServicesInfo();
+				setMcpServices(services);
+			} catch (error) {
+				setLoadError(
+					error instanceof Error
+						? error.message
+						: 'Failed to load MCP services',
+				);
+			} finally {
+				setIsLoadingMCP(false);
+			}
+		};
+
+		loadMCPServices();
+	}, []);
+
+	// Combine built-in and MCP tool categories
+	const allToolCategories = useMemo(() => {
+		const categories = [...toolCategories];
+
+		// Add custom MCP services as separate categories
+		for (const service of mcpServices) {
+			if (!service.isBuiltIn && service.connected && service.tools.length > 0) {
+				categories.push({
+					name: `${service.serviceName} ${t.subAgentConfig.categoryMCP}`,
+					tools: service.tools.map(t => t.name),
+				});
+			}
+		}
+
+		return categories;
+	}, [mcpServices, toolCategories, t]);
+
+	// Get all available tools
+	const allTools = useMemo(
+		() => allToolCategories.flatMap(cat => cat.tools),
+		[allToolCategories],
+	);
+
+	const handleToggleTool = useCallback((tool: string) => {
+		setSelectedTools(prev => {
+			const newSet = new Set(prev);
+			if (newSet.has(tool)) {
+				newSet.delete(tool);
+			} else {
+				newSet.add(tool);
+			}
+			return newSet;
+		});
+	}, []);
+
+	const handleToggleCategory = useCallback(() => {
+		const category = allToolCategories[selectedCategoryIndex];
+		if (!category) return;
+
+		const allSelected = category.tools.every(tool => selectedTools.has(tool));
+
+		setSelectedTools(prev => {
+			const newSet = new Set(prev);
+			if (allSelected) {
+				// Deselect all in category
+				category.tools.forEach(tool => newSet.delete(tool));
+			} else {
+				// Select all in category
+				category.tools.forEach(tool => newSet.add(tool));
+			}
+			return newSet;
+		});
+	}, [selectedCategoryIndex, selectedTools, allToolCategories]);
+
+	const handleToggleCurrentTool = useCallback(() => {
+		const category = allToolCategories[selectedCategoryIndex];
+		if (!category) return;
+
+		const tool = category.tools[selectedToolIndex];
+		if (tool) {
+			handleToggleTool(tool);
+		}
+	}, [
+		selectedCategoryIndex,
+		selectedToolIndex,
+		handleToggleTool,
+		allToolCategories,
+	]);
+
+	const handleToggleSubAgent = useCallback((subAgentId: string) => {
+		setSelectedSubAgents(prev => {
+			const newSet = new Set(prev);
+			if (newSet.has(subAgentId)) {
+				newSet.delete(subAgentId);
+			} else {
+				newSet.add(subAgentId);
+			}
+			return newSet;
+		});
+	}, []);
+
+	const handleToggleCurrentSubAgent = useCallback(() => {
+		const subAgent = availableSubAgents[selectedSubAgentIndex];
+		if (subAgent) {
+			handleToggleSubAgent(subAgent.id);
+		}
+	}, [selectedSubAgentIndex, handleToggleSubAgent, availableSubAgents]);
+
+	const handleSave = useCallback(() => {
+		setSaveError(null);
+
+		// Validate
+		if (!agentName.trim()) {
+			setSaveError('Agent name is required');
+			return;
+		}
+		if (!description.trim()) {
+			setSaveError('Description is required');
+			return;
+		}
+		if (selectedTools.size === 0) {
+			setSaveError('At least one tool must be selected');
+			return;
+		}
+
+		try {
+			// 检查是否为重置操作（与内置配置完全相同）
+			const builtinConfigs = getBuiltinMainAgentConfigs();
+			const builtinAgent = builtinConfigs[agentId];
+
+			const isResetToBuiltin =
+				builtinAgent &&
+				agentName.trim() === builtinAgent.basicInfo.name &&
+				description.trim() === builtinAgent.basicInfo.description &&
+				systemPrompt.trim() === builtinAgent.systemPrompt.trim() &&
+				JSON.stringify(Array.from(selectedTools).sort()) ===
+					JSON.stringify((builtinAgent.tools || []).sort()) &&
+				JSON.stringify(Array.from(selectedSubAgents).sort()) ===
+					JSON.stringify((builtinAgent.availableSubAgents || []).sort());
+
+			// 智能加载配置：如果配置文件不存在，只创建当前编辑代理的配置
+			let configFile: import('../../types/MainAgentConfig.js').MainAgentConfigFile;
+			const configExists = existsMainAgentConfig();
+
+			if (configExists) {
+				// 配置文件存在，加载完整配置
+				configFile = loadMainAgentConfig();
+			} else {
+				// 配置文件不存在，创建只包含当前代理的空配置
+				configFile = {
+					agents: {},
+				};
+			}
+
+			if (isResetToBuiltin) {
+				// 重置操作：删除对应的主代理配置
+				if (configFile.agents[agentId]) {
+					delete configFile.agents[agentId];
+
+					// 如果两个主代理都重置了，删除配置文件
+					const remainingAgents = Object.keys(configFile.agents);
+					if (remainingAgents.length === 0) {
+						// 删除配置文件
+						const configPath = getMainAgentConfigPath();
+						if (existsSync(configPath)) {
+							unlinkSync(configPath);
+						}
+					} else {
+						// 保存剩余的配置
+						saveMainAgentConfig(configFile);
+					}
+				}
+			} else {
+				// 正常保存操作：创建或更新配置
+				const existingAgent = configFile.agents[agentId];
+
+				if (!existingAgent && !builtinAgent) {
+					setSaveError(`Agent ${agentId} not found`);
+					return;
+				}
+
+				// 清理不存在的子代理ID
+				const availableSubAgents = getSubAgents();
+				const availableSubAgentIds = new Set(
+					availableSubAgents.map(sub => sub.id),
+				);
+				const validSubAgents = Array.from(selectedSubAgents).filter(subId =>
+					availableSubAgentIds.has(subId),
+				);
+
+				// 清理无效的工具ID
+				const availableToolIds = new Set(allTools);
+				const validTools = Array.from(selectedTools).filter(toolId =>
+					availableToolIds.has(toolId),
+				);
+
+				// 清理配置文件中所有代理的无效子代理ID和工具ID
+				for (const [existingAgentId, existingAgentConfig] of Object.entries(
+					configFile.agents,
+				)) {
+					let needsUpdate = false;
+					const updatedConfig = {...existingAgentConfig};
+
+					// 清理无效的子代理ID
+					if (existingAgentConfig.availableSubAgents) {
+						const cleanedSubAgents =
+							existingAgentConfig.availableSubAgents.filter(subId =>
+								availableSubAgentIds.has(subId),
+							);
+						if (
+							cleanedSubAgents.length !==
+							existingAgentConfig.availableSubAgents.length
+						) {
+							updatedConfig.availableSubAgents = cleanedSubAgents;
+							needsUpdate = true;
+						}
+					}
+
+					// 清理无效的工具ID
+					if (existingAgentConfig.tools) {
+						const cleanedTools = existingAgentConfig.tools.filter(toolId =>
+							availableToolIds.has(toolId),
+						);
+						if (cleanedTools.length !== existingAgentConfig.tools.length) {
+							updatedConfig.tools = cleanedTools;
+							needsUpdate = true;
+						}
+					}
+
+					// 只有在需要更新时才设置新配置
+					if (needsUpdate) {
+						configFile.agents[existingAgentId] = updatedConfig;
+					}
+				}
+
+				// Update agent configuration
+				const baseAgent = existingAgent || builtinAgent!;
+
+				const updatedAgent: MainAgentConfig = {
+					basicInfo: {
+						...baseAgent.basicInfo,
+						name: agentName,
+						description: description,
+						updatedAt: new Date().toISOString(),
+					},
+					tools: validTools,
+					availableSubAgents: validSubAgents,
+					systemPrompt: systemPrompt,
+				};
+
+				configFile.agents[agentId] = updatedAgent;
+				saveMainAgentConfig(configFile);
+			}
+
+			setShowSuccess(true);
+			setTimeout(() => {
+				setShowSuccess(false);
+				onSave();
+			}, 1500);
+		} catch (error) {
+			setSaveError(
+				error instanceof Error ? error.message : 'Failed to save configuration',
+			);
+		}
+	}, [
+		agentName,
+		description,
+		systemPrompt,
+		selectedTools,
+		selectedSubAgents,
+		agentId,
+		onSave,
+	]);
+
+	useInput((rawInput, key) => {
+		const input = stripFocusArtifacts(rawInput);
+
+		// Ignore focus events completely
+		if (!input && isFocusEventInput(rawInput)) {
+			return;
+		}
+
+		if (isFocusEventInput(rawInput)) {
+			return;
+		}
+
+		if (key.escape) {
+			onBack();
+			return;
+		}
+
+		// Define main fields order for navigation
+		const mainFields: FormField[] = [
+			'name',
+			'description',
+			'systemPrompt',
+			'tools',
+			'subAgents',
+		];
+		const currentFieldIndex = mainFields.indexOf(currentField);
+
+		if (key.upArrow) {
+			if (currentField === 'systemPrompt') {
+				// Jump to previous main field
+				setCurrentField('description');
+				return;
+			} else if (currentField === 'tools') {
+				// Navigate within tool list
+				if (selectedToolIndex > 0) {
+					setSelectedToolIndex(prev => prev - 1);
+				} else if (selectedCategoryIndex > 0) {
+					const prevCategory = allToolCategories[selectedCategoryIndex - 1];
+					setSelectedCategoryIndex(prev => prev - 1);
+					setSelectedToolIndex(
+						prevCategory ? prevCategory.tools.length - 1 : 0,
+					);
+				} else {
+					// At top of tools, jump to previous field
+					setCurrentField('systemPrompt');
+				}
+				return;
+			} else if (currentField === 'subAgents') {
+				// Navigate within sub-agent list
+				if (selectedSubAgentIndex > 0) {
+					setSelectedSubAgentIndex(prev => prev - 1);
+				} else {
+					// At top of sub-agents, jump to previous field
+					setCurrentField('tools');
+				}
+				return;
+			} else {
+				// Normal field: jump to previous main field
+				const prevIndex =
+					currentFieldIndex > 0 ? currentFieldIndex - 1 : mainFields.length - 1;
+				setCurrentField(mainFields[prevIndex]!);
+				return;
+			}
+		}
+
+		if (key.downArrow) {
+			if (currentField === 'systemPrompt') {
+				// Jump to next main field
+				setCurrentField('tools');
+				setSelectedCategoryIndex(0);
+				setSelectedToolIndex(0);
+				return;
+			} else if (currentField === 'tools') {
+				// Navigate within tool list
+				const currentCategory = allToolCategories[selectedCategoryIndex];
+				if (!currentCategory) return;
+
+				if (selectedToolIndex < currentCategory.tools.length - 1) {
+					setSelectedToolIndex(prev => prev + 1);
+				} else if (selectedCategoryIndex < allToolCategories.length - 1) {
+					setSelectedCategoryIndex(prev => prev + 1);
+					setSelectedToolIndex(0);
+				} else {
+					// At bottom of tools, jump to next field
+					setCurrentField('subAgents');
+					setSelectedSubAgentIndex(0);
+				}
+				return;
+			} else if (currentField === 'subAgents') {
+				// Navigate within sub-agent list
+				if (selectedSubAgentIndex < availableSubAgents.length - 1) {
+					setSelectedSubAgentIndex(prev => prev + 1);
+				} else {
+					// At bottom of sub-agents, jump to first field (循环)
+					setCurrentField('name');
+				}
+				return;
+			} else {
+				// Normal field: jump to next main field
+				const nextIndex =
+					currentFieldIndex < mainFields.length - 1 ? currentFieldIndex + 1 : 0;
+				setCurrentField(mainFields[nextIndex]!);
+				return;
+			}
+		}
+
+		// System prompt field controls - Space to toggle expansion
+		if (currentField === 'systemPrompt' && input === ' ') {
+			setSystemPromptExpanded(prev => !prev);
+			return;
+		}
+
+		// Tool-specific controls
+		if (currentField === 'tools') {
+			if (key.leftArrow) {
+				// Navigate to previous category
+				if (selectedCategoryIndex > 0) {
+					setSelectedCategoryIndex(prev => prev - 1);
+					setSelectedToolIndex(0);
+				}
+				return;
+			}
+			if (key.rightArrow) {
+				// Navigate to next category
+				if (selectedCategoryIndex < allToolCategories.length - 1) {
+					setSelectedCategoryIndex(prev => prev + 1);
+					setSelectedToolIndex(0);
+				}
+				return;
+			}
+			if (input === ' ') {
+				// Toggle current tool
+				handleToggleCurrentTool();
+				return;
+			}
+			if (input === 'a' || input === 'A') {
+				// Toggle all in category
+				handleToggleCategory();
+				return;
+			}
+		}
+
+		// Sub-agent specific controls
+		if (currentField === 'subAgents') {
+			if (input === ' ') {
+				// Toggle current sub-agent
+				handleToggleCurrentSubAgent();
+				return;
+			}
+		}
+
+		// Global left/right arrow navigation between main fields (except tools field which uses it for categories)
+		if (key.leftArrow && currentField !== 'tools') {
+			// Navigate to previous main field
+			const prevIndex =
+				currentFieldIndex > 0 ? currentFieldIndex - 1 : mainFields.length - 1;
+			setCurrentField(mainFields[prevIndex]!);
+			return;
+		}
+
+		if (key.rightArrow && currentField !== 'tools') {
+			// Navigate to next main field
+			const nextIndex =
+				currentFieldIndex < mainFields.length - 1 ? currentFieldIndex + 1 : 0;
+			setCurrentField(mainFields[nextIndex]!);
+			return;
+		}
+
+		// Save with Enter key
+		if (key.return) {
+			handleSave();
+			return;
+		}
+	});
+
+	// Scrollable list rendering helper
+	const renderScrollableList = <T extends {id: string; name: string}>(
+		items: T[],
+		selectedIndex: number,
+		selectedSet: Set<string>,
+		isActive: boolean,
+		maxVisible = 5,
+		keyPrefix: string,
+	) => {
+		const totalItems = items.length;
+
+		// If no items available, show hint
+		if (totalItems === 0) {
+			return (
+				<Box flexDirection="column">
+					<Text color={theme.colors.menuSecondary} dimColor>
+						{t.subAgentConfig.noItems}
+					</Text>
+				</Box>
+			);
+		}
+
+		// Calculate visible range
+		let startIndex = Math.max(0, selectedIndex - Math.floor(maxVisible / 2));
+		let endIndex = Math.min(totalItems, startIndex + maxVisible);
+
+		// Adjust start position to ensure maxVisible items are shown
+		if (endIndex - startIndex < maxVisible) {
+			startIndex = Math.max(0, endIndex - maxVisible);
+		}
+
+		const visibleItems = items.slice(startIndex, endIndex);
+		const hasMore = totalItems > maxVisible;
+
+		return (
+			<Box flexDirection="column">
+				{startIndex > 0 && (
+					<Text color={theme.colors.menuSecondary} dimColor>
+						↑{' '}
+						{t.subAgentConfig.moreAbove.replace('{count}', String(startIndex))}
+					</Text>
+				)}
+				{visibleItems.map((item, relativeIndex) => {
+					const actualIndex = startIndex + relativeIndex;
+					const isHighlighted = actualIndex === selectedIndex;
+					const isSelected = selectedSet.has(item.id);
+					return (
+						<Box key={`${keyPrefix}-${actualIndex}`} marginY={0}>
+							<Text
+								color={
+									isActive && isHighlighted
+										? theme.colors.menuSelected
+										: theme.colors.menuNormal
+								}
+								bold={isHighlighted}
+							>
+								{isActive && isHighlighted ? '❯ ' : '  '}
+								{isSelected ? '[✓] ' : '[ ] '}
+								{item.name}
+							</Text>
+						</Box>
+					);
+				})}
+				{endIndex < totalItems && (
+					<Text color={theme.colors.menuSecondary} dimColor>
+						↓{' '}
+						{t.subAgentConfig.moreBelow.replace(
+							'{count}',
+							String(totalItems - endIndex),
+						)}
+					</Text>
+				)}
+				{isActive && hasMore && totalItems > 0 && (
+					<Text color={theme.colors.menuSecondary} dimColor>
+						{' '}
+						{t.subAgentConfig.scrollToggleHint}
+					</Text>
+				)}
+				{isActive && !hasMore && totalItems > 0 && (
+					<Text color={theme.colors.menuSecondary} dimColor>
+						{' '}
+						{t.subAgentConfig.spaceToggleHint}
+					</Text>
+				)}
+			</Box>
+		);
+	};
+
+	// Scrollable tools rendering helper
+	const renderScrollableTools = (
+		tools: string[],
+		selectedIndex: number,
+		maxVisible = 5,
+	) => {
+		const totalTools = tools.length;
+
+		// Calculate visible range
+		let startIndex = Math.max(0, selectedIndex - Math.floor(maxVisible / 2));
+		let endIndex = Math.min(totalTools, startIndex + maxVisible);
+
+		// Adjust start position to ensure maxVisible items are shown
+		if (endIndex - startIndex < maxVisible) {
+			startIndex = Math.max(0, endIndex - maxVisible);
+		}
+
+		const visibleTools = tools.slice(startIndex, endIndex);
+		const hasMore = totalTools > maxVisible;
+
+		return (
+			<Box flexDirection="column" marginLeft={2}>
+				{startIndex > 0 && (
+					<Text color={theme.colors.menuSecondary} dimColor>
+						↑{' '}
+						{t.subAgentConfig.moreTools.replace('{count}', String(startIndex))}
+					</Text>
+				)}
+				{visibleTools.map((tool, relativeIndex) => {
+					const actualIndex = startIndex + relativeIndex;
+					const isCurrentTool = actualIndex === selectedIndex;
+					return (
+						<Box key={tool}>
+							<Text
+								color={
+									isCurrentTool
+										? theme.colors.menuInfo
+										: theme.colors.menuNormal
+								}
+								bold={isCurrentTool}
+							>
+								{isCurrentTool ? '❯ ' : '  '}
+								{selectedTools.has(tool) ? '[✓]' : '[ ]'} {tool}
+							</Text>
+						</Box>
+					);
+				})}
+				{endIndex < totalTools && (
+					<Text color={theme.colors.menuSecondary} dimColor>
+						↓{' '}
+						{t.subAgentConfig.moreTools.replace(
+							'{count}',
+							String(totalTools - endIndex),
+						)}
+					</Text>
+				)}
+				{hasMore && (
+					<Text color={theme.colors.menuSecondary} dimColor>
+						{t.subAgentConfig.scrollToolsHint}
+					</Text>
+				)}
+			</Box>
+		);
+	};
+
+	const renderToolSelection = () => {
+		return (
+			<Box flexDirection="column">
+				<Text bold color={theme.colors.menuInfo}>
+					{t.subAgentConfig.toolSelection}
+				</Text>
+
+				{isLoadingMCP && (
+					<Box>
+						<Spinner label={t.subAgentConfig.loadingMCP} />
+					</Box>
+				)}
+
+				{loadError && (
+					<Box>
+						<Text color={theme.colors.warning}>
+							{t.subAgentConfig.mcpLoadError} {loadError}
+						</Text>
+					</Box>
+				)}
+
+				{allToolCategories.map((category, catIndex) => {
+					const isCurrent = catIndex === selectedCategoryIndex;
+					const selectedInCategory = category.tools.filter(tool =>
+						selectedTools.has(tool),
+					).length;
+
+					return (
+						<Box key={category.name} flexDirection="column">
+							<Box>
+								<Text
+									color={
+										isCurrent && currentField === 'tools'
+											? theme.colors.menuSelected
+											: theme.colors.menuNormal
+									}
+									bold={isCurrent && currentField === 'tools'}
+								>
+									{isCurrent && currentField === 'tools' ? '▶ ' : '  '}
+									{category.name} ({selectedInCategory}/{category.tools.length})
+								</Text>
+							</Box>
+
+							{isCurrent &&
+								currentField === 'tools' &&
+								renderScrollableTools(category.tools, selectedToolIndex, 5)}
+						</Box>
+					);
+				})}
+
+				<Text color={theme.colors.menuSecondary} dimColor>
+					{t.subAgentConfig.selectedTools} {selectedTools.size} /{' '}
+					{allTools.length} {t.subAgentConfig.toolsCount}
+				</Text>
+			</Box>
+		);
+	};
+
+	const renderSubAgentSelection = () => {
+		return (
+			<Box flexDirection="column">
+				<Text bold color={theme.colors.menuInfo}>
+					Available Sub-Agents
+				</Text>
+
+				{renderScrollableList(
+					availableSubAgents,
+					selectedSubAgentIndex,
+					selectedSubAgents,
+					currentField === 'subAgents',
+					5,
+					'subagent',
+				)}
+
+				<Text color={theme.colors.menuSecondary} dimColor>
+					Selected: {selectedSubAgents.size} / {availableSubAgents.length}
+				</Text>
+			</Box>
+		);
+	};
+
+	return (
+		<Box flexDirection="column" padding={1}>
+			{!inlineMode && (
+				<Box marginBottom={1}>
+					<Text bold color={theme.colors.menuInfo}>
+						{t.mainAgent.edit.title}
+					</Text>
+				</Box>
+			)}
+
+			{showSuccess && (
+				<Box marginBottom={1}>
+					<Alert variant="success">
+						{agentName
+							? t.mainAgent.edit.saveSuccess.replace('{agentName}', agentName)
+							: t.mainAgent.edit.saveSuccess.replace('{agentName}', '主代理')}
+					</Alert>
+				</Box>
+			)}
+
+			{saveError && (
+				<Box marginBottom={1}>
+					<Alert variant="error">{saveError}</Alert>
+				</Box>
+			)}
+
+			<Box flexDirection="column">
+				{/* Agent Name */}
+				<Box flexDirection="column">
+					<Text
+						bold
+						color={
+							currentField === 'name'
+								? theme.colors.menuSelected
+								: theme.colors.menuNormal
+						}
+					>
+						Agent Name
+					</Text>
+					<Box marginLeft={2}>
+						<TextInput
+							value={agentName}
+							onChange={value => setAgentName(stripFocusArtifacts(value))}
+							placeholder="Enter agent name"
+							focus={currentField === 'name'}
+						/>
+					</Box>
+				</Box>
+
+				{/* Description */}
+				<Box flexDirection="column">
+					<Text
+						bold
+						color={
+							currentField === 'description'
+								? theme.colors.menuSelected
+								: theme.colors.menuNormal
+						}
+					>
+						Description
+					</Text>
+					<Box marginLeft={2}>
+						<TextInput
+							value={description}
+							onChange={value => setDescription(stripFocusArtifacts(value))}
+							placeholder="Enter agent description"
+							focus={currentField === 'description'}
+						/>
+					</Box>
+				</Box>
+
+				{/* System Prompt */}
+				<Box flexDirection="column">
+					<Text
+						bold
+						color={
+							currentField === 'systemPrompt'
+								? theme.colors.menuSelected
+								: theme.colors.menuNormal
+						}
+					>
+						System Prompt
+						{systemPrompt && systemPrompt.length > 100 && (
+							<Text color={theme.colors.menuSecondary} dimColor>
+								{' '}
+								{t.subAgentConfig.roleExpandHint.replace(
+									'{status}',
+									systemPromptExpanded
+										? t.subAgentConfig.roleExpanded
+										: t.subAgentConfig.roleCollapsed,
+								)}
+							</Text>
+						)}
+					</Text>
+					<Box marginLeft={2} flexDirection="column">
+						{systemPrompt &&
+						systemPrompt.length > 100 &&
+						!systemPromptExpanded ? (
+							<Text color={theme.colors.menuNormal}>
+								{systemPrompt.substring(0, 100)}...
+								<Text color={theme.colors.menuSecondary} dimColor>
+									{' '}
+									{t.subAgentConfig.roleViewFull}
+								</Text>
+							</Text>
+						) : (
+							<TextInput
+								value={systemPrompt}
+								onChange={value => setSystemPrompt(stripFocusArtifacts(value))}
+								placeholder="Enter system prompt"
+								focus={currentField === 'systemPrompt'}
+							/>
+						)}
+					</Box>
+				</Box>
+
+				{/* Tool Selection */}
+				{renderToolSelection()}
+
+				{/* Sub-Agent Selection */}
+				{renderSubAgentSelection()}
+
+				{/* Instructions */}
+				<Box marginTop={1}>
+					<Text color={theme.colors.menuSecondary} dimColor>
+						↑↓: Navigate | ←→: Switch category | Space: Toggle | Enter: Save |
+						Esc: Back
+					</Text>
+				</Box>
+			</Box>
+		</Box>
+	);
+}

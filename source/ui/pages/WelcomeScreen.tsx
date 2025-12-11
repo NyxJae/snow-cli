@@ -41,6 +41,12 @@ const ThemeSettingsScreen = React.lazy(
 	() => import('./ThemeSettingsScreen.js'),
 );
 const HooksConfigScreen = React.lazy(() => import('./HooksConfigScreen.js'));
+const MainAgentListScreen = React.lazy(
+	() => import('./MainAgentListScreen.js'),
+);
+const MainAgentConfigScreen = React.lazy(
+	() => import('./MainAgentConfigScreen.js'),
+);
 
 type Props = {
 	version?: string;
@@ -54,6 +60,8 @@ type InlineView =
 	| 'config'
 	| 'proxy-config'
 	| 'codebase-config'
+	| 'main-agent-list'
+	| 'main-agent-edit'
 	| 'subagent-list'
 	| 'subagent-add'
 	| 'subagent-edit'
@@ -74,6 +82,9 @@ export default function WelcomeScreen({
 	const [infoText, setInfoText] = useState(t.welcome.startChatInfo);
 	const [inlineView, setInlineView] = useState<InlineView>('menu');
 	const [editingAgentId, setEditingAgentId] = useState<string | undefined>();
+	const [editingMainAgentId, setEditingMainAgentId] = useState<
+		string | undefined
+	>();
 	const {columns: terminalWidth} = useTerminalSize();
 	const {stdout} = useStdout();
 	const isInitialMount = useRef(true);
@@ -133,6 +144,11 @@ export default function WelcomeScreen({
 				label: t.welcome.mcpSettings,
 				value: 'mcp',
 				infoText: t.welcome.mcpSettingsInfo,
+			},
+			{
+				label: t.welcome.mainAgentSettings,
+				value: 'main-agent',
+				infoText: t.welcome.mainAgentSettingsInfo,
 			},
 			{
 				label: t.welcome.subAgentSettings,
@@ -200,6 +216,8 @@ export default function WelcomeScreen({
 				setInlineView('proxy-config');
 			} else if (value === 'codebase') {
 				setInlineView('codebase-config');
+			} else if (value === 'main-agent') {
+				setInlineView('main-agent-list');
 			} else if (value === 'subagent') {
 				setInlineView('subagent-list');
 			} else if (value === 'sensitive-commands') {
@@ -253,6 +271,33 @@ export default function WelcomeScreen({
 		setRemountKey(prev => prev + 1);
 		setInlineView('subagent-list');
 	}, [stdout]);
+
+	const handleMainAgentEdit = useCallback((agentId: string) => {
+		setEditingMainAgentId(agentId);
+		setInlineView('main-agent-edit');
+	}, []);
+
+	const handleMainAgentConfigBack = useCallback(() => {
+		setInlineView('main-agent-list');
+	}, []);
+
+	const handleMainAgentConfigSave = useCallback(() => {
+		setInlineView('main-agent-list');
+	}, []);
+
+	// const handleMainAgentBack = useCallback(() => {
+	// 	// 从编辑返回列表时清除终端
+	// 	stdout.write(ansiEscapes.clearTerminal);
+	// 	setRemountKey(prev => prev + 1);
+	// 	setInlineView('main-agent-list');
+	// }, [stdout]);
+
+	// const handleMainAgentSave = useCallback(() => {
+	// 	// 保存后返回列表
+	// 	stdout.write(ansiEscapes.clearTerminal);
+	// 	setRemountKey(prev => prev + 1);
+	// 	setInlineView('main-agent-list');
+	// }, [stdout]);
 
 	// Clear terminal and re-render on terminal width change
 	// Use debounce to avoid flickering during continuous resize
@@ -359,6 +404,31 @@ export default function WelcomeScreen({
 							onSave={handleConfigSave}
 							inlineMode={true}
 						/>
+					</Box>
+				</Suspense>
+			)}
+			{inlineView === 'main-agent-list' && (
+				<Suspense fallback={loadingFallback}>
+					<Box paddingX={1}>
+						<MainAgentListScreen
+							onBack={handleBackToMenu}
+							onEdit={handleMainAgentEdit}
+							inlineMode={true}
+						/>
+					</Box>
+				</Suspense>
+			)}
+			{inlineView === 'main-agent-edit' && (
+				<Suspense fallback={loadingFallback}>
+					<Box paddingX={1}>
+						{editingMainAgentId && (
+							<MainAgentConfigScreen
+								agentId={editingMainAgentId}
+								onBack={handleMainAgentConfigBack}
+								onSave={handleMainAgentConfigSave}
+								inlineMode={true}
+							/>
+						)}
 					</Box>
 				</Suspense>
 			)}

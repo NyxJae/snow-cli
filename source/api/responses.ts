@@ -16,6 +16,8 @@ import type {
 } from './types.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 import {saveUsageToFile} from '../utils/core/usageLogger.js';
+import {filterToolsByMainAgent} from '../utils/core/toolFilterUtils.js';
+
 export interface ResponseOptions {
 	model: string;
 	messages: ChatMessage[];
@@ -32,7 +34,7 @@ export interface ResponseOptions {
 	store?: boolean;
 	include?: string[];
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
-	planMode?: boolean; // 启用 Plan 模式（使用 Plan 模式系统提示词）
+	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
 	// Sub-agent configuration overrides
 	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
 	customSystemPromptId?: string; // 自定义系统提示词 ID
@@ -168,7 +170,7 @@ function convertToResponseInput(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
 	customSystemPromptOverride?: string,
-	planMode: boolean = false, // When true, use Plan mode system prompt
+	// When true, use Team mode system prompt (deprecated)
 ): {
 	input: any[];
 	systemInstructions: string;
@@ -305,7 +307,7 @@ function convertToResponseInput(
 						type: 'input_text',
 						text:
 							'<environment_context>' +
-							getSystemPromptForMode(planMode) +
+							getSystemPromptForMode() +
 							'</environment_context>',
 					},
 				],
@@ -313,7 +315,7 @@ function convertToResponseInput(
 		}
 	} else if (includeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
-		systemInstructions = getSystemPromptForMode(planMode);
+		systemInstructions = getSystemPromptForMode();
 	} else {
 		// 既没有自定义系统提示词，也不需要添加默认系统提示词
 		systemInstructions = 'You are a helpful assistant.';
@@ -452,7 +454,7 @@ export async function* createStreamingResponse(
 		options.messages,
 		options.includeBuiltinSystemPrompt !== false, // 默认为 true
 		customSystemPromptContent,
-		options.planMode || false, // Pass planMode to use correct system prompt
+		// Pass teamMode to use correct system prompt (deprecated)
 	);
 
 	// 获取配置的 reasoning 设置
@@ -461,11 +463,14 @@ export async function* createStreamingResponse(
 	// 使用重试包装生成器
 	yield* withRetryGenerator(
 		async function* () {
+			// 使用通用工具筛选函数
+			const {filteredTools} = filterToolsByMainAgent({tools: options.tools});
+
 			const requestPayload: any = {
 				model: options.model || config.advancedModel,
 				instructions: systemInstructions,
 				input: requestInput,
-				tools: convertToolsForResponses(options.tools),
+				tools: convertToolsForResponses(filteredTools),
 				tool_choice: options.tool_choice,
 				parallel_tool_calls: false,
 				// 只有当 reasoning 启用时才添加 reasoning 字段

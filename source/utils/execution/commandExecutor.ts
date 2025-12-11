@@ -7,7 +7,7 @@ export interface CommandResult {
 		| 'info'
 		| 'showMcpInfo'
 		| 'toggleYolo'
-		| 'togglePlan'
+		| 'toggleTeam'
 		| 'initProject'
 		| 'compact'
 		| 'showSessionPanel'
