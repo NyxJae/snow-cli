@@ -100,25 +100,40 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		currentContextPercentageRef.current = currentContextPercentage;
 	}, [currentContextPercentage]);
 	const [yoloMode, setYoloMode] = useState(() => {
-		// If enableYolo prop is provided, use it (should always be true now)
-		if (enableYolo !== undefined) {
-			return enableYolo;
-		}
-		// Default to true for YOLO mode, but allow localStorage override
+		// Priority: MainAgentManager > enableYolo prop > localStorage
 		try {
-			const saved = localStorage.getItem('yolo-mode');
-			return saved !== null ? saved === 'true' : true;
+			const {mainAgentManager} = require('../../utils/MainAgentManager.js');
+			const currentMode = mainAgentManager.getCurrentMode();
+			// yolo or yolo-team mode means yoloMode is true
+			return currentMode === 'yolo' || currentMode === 'yolo-team';
 		} catch {
-			return true;
+			// Fallback to prop or localStorage
+			if (enableYolo !== undefined) {
+				return enableYolo;
+			}
+			try {
+				const saved = localStorage.getItem('yolo-mode');
+				return saved !== null ? saved === 'true' : true;
+			} catch {
+				return true;
+			}
 		}
 	});
 	const [planMode, setPlanMode] = useState(() => {
-		// Load team mode from localStorage on initialization
+		// Priority: MainAgentManager > localStorage
 		try {
-			const saved = localStorage.getItem('team-mode');
-			return saved === 'true';
+			const {mainAgentManager} = require('../../utils/MainAgentManager.js');
+			const currentMode = mainAgentManager.getCurrentMode();
+			// yolo-team or team mode means planMode is true
+			return currentMode === 'yolo-team' || currentMode === 'team';
 		} catch {
-			return false;
+			// Fallback to localStorage
+			try {
+				const saved = localStorage.getItem('team-mode');
+				return saved === 'true';
+			} catch {
+				return false;
+			}
 		}
 	});
 	const [simpleMode, setSimpleMode] = useState(() => {
