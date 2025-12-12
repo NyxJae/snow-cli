@@ -1,7 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import MarkdownRenderer from './common/MarkdownRenderer.js';
-import {getSubAgent} from '../../utils/config/subAgentConfig.js';
+import MarkdownRenderer from '../common/MarkdownRenderer.js';
+import {getSubAgent} from '../../../utils/config/subAgentConfig.js';
 
 /**
  * 子代理执行结果显示组件的属性接口
