@@ -1138,16 +1138,21 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				// Rolling back to the very first message means deleting entire session
 				sessionTruncateIndex = 0;
 			} else {
-				// Find the corresponding user message in session to delete
-				// We start from the end and count backwards
-				let sessionUserMessageCount = 0;
+				// Calculate truncate index based on user messages position
+				// Count user messages up to (but not including) selectedIndex in UI
+				const userMessagesBeforeSelected = messages
+					.slice(0, selectedIndex)
+					.filter(msg => msg.role === 'user').length;
 
-				for (let i = currentSession.messages.length - 1; i >= 0; i--) {
+				// Find the (N+1)th user message in session (where N = userMessagesBeforeSelected)
+				// This is the first user message we want to delete
+				let foundUserCount = 0;
+				for (let i = 0; i < currentSession.messages.length; i++) {
 					const msg = currentSession.messages[i];
 					if (msg && msg.role === 'user') {
-						sessionUserMessageCount++;
-						if (sessionUserMessageCount === uiUserMessagesToDelete) {
-							// We want to delete from this user message onwards
+						foundUserCount++;
+						if (foundUserCount > userMessagesBeforeSelected) {
+							// Truncate from this user message onwards
 							sessionTruncateIndex = i;
 							break;
 						}
@@ -1204,10 +1209,21 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			await sessionManager.truncateMessages(sessionTruncateIndex);
 		}
 
-		// Truncate UI messages array to remove the selected user message and everything after it
-		setMessages(prev => prev.slice(0, selectedIndex));
+		// Reload messages directly from the (now truncated) session to ensure UI and session are in sync
+		const truncatedSession = sessionManager.getCurrentSession();
+		if (truncatedSession && truncatedSession.messages.length > 0) {
+			const uiMessages = convertSessionMessagesToUI(truncatedSession.messages);
+			setMessages(uiMessages);
+		} else {
+			// Session is empty or deleted, clear UI messages
+			setMessages([]);
+		}
 
 		clearSavedMessages();
+
+		// Force UI refresh - this is needed because Ink sometimes doesn't re-render properly
+		// The useEffect triggered by remountKey will reload from session, but session is already truncated
+		// so it will show the correct truncated messages
 		setRemountKey(prev => prev + 1);
 
 		// Clear pending rollback dialog
