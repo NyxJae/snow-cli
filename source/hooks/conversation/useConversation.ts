@@ -186,7 +186,22 @@ function cleanOrphanedToolCalls(messages: ChatMessage[]): void {
 export async function handleConversationWithTools(
 	options: ConversationHandlerOptions,
 ): Promise<{usage: any | null}> {
-	const {controller, setRetryStatus} = options;
+	const {controller, setRetryStatus, saveMessage, userContent, imageContents} =
+		options;
+
+	// Save user message ONCE before retry loop
+	// This prevents duplicate user messages when network errors trigger retries
+	// BUG FIX: Previously saved inside executeWithInternalRetry, causing duplicates
+	// when retry delay (5s) aligned with dedup time window (5s)
+	try {
+		await saveMessage({
+			role: 'user',
+			content: userContent,
+			images: imageContents,
+		});
+	} catch (error) {
+		console.error('Failed to save user message:', error);
+	}
 
 	// 外层重试机制：最多10次，5秒间隔，确保流中断时自动重新发起请求
 	const MAX_RETRIES = 10;
@@ -362,18 +377,8 @@ async function executeWithInternalRetry(
 		images: imageContents,
 	});
 
-	// Save user message (directly save API format message)
-	// IMPORTANT: await to ensure message is saved before continuing
-	// This prevents loss of user message if conversation is interrupted (ESC)
-	try {
-		await saveMessage({
-			role: 'user',
-			content: userContent,
-			images: imageContents,
-		});
-	} catch (error) {
-		console.error('Failed to save user message:', error);
-	}
+	// NOTE: User message is saved in handleConversationWithTools BEFORE retry loop
+	// to prevent duplicate saves when network errors trigger retries
 
 	// Initialize token encoder with proper cleanup tracking
 	let encoder: any;
