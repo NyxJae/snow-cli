@@ -6,6 +6,7 @@ import {useI18n} from '../../../i18n/I18nContext.js';
 import {CustomCommandConfigPanel} from './CustomCommandConfigPanel.js';
 import {SkillsCreationPanel} from './SkillsCreationPanel.js';
 import WorkingDirectoryPanel from './WorkingDirectoryPanel.js';
+import PermissionsPanel from './PermissionsPanel.js';
 import type {CommandLocation} from '../../../utils/commands/custom.js';
 import type {SkillLocation} from '../../../utils/commands/skills.js';
 
@@ -25,10 +26,12 @@ type PanelsManagerProps = {
 	showCustomCommandConfig: boolean;
 	showSkillsCreation: boolean;
 	showWorkingDirPanel: boolean;
+	showPermissionsPanel: boolean;
 	setShowSessionPanel: (show: boolean) => void;
 	setShowCustomCommandConfig: (show: boolean) => void;
 	setShowSkillsCreation: (show: boolean) => void;
 	setShowWorkingDirPanel: (show: boolean) => void;
+	setShowPermissionsPanel: (show: boolean) => void;
 	handleSessionPanelSelect: (sessionId: string) => Promise<void>;
 	onCustomCommandSave: (
 		name: string,
@@ -41,6 +44,9 @@ type PanelsManagerProps = {
 		description: string,
 		location: SkillLocation,
 	) => Promise<void>;
+	alwaysApprovedTools: Set<string>;
+	onRemoveTool: (toolName: string) => void;
+	onClearAllTools: () => void;
 };
 
 export default function PanelsManager({
@@ -53,13 +59,18 @@ export default function PanelsManager({
 	showCustomCommandConfig,
 	showSkillsCreation,
 	showWorkingDirPanel,
+	showPermissionsPanel,
 	setShowSessionPanel,
 	setShowCustomCommandConfig,
 	setShowSkillsCreation,
 	setShowWorkingDirPanel,
+	setShowPermissionsPanel,
 	handleSessionPanelSelect,
 	onCustomCommandSave,
 	onSkillsSave,
+	alwaysApprovedTools,
+	onRemoveTool,
+	onClearAllTools,
 }: PanelsManagerProps) {
 	const {theme} = useTheme();
 	const {t} = useI18n();
@@ -150,6 +161,18 @@ export default function PanelsManager({
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<WorkingDirectoryPanel
 						onClose={() => setShowWorkingDirPanel(false)}
+					/>
+				</Box>
+			)}
+
+			{/* Show permissions panel if active */}
+			{showPermissionsPanel && (
+				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
+					<PermissionsPanel
+						alwaysApprovedTools={alwaysApprovedTools}
+						onRemoveTool={onRemoveTool}
+						onClearAll={onClearAllTools}
+						onClose={() => setShowPermissionsPanel(false)}
 					/>
 				</Box>
 			)}

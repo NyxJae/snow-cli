@@ -4,6 +4,7 @@ import Spinner from 'ink-spinner';
 import {useI18n} from '../../../i18n/index.js';
 import {useTheme} from '../../contexts/ThemeContext.js';
 import {getSimpleMode} from '../../../utils/config/themeConfig.js';
+import {calculateContextPercentage} from '../chat/ChatInput.js';
 
 // 根据平台返回快捷键显示文本: Windows/Linux使用 Alt+P, macOS使用 Ctrl+P
 const getProfileShortcut = () =>
@@ -33,8 +34,8 @@ type ContextUsage = {
 type Props = {
 	// 模式信息
 	yoloMode?: boolean;
-	planMode?: boolean;
-	vulnerabilityHuntingMode?: boolean;
+	currentAgentName?: string; // 新增：当前主代理名称
+	yoloEnabled?: boolean; // 新增：YOLO开启状态
 
 	// IDE连接信息
 	vscodeConnectionStatus?: VSCodeConnectionStatus;
@@ -64,27 +65,10 @@ type Props = {
 	currentProfileName?: string;
 };
 
-function calculateContextPercentage(contextUsage: ContextUsage): number {
-	const isAnthropic =
-		(contextUsage.cacheCreationTokens || 0) > 0 ||
-		(contextUsage.cacheReadTokens || 0) > 0;
-
-	const totalInputTokens = isAnthropic
-		? contextUsage.inputTokens +
-		  (contextUsage.cacheCreationTokens || 0) +
-		  (contextUsage.cacheReadTokens || 0)
-		: contextUsage.inputTokens;
-
-	return Math.min(
-		100,
-		(totalInputTokens / contextUsage.maxContextTokens) * 100,
-	);
-}
-
 export default function StatusLine({
 	yoloMode = false,
-	planMode = false,
-	vulnerabilityHuntingMode = false,
+	currentAgentName,
+	yoloEnabled,
 	vscodeConnectionStatus,
 	editorContext,
 	contextUsage,
@@ -101,8 +85,8 @@ export default function StatusLine({
 	// 是否显示任何状态信息
 	const hasAnyStatus =
 		yoloMode ||
-		planMode ||
-		vulnerabilityHuntingMode ||
+		yoloEnabled ||
+		currentAgentName ||
 		(vscodeConnectionStatus && vscodeConnectionStatus !== 'disconnected') ||
 		contextUsage ||
 		codebaseIndexing ||
@@ -128,19 +112,14 @@ export default function StatusLine({
 			});
 		}
 
-		// YOLO模式
-		if (yoloMode) {
+		// YOLO模式 - 仅当开启时显示
+		if (yoloEnabled || yoloMode) {
 			statusItems.push({text: '❁ YOLO', color: theme.colors.warning});
 		}
 
-		// Plan模式
-		if (planMode) {
-			statusItems.push({text: '⚐ Plan', color: '#60A5FA'});
-		}
-
-		// Vulnerability Hunting 模式
-		if (vulnerabilityHuntingMode) {
-			statusItems.push({text: '⍨ Vuln Hunt', color: '#de409aff'});
+		// 主代理名称（始终显示）
+		if (currentAgentName) {
+			statusItems.push({text: currentAgentName, color: '#60A5FA'});
 		}
 
 		// IDE连接状态
@@ -148,7 +127,14 @@ export default function StatusLine({
 			if (vscodeConnectionStatus === 'connecting') {
 				statusItems.push({text: '◐ IDE', color: 'yellow'});
 			} else if (vscodeConnectionStatus === 'connected') {
-				statusItems.push({text: '● IDE', color: 'green'});
+				let ideText = '● IDE';
+				if (editorContext?.activeFile) {
+					ideText += `: ${editorContext.activeFile}`;
+					if (editorContext?.selectedText) {
+						ideText += ` (${editorContext.selectedText.length} chars)`;
+					}
+				}
+				statusItems.push({text: ideText, color: 'green'});
 			} else if (vscodeConnectionStatus === 'error') {
 				statusItems.push({text: '○ IDE', color: 'gray'});
 			}
@@ -381,8 +367,8 @@ export default function StatusLine({
 				</Box>
 			)}
 
-			{/* YOLO模式提示 */}
-			{yoloMode && (
+			{/* YOLO模式提示 - 仅当开启时显示 */}
+			{(yoloEnabled || yoloMode) && (
 				<Box>
 					<Text color={theme.colors.warning} dimColor>
 						{t.chatScreen.yoloModeActive}
@@ -390,20 +376,11 @@ export default function StatusLine({
 				</Box>
 			)}
 
-			{/* Plan模式提示 */}
-			{planMode && (
+			{/* 主代理名称 - 始终显示 */}
+			{currentAgentName && (
 				<Box>
 					<Text color="#60A5FA" dimColor>
-						{t.chatScreen.planModeActive}
-					</Text>
-				</Box>
-			)}
-
-			{/* Vulnerability Hunting 模式提示 */}
-			{vulnerabilityHuntingMode && (
-				<Box>
-					<Text color="#EF4444" dimColor>
-						{t.chatScreen.vulnerabilityHuntingModeActive}
+						当前主代理: {currentAgentName}
 					</Text>
 				</Box>
 			)}

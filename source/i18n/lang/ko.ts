@@ -21,6 +21,8 @@ export const ko: TranslationKeys = {
 		customHeadersSettingsInfo: 'API 요청을 위한 사용자 정의 HTTP 헤더 구성',
 		mcpSettings: 'MCP 설정',
 		mcpSettingsInfo: '모델 컨텍스트 프로토콜 서버 구성',
+		mainAgentSettings: '메인 에이전트 구성',
+		mainAgentSettingsInfo: '메인 에이전트의 도구 권한 및 시스템 프롬프트 구성',
 		subAgentSettings: '하위 에이전트 설정',
 		subAgentSettingsInfo: '사용자 정의 도구 권한이 있는 하위 에이전트 구성',
 		sensitiveCommands: '민감한 명령',
@@ -276,6 +278,8 @@ export const ko: TranslationKeys = {
 		codebaseTools: '코드베이스 검색 도구',
 		terminalTools: '터미널 도구',
 		todoTools: 'TODO 관리 도구',
+		usefulInfoTools: '유용한 정보 도구',
+		notebookTools: '노트북 도구',
 		webSearchTools: '웹 검색 도구',
 		ideTools: 'IDE 진단 도구',
 		userInteractionTools: '사용자 상호작용 도구',
@@ -308,6 +312,8 @@ export const ko: TranslationKeys = {
 		deleteConfirm: '"{name}"을(를) 삭제하시겠습니까? (Y/N)',
 		deleteSuccess: '하위 에이전트가 삭제되었습니다!',
 		deleteFailed: '내장 하위 에이전트를 삭제할 수 없습니다',
+		resetSuccess: '에이전트가 기본 구성으로 재설정되었습니다',
+		resetFailed: '에이전트 재설정 실패',
 		navigationHint:
 			'↑↓: 이동 | Enter: 편집 | A: 새 에이전트 추가 | D: 삭제 | Esc: 뒤로',
 	},
@@ -411,7 +417,7 @@ export const ko: TranslationKeys = {
 		selectItem: 'Tab/Enter - 선택기에서 항목 선택',
 		cancelClose: 'ESC - 선택기 취소/닫기 또는 AI 응답 중단',
 		toggleYolo:
-			'Shift+Tab/Ctrl+Y - YOLO/Plan 모드 토글(순환: YOLO → YOLO+Plan → Plan → 끄기)',
+			'Shift+Tab/Ctrl+Y - YOLO/Team 모드 토글(순환: YOLO → YOLO+Team → 끄기)',
 		tipsTitle: '💡 팁:',
 		tipUseHelp: '언제든지 /help로 이 정보 보기',
 		tipShowCommands: '/ 입력하여 모든 사용 가능한 명령 보기',
@@ -431,14 +437,14 @@ export const ko: TranslationKeys = {
 			resume: '대화 재개',
 			mcp: '모델 컨텍스트 프로토콜 서비스 및 도구 표시',
 			yolo: '무인 모드 토글(모든 도구 자동 승인)',
-			plan: '계획 모드 토글(전문 계획 도우미)',
+			plan: '팀 모드 토글(전문 계획 도우미)',
 			init: '프로젝트 분석 및 AGENTS.md 문서 생성/업데이트',
 			ide: 'VSCode 편집기에 연결하고 컨텍스트 동기화',
 			compact: '컴팩트 모델을 사용하여 대화 기록 압축',
 			home: '환영 화면으로 돌아가서 설정 수정',
 			review:
 				'git 변경 사항 검토 및 잠재적 문제 식별. 지원: /review [선택적 메모]',
-			role: 'ROLE.md 파일을 열거나 생성하여 AI 어시스턴트 역할 사용자 정의',
+
 			usage: '대화형 차트가 있는 토큰 사용 통계 보기',
 			export: '채팅 대화를 저장 대화상자가 있는 텍스트 파일로 내보내기',
 			custom: '사용자 정의 명령 추가 및 ~/.snow/commands에 저장',
@@ -469,7 +475,6 @@ export const ko: TranslationKeys = {
 		moreHidden: '{count}개 더 숨김',
 		escHint: 'ESC를 눌러 닫기',
 		activeLabel: '(활성)',
-		searchLabel: '검색:',
 	},
 	hooks: {
 		pressCtrlCAgain: 'Ctrl+C를 다시 눌러 종료',
@@ -748,9 +753,7 @@ export const ko: TranslationKeys = {
 		fileSearchHint: '입력하여 파일 필터 • Tab/Enter 선택 • ESC 취소',
 		yoloModeActive:
 			'❁ YOLO 모드 활성화 - 모든 도구가 확인 없이 자동 승인됩니다',
-		planModeActive: '⚐ Plan 모드 활성화 - 전문 계획 및 조정 에이전트',
-		vulnerabilityHuntingModeActive:
-			'⍨ Vulnerability Hunting 모드 활성화 - 취약점 발견 및 보안 분석에 특화',
+		teamModeActive: '⚐ Team 모드 활성화 - 전문 계획 및 조정 에이전트',
 		tokens: '토큰',
 		cached: '캐시됨',
 		newCache: '새 캐시',
@@ -905,6 +908,34 @@ export const ko: TranslationKeys = {
 		error: '오류: {error}',
 		tabToSwitch: '- Tab으로 전환',
 		noDataForPeriod: '이 기간 동안 사용 데이터가 없습니다',
+	},
+	mainAgent: {
+		title: '❆ 메인 에이전트 구성',
+		type: {
+			general: '일반',
+			team: '팀',
+		},
+		status: {
+			builtin: '내장',
+			custom: '사용자 정의',
+		},
+		instructions: '↑↓: 선택 | Enter: 편집 | D: 재설정 | Esc: 돌아가기',
+		reset: {
+			success: '{agentName} 메인 에이전트가 성공적으로 재설정되었습니다',
+			failed: '{agentName} 메인 에이전트 재설정에 실패했습니다',
+		},
+		edit: {
+			title: '메인 에이전트 편집',
+			saveSuccess: '{agentName} 메인 에이전트 구성이 성공적으로 저장되었습니다',
+			saveError: '저장 실패',
+			confirmReset:
+				'{agentName} 메인 에이전트를 기본 구성으로 재설정하시겠습니까?',
+			tools: '도구',
+			subAgents: '하위 에이전트',
+			systemPrompt: '시스템 프롬프트',
+			name: '에이전트 이름',
+			description: '설명',
+		},
 	},
 	workingDirectoryPanel: {
 		title: '작업 디렉터리',

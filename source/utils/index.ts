@@ -21,7 +21,8 @@ import './commands/role.js';
 import './commands/skills.js';
 import './commands/todoPicker.js';
 import './commands/usage.js';
-import './commands/vulnerability-hunting.js';
+import './commands/permissions.js';
+// Vulnerability Hunting Mode 已整合为 Debugger 主代理，不再需要独立命令
 import './commands/yolo.js';
 
 // Export logger

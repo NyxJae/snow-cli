@@ -3,7 +3,7 @@ import {
 	getCustomSystemPrompt,
 	getCustomHeaders,
 } from '../utils/config/apiConfig.js';
-import {getSystemPromptForMode} from '../prompt/systemPrompt.js';
+import {mainAgentManager} from '../utils/MainAgentManager.js';
 import {
 	withRetryGenerator,
 	parseJsonWithFix,
@@ -17,6 +17,7 @@ import type {
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 import {saveUsageToFile} from '../utils/core/usageLogger.js';
 import {getVersionHeader} from '../utils/core/version.js';
+
 export interface ResponseOptions {
 	model: string;
 	messages: ChatMessage[];
@@ -33,12 +34,12 @@ export interface ResponseOptions {
 	store?: boolean;
 	include?: string[];
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
-	planMode?: boolean; // 启用 Plan 模式（使用 Plan 模式系统提示词）
-	vulnerabilityHuntingMode?: boolean; // 启用漏洞狩猎模式（使用漏洞狩猎模式系统提示词）
+	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
 	// Sub-agent configuration overrides
 	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
 	customSystemPromptId?: string; // 自定义系统提示词 ID
 	customHeaders?: Record<string, string>; // 自定义请求头
+	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词（包含role等信息）
 }
 
 /**
@@ -170,14 +171,22 @@ function convertToResponseInput(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
 	customSystemPromptOverride?: string,
-	planMode: boolean = false, // When true, use Plan mode system prompt
-	vulnerabilityHuntingMode: boolean = false, // When true, use Vulnerability Hunting mode system prompt
+	isSubAgentCall: boolean = false, // Whether this is a sub-agent call
+	subAgentSystemPrompt?: string, // Sub-agent assembled prompt
+	// When true, use Team mode system prompt (deprecated)
 ): {
 	input: any[];
 	systemInstructions: string;
 } {
-	const customSystemPrompt =
-		customSystemPromptOverride || getCustomSystemPrompt();
+	// 子代理不应该继承主代理的系统提示词，保持独立
+	const customSystemPrompt = isSubAgentCall
+		? customSystemPromptOverride // 子代理只使用明确配置的customSystemPrompt，不回退到主代理的
+		: customSystemPromptOverride || getCustomSystemPrompt(); // 主代理可以回退到默认的customSystemPrompt
+
+	// 对于子代理调用，完全忽略includeBuiltinSystemPrompt参数
+	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
+		? false
+		: includeBuiltinSystemPrompt;
 	const result: any[] = [];
 
 	for (const msg of messages) {
@@ -298,8 +307,8 @@ function convertToResponseInput(
 	if (customSystemPrompt) {
 		// 有自定义系统提示词：自定义作为 instructions
 		systemInstructions = customSystemPrompt;
-		if (includeBuiltinSystemPrompt) {
-			// 默认系统提示词作为第一条用户消息
+		if (effectiveIncludeBuiltinSystemPrompt) {
+			// 主代理调用：默认系统提示词作为第一条用户消息
 			result.unshift({
 				type: 'message',
 				role: 'user',
@@ -308,18 +317,32 @@ function convertToResponseInput(
 						type: 'input_text',
 						text:
 							'<environment_context>' +
-							getSystemPromptForMode(planMode, vulnerabilityHuntingMode) +
+							mainAgentManager.getSystemPrompt() +
 							'</environment_context>',
 					},
 				],
 			});
+		} else {
+			// 子代理调用：子代理组装提示词作为第一条用户消息
+			if (subAgentSystemPrompt) {
+				result.unshift({
+					type: 'message',
+					role: 'user',
+					content: [
+						{
+							type: 'input_text',
+							text: subAgentSystemPrompt,
+						},
+					],
+				});
+			}
 		}
-	} else if (includeBuiltinSystemPrompt) {
+	} else if (isSubAgentCall && subAgentSystemPrompt) {
+		// 子代理调用时，使用组装好的提示词作为系统提示词
+		systemInstructions = subAgentSystemPrompt;
+	} else if (effectiveIncludeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
-		systemInstructions = getSystemPromptForMode(
-			planMode,
-			vulnerabilityHuntingMode,
-		);
+		systemInstructions = mainAgentManager.getSystemPrompt();
 	} else {
 		// 既没有自定义系统提示词，也不需要添加默认系统提示词
 		systemInstructions = 'You are a helpful assistant.';
@@ -458,7 +481,9 @@ export async function* createStreamingResponse(
 		options.messages,
 		options.includeBuiltinSystemPrompt !== false, // 默认为 true
 		customSystemPromptContent,
-		options.planMode || false, // Pass planMode to use correct system prompt
+		!!options.customSystemPromptId || !!options.subAgentSystemPrompt, // 子代理调用的判断：只要有customSystemPromptId或subAgentSystemPrompt就认为是子代理调用
+		options.subAgentSystemPrompt,
+		// Pass teamMode to use correct system prompt (deprecated)
 	);
 
 	// 获取配置的 reasoning 设置

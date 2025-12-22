@@ -23,8 +23,11 @@ export const es: TranslationKeys = {
 		customHeadersSettings: 'Configuración de Encabezados Personalizados',
 		customHeadersSettingsInfo:
 			'Configurar encabezados HTTP personalizados para solicitudes API',
-		mcpSettings: 'Configuración MCP',
-		mcpSettingsInfo: 'Configurar servidores de Protocolo de Contexto de Modelo',
+		mcpSettings: 'Configuración de MCP',
+		mcpSettingsInfo: 'Configurar servidores de Model Context Protocol',
+		mainAgentSettings: 'Configuración de Agente Principal',
+		mainAgentSettingsInfo:
+			'Configurar permisos de herramientas y prompts del sistema del agente principal',
 		subAgentSettings: 'Configuración de Sub-Agentes',
 		subAgentSettingsInfo:
 			'Configurar sub-agentes con permisos de herramientas personalizados',
@@ -312,7 +315,9 @@ export const es: TranslationKeys = {
 		aceTools: 'Herramientas de Búsqueda de Código ACE',
 		codebaseTools: 'Herramientas de Búsqueda de Base de Código',
 		terminalTools: 'Herramientas de Terminal',
-		todoTools: 'Herramientas de Gestión TODO',
+		todoTools: 'Herramientas de Gestión de TODO',
+		usefulInfoTools: 'Herramientas de Información Útil',
+		notebookTools: 'Herramientas de Cuaderno',
 		webSearchTools: 'Herramientas de Búsqueda Web',
 		ideTools: 'Herramientas de Diagnóstico IDE',
 		userInteractionTools: 'Herramientas de Interacción del Usuario',
@@ -336,19 +341,21 @@ export const es: TranslationKeys = {
 		roleViewFull: '(Espacio para ver completo)',
 	},
 	subAgentList: {
-		title: 'Gestión de Sub-Agentes',
-		noAgents: 'No hay sub-agentes configurados.',
-		noAgentsHint: 'Presiona "A" para agregar un nuevo sub-agente.',
-		agentsCount: 'Sub-Agentes ({count}):',
-		description: 'Descripción:',
-		noDescription: 'Sin descripción',
-		toolsCount: 'Herramientas: {count} seleccionadas',
-		updated: 'Actualizado:',
-		deleteConfirm: '¿Eliminar "{name}"? (Y/N)',
-		deleteSuccess: '¡Sub-agente eliminado exitosamente!',
-		deleteFailed: 'No se pueden eliminar sub-agentes incorporados',
+		title: 'Sub-Agent Management',
+		noAgents: 'No sub-agents configured yet.',
+		noAgentsHint: 'Press "A" to add a new sub-agent.',
+		agentsCount: 'Sub-Agents ({count}):',
+		description: 'Description:',
+		noDescription: 'No description',
+		toolsCount: 'Tools: {count} selected',
+		updated: 'Updated:',
+		deleteConfirm: 'Delete "{name}"? (Y/N)',
+		deleteSuccess: 'Sub-agent deleted successfully!',
+		deleteFailed: 'Cannot delete built-in sub-agents',
+		resetSuccess: 'Agent reset to default configuration',
+		resetFailed: 'Failed to reset agent',
 		navigationHint:
-			'↑↓: Navegar | Enter: Editar | A: Agregar Nuevo | D: Eliminar | Esc: Volver',
+			'↑↓: Navigate | Enter: Edit | A: Add New | D: Delete | Esc: Back',
 	},
 	sensitiveCommandConfig: {
 		title: 'Protección de Comandos Sensibles',
@@ -455,7 +462,7 @@ export const es: TranslationKeys = {
 		selectItem: 'Tab/Enter - Seleccionar elemento en el selector',
 		cancelClose: 'ESC - Cancelar/Cerrar selector o interrumpir respuesta de IA',
 		toggleYolo:
-			'Shift+Tab/Ctrl+Y - Alternar modos YOLO/Plan (ciclo: YOLO → YOLO+Plan → Plan → Apagado)',
+			'Shift+Tab/Ctrl+Y - Alternar modos YOLO/Team (ciclo: YOLO → YOLO+Team → Apagado)',
 		tipsTitle: '💡 Consejos:',
 		tipUseHelp: 'Usa /help en cualquier momento para ver esta información',
 		tipShowCommands: 'Escribe / para ver todos los comandos disponibles',
@@ -476,14 +483,14 @@ export const es: TranslationKeys = {
 			resume: 'Reanudar conversación',
 			mcp: 'Mostrar servicios y herramientas del Protocolo de Contexto de Modelo',
 			yolo: 'Alternar modo desatendido (aprobar automáticamente todas las herramientas)',
-			plan: 'Alternar modo Plan (asistente de planificación especializado)',
+			plan: 'Alternar modo Team (asistente de planificación especializado)',
 			init: 'Analizar proyecto y generar/actualizar documento AGENTS.md',
 			ide: 'Conectar al editor VSCode y sincronizar contexto',
 			compact: 'Comprimir historial de conversación usando modelo compacto',
 			home: 'Volver a la pantalla de bienvenida para modificar configuración',
 			review:
 				'Revisar cambios de git e identificar posibles problemas. Soporta: /review [nota opcional]',
-			role: 'Abrir o crear archivo ROLE.md para personalizar el rol del asistente IA',
+
 			usage: 'Ver estadísticas de uso de tokens con gráficos interactivos',
 			export:
 				'Exportar conversación de chat a archivo de texto con diálogo de guardado',
@@ -517,7 +524,6 @@ export const es: TranslationKeys = {
 		moreHidden: '{count} más ocultos',
 		escHint: 'Presiona ESC para cerrar',
 		activeLabel: '(activo)',
-		searchLabel: 'Buscar:',
 	},
 	hooks: {
 		pressCtrlCAgain: 'Presiona Ctrl+C nuevamente para salir',
@@ -805,10 +811,8 @@ export const es: TranslationKeys = {
 			'Escribe para filtrar archivos • Tab/Enter Seleccionar • ESC Cancelar',
 		yoloModeActive:
 			'❁ MODO YOLO ACTIVO - Todas las herramientas serán aprobadas automáticamente sin confirmación',
-		planModeActive:
-			'⚐ Modo Plan activo - Agente especializado en planificación y coordinación',
-		vulnerabilityHuntingModeActive:
-			'⍨ Modo Vulnerability Hunting Activo - Enfocado en descubrimiento de vulnerabilidades y análisis de seguridad',
+		teamModeActive:
+			'⚐ Modo Team activo - Agente especializado en planificación y coordinación',
 		tokens: ' tokens',
 		cached: 'en caché',
 		newCache: 'nuevo caché',
@@ -968,6 +972,36 @@ export const es: TranslationKeys = {
 		error: 'Error: {error}',
 		tabToSwitch: '- Tab para cambiar',
 		noDataForPeriod: 'No hay datos de uso para este período',
+	},
+	mainAgent: {
+		title: '❆ Configuración de Agente Principal',
+		type: {
+			general: 'General',
+			team: 'Equipo',
+		},
+		status: {
+			builtin: 'Integrado',
+			custom: 'Personalizado',
+		},
+		instructions:
+			'↑↓: Seleccionar | Enter: Editar | D: Restablecer | Esc: Volver',
+		reset: {
+			success: 'Agente principal {agentName} reiniciado con éxito',
+			failed: 'Error al reiniciar el agente principal {agentName}',
+		},
+		edit: {
+			title: 'Editar Agente Principal',
+			saveSuccess:
+				'Configuración del agente principal {agentName} guardada exitosamente',
+			saveError: 'Error al guardar',
+			confirmReset:
+				'¿Confirmar restablecer el agente principal {agentName} a la configuración predeterminada?',
+			tools: 'Herramientas',
+			subAgents: 'Sub-Agentes',
+			systemPrompt: 'Mensaje del Sistema',
+			name: 'Nombre del Agente',
+			description: 'Descripción',
+		},
 	},
 	workingDirectoryPanel: {
 		title: 'Directorios de Trabajo',

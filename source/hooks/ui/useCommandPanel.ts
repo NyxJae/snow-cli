@@ -37,10 +37,6 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 				description: t.commandPanel.commands.review,
 			},
 			{
-				name: 'role',
-				description: t.commandPanel.commands.role,
-			},
-			{
 				name: 'usage',
 				description: t.commandPanel.commands.usage,
 			},
@@ -76,12 +72,6 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 				name: 'permissions',
 				description:
 					t.commandPanel.commands.permissions || 'Manage tool permissions',
-			},
-			{
-				name: 'vulnerability-hunting',
-				description:
-					t.commandPanel.commands.vulnerabilityHunting ||
-					'Toggle vulnerability hunting mode',
 			},
 			{
 				name: 'quit',

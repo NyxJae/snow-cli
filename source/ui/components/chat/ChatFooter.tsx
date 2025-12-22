@@ -8,7 +8,7 @@ import type {Message} from './MessageList.js';
 
 type ChatFooterProps = {
 	onSubmit: (
-		message: string,
+		text: string,
 		images?: Array<{data: string; mimeType: string}>,
 	) => Promise<void>;
 	onCommand: (commandName: string, result: any) => Promise<void>;
@@ -31,10 +31,7 @@ type ChatFooterProps = {
 	chatHistory: Message[];
 	yoloMode: boolean;
 	setYoloMode: (value: boolean) => void;
-	planMode: boolean;
-	setPlanMode: (value: boolean) => void;
-	vulnerabilityHuntingMode: boolean;
-	setVulnerabilityHuntingMode: (value: boolean) => void;
+	currentAgentName: string;
 	contextUsage?: {
 		inputTokens: number;
 		maxContextTokens: number;
@@ -54,7 +51,6 @@ type ChatFooterProps = {
 	getFilteredProfiles: () => any[];
 	profileSearchQuery: string;
 	setProfileSearchQuery: (query: string) => void;
-
 	vscodeConnectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
 	editorContext?: {
 		activeFile?: string;
@@ -93,10 +89,6 @@ export default function ChatFooter(props: ChatFooterProps) {
 				onHistorySelect={props.handleHistorySelect}
 				yoloMode={props.yoloMode}
 				setYoloMode={props.setYoloMode}
-				planMode={props.planMode}
-				setPlanMode={props.setPlanMode}
-				vulnerabilityHuntingMode={props.vulnerabilityHuntingMode}
-				setVulnerabilityHuntingMode={props.setVulnerabilityHuntingMode}
 				contextUsage={props.contextUsage}
 				initialContent={props.initialContent}
 				onContextPercentageChange={props.onContextPercentageChange}
@@ -106,15 +98,12 @@ export default function ChatFooter(props: ChatFooterProps) {
 				setProfileSelectedIndex={props.setProfileSelectedIndex}
 				getFilteredProfiles={props.getFilteredProfiles}
 				handleProfileSelect={props.handleProfileSelect}
-				profileSearchQuery={props.profileSearchQuery}
-				setProfileSearchQuery={props.setProfileSearchQuery}
 				onSwitchProfile={props.onSwitchProfile}
 			/>
 
 			<StatusLine
 				yoloMode={props.yoloMode}
-				planMode={props.planMode}
-				vulnerabilityHuntingMode={props.vulnerabilityHuntingMode}
+				currentAgentName={props.currentAgentName}
 				vscodeConnectionStatus={props.vscodeConnectionStatus}
 				editorContext={props.editorContext}
 				contextUsage={props.contextUsage}

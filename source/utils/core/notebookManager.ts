@@ -19,6 +19,14 @@ interface NotebookData {
 	[filePath: string]: NotebookEntry[];
 }
 
+/**
+ * 文件夹笔记数据结构
+ */
+export interface FolderNotebook {
+	folderPath: string;
+	entries: NotebookEntry[];
+}
+
 const MAX_ENTRIES_PER_FILE = 50;
 
 /**
@@ -46,7 +54,7 @@ function getNotebookFilePath(): string {
 /**
  * 读取备忘录数据
  */
-function readNotebookData(): NotebookData {
+export function readNotebookData(): NotebookData {
 	const filePath = getNotebookFilePath();
 
 	if (!fs.existsSync(filePath)) {
@@ -94,6 +102,83 @@ function normalizePath(filePath: string): string {
 		normalized = normalized.substring(2);
 	}
 	return normalized;
+}
+
+/**
+ * 规范化文件夹路径，确保以 / 结尾
+ */
+export function normalizeFolderPath(folderPath: string): string {
+	const normalized = normalizePath(folderPath);
+	return normalized.endsWith('/') ? normalized : normalized + '/';
+}
+
+/**
+ * 判断路径是否为文件夹路径
+ * 1. 如果路径以 / 结尾，返回 true
+ * 2. 如果路径存在且是目录，返回 true
+ * 3. 否则返回 false
+ */
+export async function isFolderPath(filePath: string): Promise<boolean> {
+	// 如果路径明确以 / 结尾，直接判定为文件夹
+	if (filePath.endsWith('/')) {
+		return true;
+	}
+
+	// 尝试检测文件系统中该路径是否为目录
+	try {
+		const stats = await fs.promises.stat(filePath);
+		return stats.isDirectory();
+	} catch {
+		// 路径不存在或无法访问，不是文件夹
+		return false;
+	}
+}
+
+/**
+ * 获取文件路径的所有父级文件夹
+ * @param filePath 文件路径，如 "src/api/v2/client.ts"
+ * @returns 所有父级文件夹路径数组，从浅到深排序
+ * @example getParentFolderPaths("src/api/v2/client.ts") => ["/", "src/", "src/api/", "src/api/v2/"]
+ */
+export function getParentFolderPaths(filePath: string): string[] {
+	const normalized = normalizePath(filePath);
+	const parts = normalized.split('/').filter(p => p !== '');
+	const folders: string[] = ['/']; // 根目录
+
+	let current = '';
+	for (let i = 0; i < parts.length - 1; i++) {
+		current += parts[i] + '/';
+		folders.push(current);
+	}
+
+	return folders;
+}
+
+/**
+ * 收集文件路径上所有文件夹的笔记
+ * @param filePath 文件路径
+ * @param maxEntriesPerFolder 每个文件夹最多显示的笔记条数，默认5条
+ * @returns 有笔记的文件夹列表，按路径深度排序（从浅到深）
+ */
+export function collectFolderNotebooks(
+	filePath: string,
+	maxEntriesPerFolder: number = 5,
+): FolderNotebook[] {
+	const folderPaths = getParentFolderPaths(filePath);
+	const result: FolderNotebook[] = [];
+	const notebookData = readNotebookData();
+
+	for (const folderPath of folderPaths) {
+		const entries = notebookData[folderPath];
+		if (entries && entries.length > 0) {
+			result.push({
+				folderPath,
+				entries: entries.slice(0, maxEntriesPerFolder),
+			});
+		}
+	}
+
+	return result;
 }
 
 /**

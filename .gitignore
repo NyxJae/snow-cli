@@ -3,6 +3,7 @@ dist
 bundle
 out
 .snow
+.git
 AGENTS.md
 pr.md
 CHANGELOG.md

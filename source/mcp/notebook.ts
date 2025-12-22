@@ -1,10 +1,12 @@
 import {Tool, type CallToolResult} from '@modelcontextprotocol/sdk/types.js';
+import fs from 'node:fs';
 import {
 	addNotebook,
 	queryNotebook,
 	updateNotebook,
 	deleteNotebook,
 	getNotebooksByFile,
+	normalizeFolderPath,
 } from '../utils/core/notebookManager.js';
 
 /**
@@ -14,28 +16,40 @@ import {
 export const mcpTools: Tool[] = [
 	{
 		name: 'notebook-add',
-		description: `📝 Record code parts that are fragile and easily broken during iteration.
+		description: `📝 Record important notes for files or folders to guide future AI interactions.
+
+**Supports both file and folder notebooks:**
+- File notebook: Notes for a specific file (e.g., "src/utils/parser.ts")
+- Folder notebook: Notes for all files in a folder (e.g., "src/utils/" or "src/utils")
 
 **Core Purpose:** Prevent new features from breaking existing functionality.
 
-**When to record:**
-- After fixing bugs that could easily reoccur
-- Fragile code that new features might break
-- Non-obvious dependencies between components
-- Workarounds that shouldn't be "optimized away"
+**When to use file notebooks:**
+- Fragile code that breaks easily during iteration
+- Complex logic that needs explanation
+- Edge cases or known limitations
+
+**When to use folder notebooks:**
+- Architecture decisions affecting multiple files in a folder
+- Coding conventions specific to a module
+- Common pitfalls when working in a directory
+- Dependencies or requirements for a feature area
 
 **Examples:**
-- "⚠️ validateInput() MUST be called first - new features broke this twice"
-- "Component X depends on null return - DO NOT change to empty array"
-- "setTimeout workaround for race condition - don't remove"
-- "Parser expects exact format - adding fields breaks backward compat"`,
+- File: "src/api/client.ts" → "⚠️ Rate limiting must be preserved"
+- Folder: "src/api/" → "All API calls must handle 401 and retry with refresh token"
+
+**Best Practices:**
+- Use folder notebooks for broad guidelines
+- Use file notebooks for specific code warnings
+- Folder notebooks auto-load when reading any file in that folder`,
 		inputSchema: {
 			type: 'object',
 			properties: {
 				filePath: {
 					type: 'string',
 					description:
-						'File path (relative or absolute). Example: "src/utils/parser.ts"',
+						'File or folder path (relative or absolute). For folders, directories are auto-detected and normalized.',
 				},
 				note: {
 					type: 'string',
@@ -182,7 +196,28 @@ export async function executeNotebookTool(
 					};
 				}
 
-				const entry = addNotebook(filePath, note);
+				// 检查路径是否存在并判断类型
+				let normalizedPath = filePath;
+				try {
+					const stats = await fs.promises.stat(filePath);
+					// 如果是目录，规范化路径（确保以 / 结尾）
+					if (stats.isDirectory()) {
+						normalizedPath = normalizeFolderPath(filePath);
+					}
+				} catch {
+					// 路径不存在
+					return {
+						content: [
+							{
+								type: 'text',
+								text: `Error: Path "${filePath}" does not exist. Notebooks can only be added to existing files or folders.`,
+							},
+						],
+						isError: true,
+					};
+				}
+
+				const entry = addNotebook(normalizedPath, note);
 				return {
 					content: [
 						{

@@ -234,7 +234,7 @@ export const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
 		},
 	},
 	lua: {
-		extensions: ['.lua'],
+		extensions: ['.lua', '.txt', '.lua.txt'],
 		parser: 'lua',
 		symbolPatterns: {
 			function: /(?:local\s+)?function\s+(?:[\w.]+[.:])?(\w+)\s*\(/,

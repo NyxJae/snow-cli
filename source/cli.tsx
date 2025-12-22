@@ -55,6 +55,7 @@ import {execSync} from 'child_process';
 import {readFileSync} from 'fs';
 import {join} from 'path';
 import {fileURLToPath} from 'url';
+import semver from 'semver';
 
 // Read version from package.json
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -121,8 +122,13 @@ async function checkForUpdates(currentVersion: string): Promise<void> {
 		);
 		const latestVersion = stdout.trim();
 
-		// Simple string comparison - force registry fetch ensures no cache issues
-		if (latestVersion && latestVersion !== currentVersion) {
+		// Semantic version comparison - only show update if current version is older
+		if (
+			latestVersion &&
+			semver.valid(currentVersion) &&
+			semver.valid(latestVersion) &&
+			semver.lt(currentVersion, latestVersion)
+		) {
 			console.log('\n🔔 Update available!');
 			console.log(`   Current version: ${currentVersion}`);
 			console.log(`   Latest version:  ${latestVersion}`);
@@ -144,16 +150,14 @@ Usage
   $ snow --task-list
 
 Options
-		--help        Show help
-		--version     Show version
-		--update      Update to latest version
-		-c            Skip welcome screen and resume last conversation
-		--ask         Quick question mode (headless mode with single prompt, optional sessionId for continuous conversation)
-		--task        Create a background AI task (headless mode, saves session)
-		--task-list   Open task manager to view and manage background tasks
-		--yolo        Skip welcome screen and enable YOLO mode (auto-approve tools)
-		--c-yolo      Skip welcome screen, resume last conversation, and enable YOLO mode
-		--dev         Enable developer mode with persistent userId for testing
+	--help        Show help
+	--version     Show version
+	--update      Update to latest version
+	-c            Skip welcome screen and resume last conversation
+	--ask         Quick question mode (headless mode with single prompt)
+	--task        Create a background AI task (headless mode, saves session)
+	--task-list   Open task manager to view and manage background tasks
+	--dev         Enable developer mode with persistent userId for testing
 `,
 	{
 		importMeta: import.meta,
@@ -180,15 +184,6 @@ Options
 			taskExecute: {
 				type: 'string',
 				alias: 'task-execute',
-			},
-			yolo: {
-				type: 'boolean',
-				default: false,
-			},
-			cYolo: {
-				type: 'boolean',
-				default: false,
-				alias: 'c-yolo',
 			},
 			dev: {
 				type: 'boolean',
@@ -422,13 +417,13 @@ process.on('SIGTERM', async () => {
 render(
 	<Startup
 		version={VERSION}
-		skipWelcome={Boolean(cli.flags.c || cli.flags.yolo || cli.flags.cYolo)}
-		autoResume={Boolean(cli.flags.c || cli.flags.cYolo)}
+		skipWelcome={Boolean(cli.flags.c)}
+		autoResume={Boolean(cli.flags.c)}
 		headlessPrompt={cli.flags.ask}
 		headlessSessionId={cli.input[0]}
 		showTaskList={cli.flags.taskList}
 		isDevMode={cli.flags.dev}
-		enableYolo={Boolean(cli.flags.yolo || cli.flags.cYolo)}
+		enableYolo={true}
 	/>,
 	{
 		exitOnCtrlC: false,

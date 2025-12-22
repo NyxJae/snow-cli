@@ -5,7 +5,8 @@ import {
 	getCustomHeaders,
 	type ThinkingConfig,
 } from '../utils/config/apiConfig.js';
-import {getSystemPromptForMode} from '../prompt/systemPrompt.js';
+import {mainAgentManager} from '../utils/MainAgentManager.js';
+
 import {
 	withRetryGenerator,
 	parseJsonWithFix,
@@ -26,12 +27,12 @@ export interface AnthropicOptions {
 	sessionId?: string; // Session ID for user tracking and caching
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
 	disableThinking?: boolean; // 禁用 Extended Thinking 功能（用于 agents 等场景，默认 false）
-	planMode?: boolean; // 启用 Plan 模式（使用 Plan 模式系统提示词）
-	vulnerabilityHuntingMode?: boolean; // 启用漏洞狩猎模式（使用漏洞狩猎模式系统提示词）
+	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
 	// Sub-agent configuration overrides
 	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
 	customSystemPromptId?: string; // 自定义系统提示词 ID
 	customHeaders?: Record<string, string>; // 自定义请求头
+	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词（包含role等信息）
 }
 
 export interface AnthropicStreamChunk {
@@ -162,16 +163,24 @@ function convertToAnthropicMessages(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
 	customSystemPromptOverride?: string, // Allow override for sub-agents
+	isSubAgentCall: boolean = false, // Whether this is a sub-agent call
+	subAgentSystemPrompt?: string, // Sub-agent assembled prompt
 	cacheTTL: '5m' | '1h' = '5m', // Cache TTL configuration
 	disableThinking: boolean = false, // When true, strip thinking blocks from messages
-	planMode: boolean = false, // When true, use Plan mode system prompt
-	vulnerabilityHuntingMode: boolean = false, // When true, use Vulnerability Hunting mode system prompt
+	// When true, use Team mode system prompt (deprecated)
 ): {
 	system?: any;
 	messages: AnthropicMessageParam[];
 } {
-	const customSystemPrompt =
-		customSystemPromptOverride || getCustomSystemPrompt();
+	// 子代理不应该继承主代理的系统提示词，保持独立
+	const customSystemPrompt = isSubAgentCall
+		? customSystemPromptOverride // 子代理只使用明确配置的customSystemPrompt，不回退到主代理的
+		: customSystemPromptOverride || getCustomSystemPrompt(); // 主代理可以回退到默认的customSystemPrompt
+
+	// 对于子代理调用，完全忽略includeBuiltinSystemPrompt参数
+	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
+		? false
+		: includeBuiltinSystemPrompt;
 	let systemContent: string | undefined;
 	const anthropicMessages: AnthropicMessageParam[] = [];
 
@@ -329,25 +338,39 @@ function convertToAnthropicMessages(
 	// 如果配置了自定义系统提示词（最高优先级，始终添加）
 	if (customSystemPrompt) {
 		systemContent = customSystemPrompt;
-		if (includeBuiltinSystemPrompt) {
-			// 将默认系统提示词作为第一条用户消息
+		if (effectiveIncludeBuiltinSystemPrompt) {
+			// 主代理调用：将默认系统提示词作为第一条用户消息
 			anthropicMessages.unshift({
 				role: 'user',
 				content: [
 					{
 						type: 'text',
-						text: getSystemPromptForMode(planMode, vulnerabilityHuntingMode),
+						text: mainAgentManager.getSystemPrompt(),
 						cache_control: {type: 'ephemeral', ttl: cacheTTL},
 					},
 				] as any,
 			});
-		} else if (!systemContent && includeBuiltinSystemPrompt) {
-			// 没有自定义系统提示词，但需要添加默认系统提示词
-			systemContent = getSystemPromptForMode(
-				planMode,
-				vulnerabilityHuntingMode,
-			);
+		} else {
+			// 子代理调用：将子代理组装提示词作为第一条用户消息
+			if (subAgentSystemPrompt) {
+				anthropicMessages.unshift({
+					role: 'user',
+					content: [
+						{
+							type: 'text',
+							text: subAgentSystemPrompt,
+							cache_control: {type: 'ephemeral', ttl: cacheTTL},
+						},
+					] as any,
+				});
+			}
 		}
+	} else if (isSubAgentCall && subAgentSystemPrompt) {
+		// 子代理调用时，使用组装好的提示词作为系统提示词
+		systemContent = subAgentSystemPrompt;
+	} else if (!systemContent && effectiveIncludeBuiltinSystemPrompt) {
+		// 没有自定义系统提示词，但需要添加默认系统提示词
+		systemContent = mainAgentManager.getSystemPrompt();
 	}
 
 	let lastUserMessageIndex = -1;
@@ -403,6 +426,8 @@ async function* parseSSEStream(
 ): AsyncGenerator<any, void, unknown> {
 	const decoder = new TextDecoder();
 	let buffer = '';
+	let dataCount = 0; // 记录成功解析的数据块数量
+	let lastEventType = ''; // 记录最后一个事件类型
 
 	try {
 		while (true) {
@@ -411,12 +436,18 @@ async function* parseSSEStream(
 			if (done) {
 				// ✅ 关键修复：检查buffer是否有残留数据
 				if (buffer.trim()) {
-					// 连接异常中断，抛出明确错误
+					// 连接异常中断，抛出明确错误，并包含断点信息
+					const errorContext = {
+						dataCount,
+						lastEventType,
+						bufferLength: buffer.length,
+						bufferPreview: buffer.substring(0, 200),
+					};
+
+					const errorMessage = `[API_ERROR] [RETRIABLE] Anthropic stream terminated unexpectedly with incomplete data`;
+					logger.error(errorMessage, errorContext);
 					throw new Error(
-						`Stream terminated unexpectedly with incomplete data: ${buffer.substring(
-							0,
-							100,
-						)}...`,
+						`${errorMessage}. Context: ${JSON.stringify(errorContext)}`,
 					);
 				}
 				break; // 正常结束
@@ -436,7 +467,10 @@ async function* parseSSEStream(
 
 				// Handle both "event: " and "event:" formats
 				if (trimmed.startsWith('event:')) {
-					// Event type, will be followed by data
+					// 记录事件类型用于断点恢复
+					lastEventType = trimmed.startsWith('event: ')
+						? trimmed.slice(7)
+						: trimmed.slice(6);
 					continue;
 				}
 
@@ -452,6 +486,7 @@ async function* parseSSEStream(
 					});
 
 					if (parseResult.success) {
+						dataCount++;
 						yield parseResult.data;
 					}
 				}
@@ -459,13 +494,26 @@ async function* parseSSEStream(
 		}
 	} catch (error) {
 		const {logger} = await import('../utils/core/logger.js');
-		logger.error('SSE stream parsing error:', {
+
+		// 增强错误日志，包含断点状态
+		const errorContext = {
 			error: error instanceof Error ? error.message : 'Unknown error',
-			remainingBuffer: buffer.substring(0, 200),
-		});
+			dataCount,
+			lastEventType,
+			bufferLength: buffer.length,
+			bufferPreview: buffer.substring(0, 200),
+		};
+		logger.error(
+			'[API_ERROR] [RETRIABLE] Anthropic SSE stream parsing error with checkpoint context:',
+			errorContext,
+		);
 		throw error;
 	}
 }
+
+/**
+ * Create streaming Anthropic completion with retry support
+ */
 export async function* createStreamingAnthropicCompletion(
 	options: AnthropicOptions,
 	abortSignal?: AbortSignal,
@@ -522,10 +570,11 @@ export async function* createStreamingAnthropicCompletion(
 				options.messages,
 				options.includeBuiltinSystemPrompt !== false, // 默认为 true
 				customSystemPromptContent, // 传递自定义系统提示词
+				!!options.customSystemPromptId || !!options.subAgentSystemPrompt, // 子代理调用的判断：只要有customSystemPromptId或subAgentSystemPrompt就认为是子代理调用
+				options.subAgentSystemPrompt,
 				config.anthropicCacheTTL || '5m', // 使用配置的 TTL，默认 5m
 				options.disableThinking || false, // Strip thinking blocks when thinking is disabled
-				options.planMode || false, // Use Plan mode system prompt if enabled
-				options.vulnerabilityHuntingMode || false, // Use Vulnerability Hunting mode system prompt if enabled
+				// Use Team mode system prompt if enabled (deprecated)
 			);
 
 			// Use persistent userId that remains the same until application restart
@@ -616,13 +665,24 @@ export async function* createStreamingAnthropicCompletion(
 
 			if (!response.ok) {
 				const errorText = await response.text();
-				throw new Error(
-					`Anthropic API error: ${response.status} ${response.statusText} - ${errorText}`,
-				);
+				const errorMsg = `[API_ERROR] Anthropic API HTTP ${response.status}: ${response.statusText} - ${errorText}`;
+				logger.error(errorMsg, {
+					status: response.status,
+					statusText: response.statusText,
+					url,
+					model: requestBody.model,
+				});
+				throw new Error(errorMsg);
 			}
 
 			if (!response.body) {
-				throw new Error('No response body from Anthropic API');
+				const errorMsg =
+					'[API_ERROR] No response body from Anthropic API (empty response)';
+				logger.error(errorMsg, {
+					url,
+					model: requestBody.model,
+				});
+				throw new Error(errorMsg);
 			}
 
 			let contentBuffer = '';

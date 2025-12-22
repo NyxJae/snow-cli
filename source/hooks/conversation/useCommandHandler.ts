@@ -11,6 +11,8 @@ import {
 	isFileDialogSupported,
 } from '../../utils/ui/fileDialog.js';
 import {exportMessagesToFile} from '../../utils/session/chatExporter.js';
+import {clearReadFolders} from '../../utils/core/folderNotebookPreprocessor.js';
+import {getTodoService} from '../../utils/execution/mcpToolsManager.js';
 
 /**
  * 执行上下文压缩
@@ -20,6 +22,8 @@ import {exportMessagesToFile} from '../../utils/session/chatExporter.js';
 export async function executeContextCompression(sessionId?: string): Promise<{
 	uiMessages: Message[];
 	usage: UsageInfo;
+	preservedMessages?: Array<any>;
+	summary?: string;
 } | null> {
 	try {
 		// 必须提供 sessionId 才能执行压缩，避免压缩错误的会话
@@ -147,6 +151,35 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 		// 这样可以保留压缩前的完整历史，支持回滚到压缩前的任意快照点
 		const compressedSession = await sessionManager.createNewSession(false);
 
+		// 🔥 TODO迁移：将旧会话的TODO复制到新会话中，确保压缩前后TODO一致性
+		try {
+			const todoService = getTodoService();
+			const oldTodoList = await todoService.getTodoList(currentSession.id);
+
+			if (oldTodoList && oldTodoList.todos.length > 0) {
+				// 将旧会话的TODO列表复制到新会话
+				await todoService.saveTodoList(
+					compressedSession.id,
+					oldTodoList.todos,
+					oldTodoList,
+				);
+				// console.log(
+				// 	`TODO migration completed: ${oldTodoList.todos.length} todos copied from session ${currentSession.id} to ${compressedSession.id}`,
+				// );
+			} else {
+				console.log(
+					`No todos found in old session ${currentSession.id}, skipping TODO migration`,
+				);
+			}
+		} catch (error) {
+			// TODO迁移失败不应该影响会话压缩，记录日志即可
+			console.warn('Failed to migrate TODO during session compression:', {
+				oldSessionId: currentSession.id,
+				newSessionId: compressedSession.id,
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+
 		// 设置新会话的消息
 		compressedSession.messages = newSessionMessages;
 		compressedSession.messageCount = newSessionMessages.length;
@@ -192,6 +225,10 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 		// 新会话有独立的快照系统，不需要重映射旧会话的快照
 		// 旧会话的快照保持不变，如果需要回滚到压缩前，可以切换回旧会话
 
+		// Clear read folders state after compression
+		// Folder notebooks will be re-collected when files are read in the new session context
+		clearReadFolders();
+
 		// 同步更新UI消息列表：从会话消息转换为UI Message格式
 		const newUIMessages: Message[] = [];
 
@@ -230,6 +267,8 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 				completion_tokens: compressionResult.usage.completion_tokens,
 				total_tokens: compressionResult.usage.total_tokens,
 			},
+			preservedMessages: compressionResult.preservedMessages || [],
+			summary: compressionResult.summary,
 		};
 	} catch (error) {
 		console.error('Context compression failed:', error);
@@ -253,8 +292,6 @@ type CommandHandlerOptions = {
 	setShowWorkingDirPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowPermissionsPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setYoloMode: React.Dispatch<React.SetStateAction<boolean>>;
-	setPlanMode: React.Dispatch<React.SetStateAction<boolean>>;
-	setVulnerabilityHuntingMode: React.Dispatch<React.SetStateAction<boolean>>;
 	setContextUsage: React.Dispatch<React.SetStateAction<UsageInfo | null>>;
 	setCurrentContextPercentage: React.Dispatch<React.SetStateAction<number>>;
 	setVscodeConnectionStatus: React.Dispatch<
@@ -668,39 +705,18 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				resetTerminal(stdout);
 				navigateTo('welcome');
 			} else if (result.success && result.action === 'toggleYolo') {
-				// Toggle YOLO mode without adding command message
-				options.setYoloMode(prev => !prev);
+				// Toggle YOLO mode via MainAgentManager to keep single source of truth
+				try {
+					const {toggleYoloMode} = require('../../utils/MainAgentManager.js');
+					const newYoloState = toggleYoloMode();
+					options.setYoloMode(newYoloState);
+				} catch (error) {
+					console.warn('Failed to toggle YOLO mode via /yolo command:', error);
+				}
 				// Don't add command message to keep UI clean
-			} else if (result.success && result.action === 'togglePlan') {
-				// Toggle Plan mode without adding command message
-				options.setPlanMode(prev => {
-					const newValue = !prev;
-					// If enabling Plan mode, disable Vulnerability Hunting mode
-					if (newValue) {
-						options.setVulnerabilityHuntingMode(false);
-					}
-					return newValue;
-				});
+				// toggleTeam 和 toggleVulnerabilityHunting 已整合为 Debugger 主代理切换，不再需要独立处理
 				// Don't add command message to keep UI clean
-			} else if (
-				result.success &&
-				result.action === 'toggleVulnerabilityHunting'
-			) {
-				// Toggle Vulnerability Hunting mode without adding command message
-				options.setVulnerabilityHuntingMode(prev => {
-					const newValue = !prev;
-					// If enabling Vulnerability Hunting mode, disable Plan mode
-					if (newValue) {
-						options.setPlanMode(false);
-					}
-					return newValue;
-				});
-				// Don't add command message to keep UI clean
-			} else if (
-				result.success &&
-				result.action === 'initProject' &&
-				result.prompt
-			) {
+			} else if (result.success && result.prompt) {
 				// Add command execution feedback
 				const commandMessage: Message = {
 					role: 'command',
@@ -822,7 +838,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					}
 				}
 			} else if (result.message) {
-				// For commands that just return a message (like /role, /init without AGENTS.md, etc.)
+				// For commands that just return a message (like /init without AGENTS.md, etc.)
 				// Display the message as a command message
 				const commandMessage: Message = {
 					role: 'command',

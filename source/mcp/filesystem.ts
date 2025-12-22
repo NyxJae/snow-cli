@@ -53,6 +53,8 @@ import {parseFileSymbols} from './utils/aceCodeSearch/symbol.utils.js';
 import type {CodeSymbol} from './types/aceCodeSearch.types.js';
 // Notebook utilities for automatic note retrieval
 import {queryNotebook} from '../utils/core/notebookManager.js';
+// Folder notebook preprocessor for tracking read folders
+import {updateReadFolders} from '../utils/core/folderNotebookPreprocessor.js';
 
 const {resolve, dirname, isAbsolute, extname} = path;
 
@@ -506,6 +508,9 @@ export class FilesystemMCPService {
 							fileContent += notebookInfo;
 						}
 
+						// Update read folders for folder notebook feature (only for file reads, not directories)
+						updateReadFolders(file);
+
 						multimodalContent.push({
 							type: 'text',
 							text: fileContent,
@@ -670,6 +675,9 @@ export class FilesystemMCPService {
 			if (notebookInfo) {
 				partialContent += notebookInfo;
 			}
+
+			// Update read folders for folder notebook feature (only for file reads, not directories)
+			updateReadFolders(filePath as string);
 
 			return {
 				content: partialContent,

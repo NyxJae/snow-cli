@@ -57,6 +57,7 @@
 		"@types/pdf-parse": "^1.1.5",
 		"@types/prettier": "^2.7.3",
 		"@types/react": "^18.0.32",
+		"@types/semver": "^7.7.0",
 		"@types/sharp": "^0.32.0",
 		"@types/sql.js": "^1.4.9",
 		"@types/ws": "^8.5.8",
@@ -127,6 +128,11 @@
 		}
 	},
 	"prettier": "@vdemedes/prettier-config",
+	"dependencies": {
+		"@iarna/toml": "^2.2.5",
+		"@types/markdown-it": "^14.1.2",
+		"cli-table3": "^0.6.5"
+	},
 	"optionalDependencies": {
 		"sharp": "^0.34.5"
 	}

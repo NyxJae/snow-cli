@@ -21,6 +21,8 @@ export type TranslationKeys = {
 		customHeadersSettingsInfo: string;
 		mcpSettings: string;
 		mcpSettingsInfo: string;
+		mainAgentSettings: string;
+		mainAgentSettingsInfo: string;
 		subAgentSettings: string;
 		subAgentSettingsInfo: string;
 		sensitiveCommands: string;
@@ -270,9 +272,11 @@ export type TranslationKeys = {
 		codebaseTools: string;
 		terminalTools: string;
 		todoTools: string;
+		usefulInfoTools: string;
 		webSearchTools: string;
 		ideTools: string;
 		userInteractionTools: string;
+		notebookTools: string;
 		skillTools: string;
 		configProfile: string;
 		customSystemPrompt: string;
@@ -303,6 +307,8 @@ export type TranslationKeys = {
 		deleteConfirm: string;
 		deleteSuccess: string;
 		deleteFailed: string;
+		resetSuccess: string;
+		resetFailed: string;
 		navigationHint: string;
 	};
 	// Sensitive Command Config Screen
@@ -431,7 +437,6 @@ export type TranslationKeys = {
 			compact: string;
 			home: string;
 			review: string;
-			role: string;
 			usage: string;
 			export: string;
 			custom: string;
@@ -452,7 +457,6 @@ export type TranslationKeys = {
 		moreHidden: string;
 		escHint: string;
 		activeLabel: string;
-		searchLabel: string;
 	};
 
 	// Permissions Panel
@@ -740,8 +744,7 @@ export type TranslationKeys = {
 		contentSearchHint: string;
 		fileSearchHint: string;
 		yoloModeActive: string;
-		planModeActive: string;
-		vulnerabilityHuntingModeActive: string;
+		teamModeActive: string;
 		tokens: string;
 		cached: string;
 		newCache: string;
@@ -889,6 +892,34 @@ export type TranslationKeys = {
 		error: string;
 		tabToSwitch: string;
 		noDataForPeriod: string;
+	},
+	// Main Agent Management
+	mainAgent: {
+		title: string;
+		type: {
+			general: string;
+			team: string;
+		};
+		status: {
+			builtin: string;
+			custom: string;
+		};
+		instructions: string;
+		reset: {
+			success: string;
+			failed: string;
+		};
+		edit: {
+			title: string;
+			saveSuccess: string;
+			saveError: string;
+			confirmReset: string;
+			tools: string;
+			subAgents: string;
+			systemPrompt: string;
+			name: string;
+			description: string;
+		};
 	};
 	// Working Directory Panel
 	workingDirectoryPanel: {

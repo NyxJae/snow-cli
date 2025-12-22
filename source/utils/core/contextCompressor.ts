@@ -1,5 +1,5 @@
 import {getOpenAiConfig, getCustomSystemPrompt} from '../config/apiConfig.js';
-import {getSystemPromptForMode} from '../../prompt/systemPrompt.js';
+import {mainAgentManager} from '../../utils/MainAgentManager.js';
 import type {ChatMessage} from '../../api/types.js';
 import {createStreamingChatCompletion} from '../../api/chat.js';
 import {createStreamingResponse} from '../../api/responses.js';
@@ -79,7 +79,8 @@ Create a detailed summary following this structure:
 7. Use code snippets or examples where helpful
 8. Prioritize actionable information over general descriptions
 
-**EXECUTE THE COMPRESSION NOW - NO QUESTIONS, NO DELAYS.**`;
+**EXECUTE THE COMPRESSION NOW - NO QUESTIONS, NO DELAYS.**
+使用中文回复`;
 
 /**
  * 找到需要保留的消息（最近的工具调用链）
@@ -316,10 +317,7 @@ function prepareMessagesForCompression(
 	} else {
 		// No custom system prompt: default as system
 		// Default to false for compression (no Plan mode in compression context)
-		messages.push({
-			role: 'system',
-			content: getSystemPromptForMode(false, false),
-		});
+		messages.push({role: 'system', content: mainAgentManager.getSystemPrompt()});
 	}
 
 	// Add all conversation history for compression

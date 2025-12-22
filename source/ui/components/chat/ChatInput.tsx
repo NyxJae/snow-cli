@@ -16,6 +16,7 @@ const FileList = lazy(() => import('../tools/FileList.js'));
 const AgentPickerPanel = lazy(() => import('../panels/AgentPickerPanel.js'));
 const TodoPickerPanel = lazy(() => import('../panels/TodoPickerPanel.js'));
 const ProfilePanel = lazy(() => import('../panels/ProfilePanel.js'));
+
 import {useInputBuffer} from '../../../hooks/input/useInputBuffer.js';
 import {useCommandPanel} from '../../../hooks/ui/useCommandPanel.js';
 import {useFilePicker} from '../../../hooks/picker/useFilePicker.js';
@@ -73,10 +74,7 @@ type Props = {
 	onHistorySelect?: (selectedIndex: number, message: string) => void;
 	yoloMode?: boolean;
 	setYoloMode?: (value: boolean) => void;
-	planMode?: boolean;
-	setPlanMode?: (value: boolean) => void;
-	vulnerabilityHuntingMode?: boolean;
-	setVulnerabilityHuntingMode?: (value: boolean) => void;
+	// Vulnerability Hunting Mode 已整合为 Debugger 主代理，不再需要独立状态
 	contextUsage?: {
 		inputTokens: number;
 		maxContextTokens: number;
@@ -104,8 +102,6 @@ type Props = {
 		isActive: boolean;
 	}>;
 	handleProfileSelect?: (profileName: string) => void;
-	profileSearchQuery?: string;
-	setProfileSearchQuery?: (query: string) => void;
 	onSwitchProfile?: () => void; // Callback when Ctrl+P is pressed to switch profile
 };
 
@@ -119,10 +115,8 @@ export default function ChatInput({
 	onHistorySelect,
 	yoloMode = false,
 	setYoloMode,
-	planMode = false,
-	setPlanMode,
-	vulnerabilityHuntingMode = false,
-	setVulnerabilityHuntingMode,
+
+	// Vulnerability Hunting Mode 已整合为 Debugger 主代理，不再需要独立状态
 	contextUsage,
 	initialContent = null,
 	onContextPercentageChange,
@@ -132,8 +126,6 @@ export default function ChatInput({
 	setProfileSelectedIndex,
 	getFilteredProfiles,
 	handleProfileSelect,
-	profileSearchQuery = '',
-	setProfileSearchQuery,
 	onSwitchProfile,
 }: Props) {
 	// Use i18n hook for translations
@@ -258,10 +250,7 @@ export default function ChatInput({
 		forceUpdate,
 		yoloMode,
 		setYoloMode: setYoloMode || (() => {}),
-		planMode,
-		setPlanMode: setPlanMode || (() => {}),
-		vulnerabilityHuntingMode,
-		setVulnerabilityHuntingMode: setVulnerabilityHuntingMode || (() => {}),
+		// Vulnerability Hunting Mode 已整合为 Debugger 主代理，不再需要独立状态
 		showCommands,
 		setShowCommands,
 		commandSelectedIndex,
@@ -321,8 +310,6 @@ export default function ChatInput({
 		setProfileSelectedIndex: setProfileSelectedIndex || (() => {}),
 		getFilteredProfiles: getFilteredProfiles || (() => []),
 		handleProfileSelect: handleProfileSelect || (() => {}),
-		profileSearchQuery,
-		setProfileSearchQuery: setProfileSearchQuery || (() => {}),
 		onSwitchProfile,
 	});
 
@@ -707,14 +694,12 @@ export default function ChatInput({
 					</Suspense>
 					<Suspense fallback={null}>
 						<ProfilePanel
-							profiles={getFilteredProfiles ? getFilteredProfiles() : []}
+							profiles={getFilteredProfiles?.() || []}
 							selectedIndex={profileSelectedIndex}
 							visible={showProfilePicker}
 							maxHeight={5}
-							searchQuery={profileSearchQuery}
 						/>
 					</Suspense>
-					{/* Status information moved to StatusLine component */}
 				</>
 			)}
 		</Box>

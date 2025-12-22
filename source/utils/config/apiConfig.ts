@@ -357,7 +357,55 @@ export function updateMCPConfig(mcpConfig: MCPConfig): void {
 	}
 }
 
+/**
+ * 获取项目级配置目录路径
+ */
+function getProjectConfigDir(): string {
+	return join(process.cwd(), '.snow');
+}
+
+/**
+ * 获取项目级 MCP 配置文件路径
+ */
+function getProjectMCPConfigPath(): string {
+	return join(getProjectConfigDir(), 'mcp-config.json');
+}
+
+/**
+ * 获取 MCP 配置
+ * 优先级：项目级配置 > 全局配置
+ * - 如果项目级配置存在且非空，使用项目级配置
+ * - 如果项目级配置为空或无效，回退到全局配置
+ * - 如果项目级配置格式错误，抛出包含路径的错误信息
+ */
 export function getMCPConfig(): MCPConfig {
+	// 1. 首先检查项目级配置
+	const projectConfigPath = getProjectMCPConfigPath();
+	if (existsSync(projectConfigPath)) {
+		try {
+			const configData = readFileSync(projectConfigPath, 'utf8');
+			// 检查文件是否为空
+			if (configData.trim().length > 0) {
+				const config = JSON.parse(configData) as MCPConfig;
+				// 验证配置有效性
+				if (
+					config &&
+					config.mcpServers &&
+					typeof config.mcpServers === 'object'
+				) {
+					return config;
+				}
+			}
+			// 项目级配置为空或无效，回退到全局配置
+		} catch (error) {
+			// 项目级配置解析错误，抛出明确错误
+			throw new Error(
+				`项目级 MCP 配置文件格式错误: ${projectConfigPath}，请检查 JSON 格式`,
+			);
+		}
+	}
+
+	// 2. 回退到全局配置（保留原有逻辑）
 	ensureConfigDirectory();
 
 	if (!existsSync(MCP_CONFIG_FILE)) {
@@ -375,6 +423,41 @@ export function getMCPConfig(): MCPConfig {
 		updateMCPConfig(defaultMCPConfig);
 		return defaultMCPConfig;
 	}
+}
+
+/**
+ * 检测当前是否使用项目级 MCP 配置
+ */
+export function isUsingProjectMCPConfig(): boolean {
+	const projectConfigPath = getProjectMCPConfigPath();
+	if (!existsSync(projectConfigPath)) {
+		return false;
+	}
+	try {
+		const configData = readFileSync(projectConfigPath, 'utf8');
+		if (configData.trim().length === 0) {
+			return false;
+		}
+		const config = JSON.parse(configData);
+		return config && config.mcpServers && typeof config.mcpServers === 'object';
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * 获取全局 MCP 配置路径
+ */
+export function getGlobalMCPConfigPath(): string {
+	ensureConfigDirectory();
+	return MCP_CONFIG_FILE;
+}
+
+/**
+ * 获取项目级 MCP 配置路径（公开版）
+ */
+export function getProjectMCPConfigPathPublic(): string {
+	return getProjectMCPConfigPath();
 }
 
 export function validateMCPConfig(config: Partial<MCPConfig>): string[] {
