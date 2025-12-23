@@ -1632,10 +1632,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		}
 		const session = sessionManager.getCurrentSession();
 		if (session) {
-			await hashBasedSnapshotManager.createSnapshot(
-				session.id,
-				messages.length,
-			);
+			// NOTE: New on-demand backup system - snapshot creation is now automatic
 		}
 
 		// Process the message normally

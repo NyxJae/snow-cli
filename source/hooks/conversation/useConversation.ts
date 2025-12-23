@@ -33,7 +33,6 @@ import {formatToolCallMessage} from '../../utils/ui/messageFormatter.js';
 import {resourceMonitor} from '../../utils/core/resourceMonitor.js';
 import {isToolNeedTwoStepDisplay} from '../../utils/config/toolDisplayConfig.js';
 import type {ConfirmationResult} from '../../ui/components/tools/ToolConfirmation.js';
-import {hashBasedSnapshotManager} from '../../utils/codebase/hashBasedSnapshot.js';
 import {
 	shouldAutoCompress,
 	performAutoCompression,
@@ -393,6 +392,22 @@ async function executeWithInternalRetry(
 
 	// NOTE: User message is saved in handleConversationWithTools BEFORE retry loop
 	// to prevent duplicate saves when network errors trigger retries
+
+	// Set conversation context for on-demand snapshot system
+	// This provides sessionId and messageIndex to file operations
+	// messageIndex is the index after saving the current user message
+	try {
+		const {setConversationContext} = await import(
+			'../../utils/codebase/conversationContext.js'
+		);
+		// Use session.messages.length as messageIndex (after user message is saved)
+		const updatedSession = sessionManager.getCurrentSession();
+		if (updatedSession) {
+			setConversationContext(updatedSession.id, updatedSession.messages.length);
+		}
+	} catch (error) {
+		console.error('Failed to set conversation context:', error);
+	}
 
 	// Initialize token encoder with proper cleanup tracking
 	let encoder: any;
@@ -1994,20 +2009,8 @@ async function executeWithInternalRetry(
 							}));
 
 						// Create snapshot before adding pending message to UI
-						const session = sessionManager.getCurrentSession();
-						let pendingMessageIndex = 0;
-						if (session) {
-							// Use setMessages callback to get REAL-TIME message count
-							options.setMessages(prev => {
-								pendingMessageIndex = prev.length;
-								return prev; // Don't modify, just read
-							});
-
-							await hashBasedSnapshotManager.createSnapshot(
-								session.id,
-								pendingMessageIndex,
-							);
-						}
+						// NOTE: New on-demand backup system - no longer需要 need manual snapshot creation
+						// Files will be automatically backed up when they are modified
 
 						// Add user message to UI
 						const userMessage: Message = {
@@ -2027,14 +2030,29 @@ async function executeWithInternalRetry(
 						});
 
 						// Save user message
-						saveMessage({
-							role: 'user',
-							content: combinedMessage,
-							images:
-								allPendingImages.length > 0 ? allPendingImages : undefined,
-						}).catch(error => {
+						try {
+							await saveMessage({
+								role: 'user',
+								content: combinedMessage,
+								images:
+									allPendingImages.length > 0 ? allPendingImages : undefined,
+							});
+
+							// Set conversation context for pending message
+							// This provides sessionId and messageIndex to file operations
+							const {setConversationContext} = await import(
+								'../../utils/codebase/conversationContext.js'
+							);
+							const updatedSession = sessionManager.getCurrentSession();
+							if (updatedSession) {
+								setConversationContext(
+									updatedSession.id,
+									updatedSession.messages.length,
+								);
+							}
+						} catch (error) {
 							console.error('Failed to save pending user message:', error);
-						});
+						}
 					}
 				}
 
@@ -2170,62 +2188,18 @@ async function executeWithInternalRetry(
 		}
 
 		// 同步提交所有待处理快照 - 确保快照保存可靠性
-		// 处理 normal 和 pending 消息的快照
-		const session = sessionManager.getCurrentSession();
-		if (session) {
-			let commitAttempts = 0;
-			const maxCommitAttempts = 10; // 防止无限循环
+		// NOTE: New on-demand backup system - snapshot management is now automatic
+		// Files are backed up when they are created/modified
+		// No need for manual commit process
 
-			while (commitAttempts < maxCommitAttempts) {
-				try {
-					// 添加超时保护，防止快照提交卡住
-					const commitPromise = hashBasedSnapshotManager.commitSnapshot(
-						session.id,
-					);
-					const timeoutPromise = new Promise((_, reject) => {
-						setTimeout(
-							() => reject(new Error('Snapshot commit timeout')),
-							5000,
-						);
-					});
-
-					const result = (await Promise.race([
-						commitPromise,
-						timeoutPromise,
-					])) as any;
-
-					if (!result) break; // 没有更多快照需要提交
-
-					// 更新回滚 UI 的快照文件计数
-					if (result.fileCount > 0 && options.setSnapshotFileCount) {
-						options.setSnapshotFileCount(prev => {
-							const newCounts = new Map(prev);
-							newCounts.set(result.messageIndex, result.fileCount);
-							return newCounts;
-						});
-					}
-
-					commitAttempts++;
-				} catch (error) {
-					console.warn('[Snapshot] Failed to commit snapshot:', error);
-					break; // 出错时退出循环，防止无限重试
-				}
-			}
-
-			if (commitAttempts >= maxCommitAttempts) {
-				console.warn(
-					'[Snapshot] Maximum commit attempts reached, clearing pending snapshots',
-				);
-				// 强制清理可能卡住的快照
-				const keys = Array.from(
-					hashBasedSnapshotManager['activeSnapshots'].keys(),
-				);
-				for (const key of keys) {
-					if (key.startsWith(`${session.id}:`)) {
-						hashBasedSnapshotManager['activeSnapshots'].delete(key);
-					}
-				}
-			}
+		// Clear conversation context after tool execution completes
+		try {
+			const {clearConversationContext} = await import(
+				'../../utils/codebase/conversationContext.js'
+			);
+			clearConversationContext();
+		} catch (error) {
+			// Ignore errors during cleanup
 		}
 
 		// ✅ 确保总是释放encoder资源，避免资源泄漏

@@ -172,12 +172,8 @@ export function useChatLogic(props: UseChatLogicProps) {
 		}
 		const session = sessionManager.getCurrentSession();
 		if (session) {
-			await hashBasedSnapshotManager.createSnapshot(
-				session.id,
-				messages.length,
-			);
+			// NOTE: New on-demand backup system - snapshot creation is now automatic
 		}
-
 		await processMessage(message, images);
 	};
 
@@ -275,6 +271,8 @@ export function useChatLogic(props: UseChatLogicProps) {
 		}
 		streamingState.setIsStreaming(true);
 
+		// NOTE: New on-demand backup system - files are automatically backed up when modified
+		// No need for manual snapshot creation
 		const controller = new AbortController();
 		streamingState.setAbortController(controller);
 
@@ -329,32 +327,39 @@ export function useChatLogic(props: UseChatLogicProps) {
 				}
 			};
 
-			await handleConversationWithTools({
-				userContent: messageForAI,
-				imageContents,
-				controller,
-				messages,
-				saveMessage: saveMessageWithOriginal,
-				setMessages,
-				setStreamTokenCount: streamingState.setStreamTokenCount,
-				requestToolConfirmation,
-				requestUserQuestion,
-				isToolAutoApproved,
-				addMultipleToAlwaysApproved,
-				yoloMode,
-				setContextUsage: streamingState.setContextUsage,
-				useBasicModel,
-				getPendingMessages: () => pendingMessagesRef.current,
-				clearPendingMessages: () => setPendingMessages([]),
-				setIsStreaming: streamingState.setIsStreaming,
-				setIsReasoning: streamingState.setIsReasoning,
-				setRetryStatus: streamingState.setRetryStatus,
-				clearSavedMessages,
-				setRemountKey,
-				setSnapshotFileCount: snapshotState.setSnapshotFileCount,
-				getCurrentContextPercentage: () => currentContextPercentageRef.current,
-				setCurrentModel: streamingState.setCurrentModel,
-			});
+			try {
+				await handleConversationWithTools({
+					userContent: messageForAI,
+					imageContents,
+					controller,
+					messages,
+					saveMessage: saveMessageWithOriginal,
+					setMessages,
+					setStreamTokenCount: streamingState.setStreamTokenCount,
+					requestToolConfirmation,
+					requestUserQuestion,
+					isToolAutoApproved,
+					addMultipleToAlwaysApproved,
+					yoloMode,
+					setContextUsage: streamingState.setContextUsage,
+					useBasicModel,
+					getPendingMessages: () => pendingMessagesRef.current,
+					clearPendingMessages: () => setPendingMessages([]),
+					setIsStreaming: streamingState.setIsStreaming,
+					setIsReasoning: streamingState.setIsReasoning,
+					setRetryStatus: streamingState.setRetryStatus,
+					clearSavedMessages,
+					setRemountKey,
+					setSnapshotFileCount: snapshotState.setSnapshotFileCount,
+					getCurrentContextPercentage: () =>
+						currentContextPercentageRef.current,
+					setCurrentModel: streamingState.setCurrentModel,
+				});
+			} finally {
+				// NOTE: New on-demand backup system - snapshot management is now automatic
+				// Files are backed up when they are created/modified
+				// No need for manual commit process
+			}
 		} catch (error) {
 			// Don't show error message if user manually interrupted or request was aborted
 			if (!controller.signal.aborted && !userInterruptedRef.current) {
@@ -558,31 +563,37 @@ export function useChatLogic(props: UseChatLogicProps) {
 				vscodeState.vscodeConnected ? vscodeState.editorContext : undefined,
 			);
 
-			await handleConversationWithTools({
-				userContent: messageForAI,
-				imageContents,
-				controller,
-				messages,
-				saveMessage,
-				setMessages,
-				setStreamTokenCount: streamingState.setStreamTokenCount,
-				requestToolConfirmation,
-				requestUserQuestion,
-				isToolAutoApproved,
-				addMultipleToAlwaysApproved,
-				yoloMode,
-				setContextUsage: streamingState.setContextUsage,
-				getPendingMessages: () => pendingMessagesRef.current,
-				clearPendingMessages: () => setPendingMessages([]),
-				setIsStreaming: streamingState.setIsStreaming,
-				setIsReasoning: streamingState.setIsReasoning,
-				setRetryStatus: streamingState.setRetryStatus,
-				clearSavedMessages,
-				setRemountKey,
-				setSnapshotFileCount: snapshotState.setSnapshotFileCount,
-				getCurrentContextPercentage: () => currentContextPercentageRef.current,
-				setCurrentModel: streamingState.setCurrentModel,
-			});
+			try {
+				await handleConversationWithTools({
+					userContent: messageForAI,
+					imageContents,
+					controller,
+					messages,
+					saveMessage,
+					setMessages,
+					setStreamTokenCount: streamingState.setStreamTokenCount,
+					requestToolConfirmation,
+					requestUserQuestion,
+					isToolAutoApproved,
+					addMultipleToAlwaysApproved,
+					yoloMode,
+					setContextUsage: streamingState.setContextUsage,
+					getPendingMessages: () => pendingMessagesRef.current,
+					clearPendingMessages: () => setPendingMessages([]),
+					setIsStreaming: streamingState.setIsStreaming,
+					setIsReasoning: streamingState.setIsReasoning,
+					setRetryStatus: streamingState.setRetryStatus,
+					clearSavedMessages,
+					setRemountKey,
+					setSnapshotFileCount: snapshotState.setSnapshotFileCount,
+					getCurrentContextPercentage: () =>
+						currentContextPercentageRef.current,
+					setCurrentModel: streamingState.setCurrentModel,
+				});
+			} finally {
+				// Snapshots are now created on-demand during file operations
+				// No global commit needed
+			}
 		} catch (error) {
 			// Don't show error message if user manually interrupted or request was aborted
 			if (!controller.signal.aborted && !userInterruptedRef.current) {
