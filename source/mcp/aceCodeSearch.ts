@@ -57,8 +57,8 @@ export class ACECodeSearchService {
 	 */
 	private async loadExclusionPatterns(): Promise<void> {
 		if (this.excludesLoaded) return;
-		this.customExcludes = await loadExclusionPatterns(this.basePath);
-		this.excludesLoaded = true;
+			this.customExcludes = await loadExclusionPatterns(this.basePath);
+			this.excludesLoaded = true;
 	}
 
 	/**
@@ -674,8 +674,10 @@ export class ACECodeSearchService {
 	): Promise<
 		Array<{filePath: string; line: number; column: number; content: string}>
 	> {
-		// Prefer ripgrep (rg) over grep if available
-		const grepCommand = (await isCommandAvailable('rg')) ? 'rg' : 'grep';
+		const timeout = 30000; // 30 seconds timeout
+		// rg 容易有问题,暂时用回 grep
+		// Prefer system grep over ripgrep for stability
+		const grepCommand = (await isCommandAvailable('grep')) ? 'grep' : 'rg';
 		const isRipgrep = grepCommand === 'rg';
 
 		return new Promise((resolve, reject) => {
@@ -730,28 +732,44 @@ export class ACECodeSearchService {
 			const stdoutChunks: Buffer[] = [];
 			const stderrChunks: Buffer[] = [];
 
-			child.stdout.on('data', chunk => stdoutChunks.push(chunk));
+			child.stdout.on('data', chunk => {
+				stdoutChunks.push(chunk);
+			});
+
 			child.stderr.on('data', chunk => {
 				const stderrStr = chunk.toString();
 				// Suppress common harmless stderr messages
-				if (
-					!stderrStr.includes('Permission denied') &&
-					!/grep:.*: Is a directory/i.test(stderrStr)
-				) {
+				const isSuppressed =
+					stderrStr.includes('Permission denied') ||
+					/grep:.*: Is a directory/i.test(stderrStr);
+
+				if (!isSuppressed) {
 					stderrChunks.push(chunk);
 				}
 			});
 
+			// Timeout mechanism - re-enabled for stability
+			const timeoutTimer = setTimeout(() => {
+				try {
+					child.kill('SIGKILL');
+				} catch (killError) {
+					// Ignore kill errors
+				}
+				reject(new Error(`System grep timed out after ${timeout}ms`));
+			}, timeout);
+
 			child.on('error', err => {
+				clearTimeout(timeoutTimer);
 				reject(new Error(`Failed to start ${grepCommand}: ${err.message}`));
 			});
 
 			child.on('close', code => {
+				clearTimeout(timeoutTimer);
 				const stdoutData = Buffer.concat(stdoutChunks).toString('utf8');
 				const stderrData = Buffer.concat(stderrChunks).toString('utf8').trim();
 
 				if (code === 0) {
-					const results = parseGrepOutput(stdoutData, this.basePath);
+						const results = parseGrepOutput(stdoutData, this.basePath);
 					resolve(results.slice(0, maxResults));
 				} else if (code === 1) {
 					// No matches found
@@ -884,11 +902,11 @@ export class ACECodeSearchService {
 						// Use configurable exclusion check
 						if (
 							shouldExcludeDirectory(
-								entry.name,
-								fullPath,
-								this.basePath,
-								this.customExcludes,
-								this.regexCache,
+							entry.name,
+							fullPath,
+							this.basePath,
+							this.customExcludes,
+							this.regexCache,
 							)
 						) {
 							continue;
@@ -969,14 +987,14 @@ export class ACECodeSearchService {
 			try {
 				const gitAvailable = await isCommandAvailable('git');
 				if (gitAvailable) {
-					const results = await this.gitGrepSearch(
-						pattern,
-						fileGlob,
-						maxResults,
-						isRegex,
-					);
-					if (results.length > 0) {
-						return await this.sortResultsByRecency(results);
+						const results = await this.gitGrepSearch(
+							pattern,
+							fileGlob,
+							maxResults,
+							isRegex,
+						);
+						if (results.length > 0) {
+							return await this.sortResultsByRecency(results);
 					}
 				}
 			} catch (error) {
@@ -990,12 +1008,12 @@ export class ACECodeSearchService {
 			const grepAvailable =
 				(await isCommandAvailable('rg')) || (await isCommandAvailable('grep'));
 			if (grepAvailable) {
-				const results = await this.systemGrepSearch(
-					pattern,
-					fileGlob,
-					maxResults,
-				);
-				return await this.sortResultsByRecency(results);
+					const results = await this.systemGrepSearch(
+						pattern,
+						fileGlob,
+						maxResults,
+					);
+					return await this.sortResultsByRecency(results);
 			}
 		} catch (error) {
 			// Fall through to JavaScript fallback
@@ -1003,13 +1021,13 @@ export class ACECodeSearchService {
 		}
 
 		// Strategy 3: JavaScript fallback (always works)
-		const results = await this.jsTextSearch(
-			pattern,
-			fileGlob,
-			isRegex,
-			maxResults,
-		);
-		return await this.sortResultsByRecency(results);
+			const results = await this.jsTextSearch(
+				pattern,
+				fileGlob,
+				isRegex,
+				maxResults,
+			);
+			return await this.sortResultsByRecency(results);
 	}
 
 	/**
