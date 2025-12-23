@@ -697,12 +697,12 @@ async function executeWithInternalRetry(
 			// Force update to ensure the final token count is displayed
 			setStreamTokenCount(0);
 
-			// If aborted during streaming, exit the loop
-			// (discontinued message already added by ChatScreen ESC handler)
-			if (controller.signal.aborted) {
-				freeEncoder();
-				break;
-			}
+			// CRITICAL: Process tool calls even if aborted
+			// This ensures tool calls are always saved to session and UI is properly updated
+			// If user manually interrupted (ESC), the tool execution will be skipped later
+			// but the assistant message with tool_calls MUST be persisted for conversation continuity
+			const shouldProcessToolCalls =
+				receivedToolCalls && receivedToolCalls.length > 0;
 
 			// 检测空回复：如果既没有内容也没有工具调用，抛出错误以触发重试
 			if (
@@ -714,17 +714,17 @@ async function executeWithInternalRetry(
 			}
 
 			// If there are tool calls, we need to handle them specially
-			if (receivedToolCalls && receivedToolCalls.length > 0) {
+			if (shouldProcessToolCalls) {
 				// Add assistant message with tool_calls to conversation (OpenAI requires this format)
 				// Extract shared thoughtSignature from the first tool call (Gemini only returns it on the first one)
 				const sharedThoughtSignature = (
-					receivedToolCalls.find(tc => (tc as any).thoughtSignature) as any
+					receivedToolCalls!.find(tc => (tc as any).thoughtSignature) as any
 				)?.thoughtSignature as string | undefined;
 
 				const assistantMessage: ChatMessage = {
 					role: 'assistant',
 					content: streamedContent || '',
-					tool_calls: receivedToolCalls.map(tc => ({
+					tool_calls: receivedToolCalls!.map(tc => ({
 						id: tc.id,
 						type: 'function' as const,
 						function: {
@@ -772,11 +772,11 @@ async function executeWithInternalRetry(
 				// Display tool calls in UI - 只有耗时工具才显示进行中状态
 				// Generate parallel group ID when there are multiple tools
 				const parallelGroupId =
-					receivedToolCalls.length > 1
+					receivedToolCalls!.length > 1
 						? `parallel-${Date.now()}-${Math.random()}`
 						: undefined;
 
-				for (const toolCall of receivedToolCalls) {
+				for (const toolCall of receivedToolCalls!) {
 					const toolDisplay = formatToolCallMessage(toolCall);
 					let toolArgs;
 					try {
@@ -815,7 +815,7 @@ async function executeWithInternalRetry(
 				const toolsNeedingConfirmation: ToolCall[] = [];
 				const autoApprovedTools: ToolCall[] = [];
 
-				for (const toolCall of receivedToolCalls) {
+				for (const toolCall of receivedToolCalls!) {
 					// Check both global approved list and session-approved list
 					const isApproved =
 						isToolAutoApproved(toolCall.function.name) ||
@@ -1095,6 +1095,26 @@ async function executeWithInternalRetry(
 
 					// Add all tools to approved list
 					approvedTools.push(...toolsNeedingConfirmation);
+				}
+
+				// CRITICAL: Check if user aborted before executing tools
+				// If aborted, skip tool execution but the assistant message with tool_calls
+				// has already been saved above, maintaining conversation continuity
+				if (controller.signal.aborted) {
+					// Create aborted tool results for all approved tools
+					for (const toolCall of approvedTools) {
+						const abortedResult = {
+							role: 'tool' as const,
+							tool_call_id: toolCall.id,
+							content: 'Tool execution aborted by user',
+						};
+						conversationMessages.push(abortedResult);
+						await saveMessage(abortedResult);
+					}
+
+					// Free encoder and exit loop
+					freeEncoder();
+					break;
 				}
 
 				// Execute approved tools with sub-agent message callback and terminal output callback
@@ -1669,9 +1689,8 @@ async function executeWithInternalRetry(
 				// Update existing tool call messages with results
 				// Collect all result messages first, then add them in batch
 				const resultMessages: any[] = [];
-
 				for (const result of toolResults) {
-					const toolCall = receivedToolCalls.find(
+					const toolCall = receivedToolCalls!.find(
 						tc => tc.id === result.tool_call_id,
 					);
 					if (toolCall) {
@@ -2138,7 +2157,9 @@ async function executeWithInternalRetry(
 		// Free encoder
 		freeEncoder();
 	} finally {
-		// 立即隐藏 LoadingIndicator - 确保 UI 优先响应
+		// CRITICAL: Ensure UI state is always cleaned up
+		// This block MUST execute to prevent "Thinking..." from hanging
+		// Even if an error occurs or the process is aborted
 		if (options.setIsStreaming) {
 			options.setIsStreaming(false);
 		}

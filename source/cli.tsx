@@ -49,6 +49,7 @@ if (!isQuickCommand) {
 // Import only critical dependencies synchronously
 import React from 'react';
 import {render, Text, Box} from 'ink';
+import {setUpdateNotice} from './utils/ui/updateNotice.js';
 import Spinner from 'ink-spinner';
 import meow from 'meow';
 import {execSync} from 'child_process';
@@ -135,7 +136,7 @@ async function checkForUpdates(currentVersion: string): Promise<void> {
 			console.log('   Run "snow --update" to update\n');
 			console.log('   Github: https://github.com/MayDay-wpf/snow-cli');
 		}
-	} catch (error) {
+	} catch {
 		// Silently fail - don't interrupt user experience
 	}
 }
@@ -275,9 +276,9 @@ const Startup = ({
 		const init = async () => {
 			// Load all dependencies in parallel
 			const deps = await loadDependencies();
-
 			// Setup execAsync for checkForUpdates
 			execAsync = deps.promisify(deps.exec);
+			setUpdateNotice(null);
 
 			// Initialize profiles system
 			try {
