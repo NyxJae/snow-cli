@@ -3,7 +3,11 @@ import {createStreamingResponse} from '../../api/responses.js';
 import {createStreamingGeminiCompletion} from '../../api/gemini.js';
 import {createStreamingChatCompletion} from '../../api/chat.js';
 import {getSubAgent} from '../config/subAgentConfig.js';
-import {getAgentsPrompt, createSystemContext} from '../agentsPromptUtils.js';
+import {
+	getAgentsPrompt,
+	createSystemContext,
+	getTaskCompletionPrompt,
+} from '../agentsPromptUtils.js';
 import {
 	collectAllMCPTools,
 	executeMCPTool,
@@ -628,8 +632,53 @@ You are a versatile task execution agent with full tool access, capable of handl
 		// Build conversation history for sub-agent
 		const messages: ChatMessage[] = [];
 
-		// Add useful information context if available (SAME AS MAIN AGENT)
+		// Build final prompt with 子代理配置role + AGENTS.md + 系统环境 + 平台指导
+		let finalPrompt = prompt;
+
+		// Append agent-specific role if configured
+		if (agent.role) {
+			finalPrompt = `${finalPrompt}\n\n${agent.role}`;
+		}
+		// Append AGENTS.md content if available
+		const agentsPrompt = getAgentsPrompt();
+		if (agentsPrompt) {
+			finalPrompt = `${prompt}\n\n${agentsPrompt}`;
+		}
+
+		// Append system environment and platform guidance
+		const systemContext = createSystemContext();
+		if (systemContext) {
+			finalPrompt = `${finalPrompt}\n\n${systemContext}`;
+		}
+
+		// 添加任务完成标识提示词
+		const taskCompletionPrompt = getTaskCompletionPrompt();
+		if (taskCompletionPrompt) {
+			finalPrompt = `${finalPrompt}\n\n${taskCompletionPrompt}`;
+		}
+
+		// 子代理消息顺序必须为：提示词 → todo → useful
+		messages.push({
+			role: 'user',
+			content: finalPrompt,
+		});
+
+		// Add TODO context if available
 		const currentSession = sessionManager.getCurrentSession();
+		if (currentSession) {
+			const todoService = getTodoService();
+			const existingTodoList = await todoService.getTodoList(currentSession.id);
+
+			if (existingTodoList && existingTodoList.todos.length > 0) {
+				const todoContext = formatTodoContext(existingTodoList.todos, true); // isSubAgent=true
+				messages.push({
+					role: 'user',
+					content: todoContext,
+				});
+			}
+		}
+
+		// Add useful information context if available
 		if (currentSession) {
 			const usefulInfoService = getUsefulInfoService();
 			const usefulInfoList = await usefulInfoService.getUsefulInfoList(
@@ -645,44 +694,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 					content: usefulInfoContext,
 				});
 			}
-
-			// Add TODO context if available (SAME AS MAIN AGENT BUT WITH SUB-AGENT PROMPT)
-			const todoService = getTodoService();
-			const existingTodoList = await todoService.getTodoList(currentSession.id);
-
-			if (existingTodoList && existingTodoList.todos.length > 0) {
-				const todoContext = formatTodoContext(existingTodoList.todos, true); // isSubAgent=true
-				messages.push({
-					role: 'user',
-					content: todoContext,
-				});
-			}
 		}
-
-		// Build final prompt with AGENTS.md + 系统环境 + 平台指导 + agent role
-		let finalPrompt = prompt;
-
-		// Append AGENTS.md content if available
-		const agentsPrompt = getAgentsPrompt();
-		if (agentsPrompt) {
-			finalPrompt = `${prompt}\n\n${agentsPrompt}`;
-		}
-
-		// Append system environment and platform guidance
-		const systemContext = createSystemContext();
-		if (systemContext) {
-			finalPrompt = `${finalPrompt}\n\n${systemContext}`;
-		}
-
-		// Append agent-specific role if configured
-		if (agent.role) {
-			finalPrompt = `${finalPrompt}\n\n${agent.role}`;
-		}
-
-		messages.push({
-			role: 'user',
-			content: finalPrompt,
-		});
 
 		// Stream sub-agent execution
 		let finalResponse = '';
@@ -785,10 +797,16 @@ You are a versatile task execution agent with full tool access, capable of handl
 
 			// Call API with sub-agent's tools - choose API based on config
 			// Apply sub-agent configuration overrides (model already loaded from configProfile above)
-			// 子代理应该保持独立，不受主代理系统提示词污染
-			// 只有当子代理明确配置了customSystemPrompt时，才传递customSystemPromptId
-			const subAgentCustomSystemPromptId =
-				agent.customSystemPrompt || undefined;
+			// 子代理继承主代理的 customSystemPromptId（如果子代理自己没配置的话）
+			// 如果主代理也没配置，则不使用自定义系统提示词，改用子代理自己组装的
+			let subAgentCustomSystemPromptId = agent.customSystemPrompt || undefined;
+			if (!subAgentCustomSystemPromptId) {
+				// 子代理没配置，尝试继承主代理的 customSystemPromptId
+				const {getCustomSystemPromptId} = await import(
+					'../config/apiConfig.js'
+				);
+				subAgentCustomSystemPromptId = getCustomSystemPromptId();
+			}
 
 			const stream =
 				config.requestMethod === 'anthropic'
@@ -1151,11 +1169,21 @@ You are a versatile task execution agent with full tool access, capable of handl
 					console.error('Failed to parse askuser tool arguments:', error);
 				}
 
-				const userAnswer = await requestUserQuestion(question, options, multiSelect);
+				const userAnswer = await requestUserQuestion(
+					question,
+					options,
+					multiSelect,
+				);
 
 				const answerText = userAnswer.customInput
-					? `${Array.isArray(userAnswer.selected) ? userAnswer.selected.join(', ') : userAnswer.selected}: ${userAnswer.customInput}`
-					: (Array.isArray(userAnswer.selected) ? userAnswer.selected.join(', ') : userAnswer.selected);
+					? `${
+							Array.isArray(userAnswer.selected)
+								? userAnswer.selected.join(', ')
+								: userAnswer.selected
+					  }: ${userAnswer.customInput}`
+					: Array.isArray(userAnswer.selected)
+					? userAnswer.selected.join(', ')
+					: userAnswer.selected;
 
 				const toolResultMessage = {
 					role: 'tool' as const,

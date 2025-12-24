@@ -206,3 +206,11 @@ export function getAgentsPrompt(): string {
 
 	return '';
 }
+/**
+ * 获取任务完成标识提示词
+ * 
+ */
+export function getTaskCompletionPrompt(): string {
+	return `你要不停的使用工具直到完成任务,才可进行一般回复,且MUST在任务完成后的最终回复的最开头中添加 \`[Mission_Accomplished!]\` 标记.若想提问必须使用\`askuser-ask_question\`工具提问(若你无此工具则说明你不可提问MUST自主决策)
+	`;
+}

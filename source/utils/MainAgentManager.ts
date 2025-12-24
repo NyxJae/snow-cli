@@ -14,7 +14,11 @@ import type {
 	MainAgentRuntimeState,
 } from '../types/MainAgentConfig.js';
 import type {ChatCompletionTool} from '../api/types.js';
-import {getAgentsPrompt, createSystemContext} from './agentsPromptUtils.js';
+import {
+	getAgentsPrompt,
+	createSystemContext,
+	getTaskCompletionPrompt,
+} from './agentsPromptUtils.js';
 
 /**
  * 内置主代理的固定排序顺序
@@ -307,6 +311,12 @@ export class MainAgentManager {
 		const contextInfo = createSystemContext();
 		if (contextInfo) {
 			prompt += '\n\n' + contextInfo;
+		}
+
+		// 添加任务完成标识提示词
+		const taskCompletionPrompt = getTaskCompletionPrompt();
+		if (taskCompletionPrompt) {
+			prompt += '\n\n' + taskCompletionPrompt;
 		}
 
 		return prompt.trim();

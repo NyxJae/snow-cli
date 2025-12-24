@@ -104,9 +104,11 @@ function convertToOpenAIMessages(
 	subAgentSystemPrompt?: string,
 	// When true, use Team mode system prompt (deprecated)
 ): ChatCompletionMessageParam[] {
-	// 子代理不应该继承主代理的系统提示词，保持独立
+	// 子代理调用：使用传递的 customSystemPrompt（可能是子代理自己配置的，也可能是继承主代理的）
+	// 如果没有 customSystemPrompt，则使用子代理自己组装的提示词
+	// 子代理不会使用主代理自己组装的系统提示词
 	const customSystemPrompt = isSubAgentCall
-		? customSystemPromptOverride // 子代理只使用明确配置的customSystemPrompt，不回退到主代理的
+		? customSystemPromptOverride // 子代理使用传递的 customSystemPrompt（已包含继承逻辑）
 		: customSystemPromptOverride || getCustomSystemPrompt(); // 主代理可以回退到默认的customSystemPrompt
 
 	// 对于子代理调用，完全忽略includeBuiltinSystemPrompt参数
@@ -237,21 +239,13 @@ function convertToOpenAIMessages(
 				...result,
 			];
 		} else {
-			// 子代理调用：自定义系统提示词作为 system 消息，子代理组装提示词作为第一条 user 消息
-			const firstUserMessage = subAgentSystemPrompt
-				? [
-						{
-							role: 'user',
-							content: subAgentSystemPrompt,
-						} as ChatCompletionMessageParam,
-				  ]
-				: [];
+			// 子代理调用：自定义系统提示词作为 system 消息
+			// subAgentSystemPrompt 已经在 messages 第一条，无需重复添加
 			result = [
 				{
 					role: 'system',
 					content: customSystemPrompt,
 				} as ChatCompletionMessageParam,
-				...firstUserMessage,
 				...result,
 			];
 		}

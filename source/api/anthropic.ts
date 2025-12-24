@@ -172,9 +172,11 @@ function convertToAnthropicMessages(
 	system?: any;
 	messages: AnthropicMessageParam[];
 } {
-	// 子代理不应该继承主代理的系统提示词，保持独立
+	// 子代理调用：使用传递的 customSystemPrompt（可能是子代理自己配置的，也可能是继承主代理的）
+	// 如果没有 customSystemPrompt，则使用子代理自己组装的提示词
+	// 子代理不会使用主代理自己组装的系统提示词
 	const customSystemPrompt = isSubAgentCall
-		? customSystemPromptOverride // 子代理只使用明确配置的customSystemPrompt，不回退到主代理的
+		? customSystemPromptOverride // 子代理使用传递的 customSystemPrompt（已包含继承逻辑）
 		: customSystemPromptOverride || getCustomSystemPrompt(); // 主代理可以回退到默认的customSystemPrompt
 
 	// 对于子代理调用，完全忽略includeBuiltinSystemPrompt参数
@@ -350,24 +352,21 @@ function convertToAnthropicMessages(
 					},
 				] as any,
 			});
-		} else {
-			// 子代理调用：将子代理组装提示词作为第一条用户消息
-			if (subAgentSystemPrompt) {
-				anthropicMessages.unshift({
-					role: 'user',
-					content: [
-						{
-							type: 'text',
-							text: subAgentSystemPrompt,
-							cache_control: {type: 'ephemeral', ttl: cacheTTL},
-						},
-					] as any,
-				});
+		}
+		// 对于子代理调用，subAgentSystemPrompt 已经在 messages 第一条，无需重复添加
+	} else if (isSubAgentCall && subAgentSystemPrompt) {
+		// 子代理调用且没有自定义系统提示词：将子代理组装提示词作为系统提示词
+		systemContent = subAgentSystemPrompt;
+		// 从 messages 中移除第一条（subAgentSystemPrompt），因为它已经提升为系统提示词
+		const firstUserMsg = anthropicMessages.find(
+			msg => msg.role === 'user' && typeof msg.content === 'string',
+		);
+		if (firstUserMsg) {
+			const idx = anthropicMessages.indexOf(firstUserMsg);
+			if (idx === 0) {
+				anthropicMessages.shift();
 			}
 		}
-	} else if (isSubAgentCall && subAgentSystemPrompt) {
-		// 子代理调用时，使用组装好的提示词作为系统提示词
-		systemContent = subAgentSystemPrompt;
 	} else if (!systemContent && effectiveIncludeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
 		systemContent = mainAgentManager.getSystemPrompt();
