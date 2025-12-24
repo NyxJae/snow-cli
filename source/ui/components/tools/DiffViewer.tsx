@@ -26,7 +26,12 @@ interface DiffHunk {
 }
 
 // Helper function to strip line numbers from content (format: "123→content")
-function stripLineNumbers(content: string): string {
+function stripLineNumbers(content: unknown): string {
+	// Ensure content is a string, handle null/undefined/other types
+	if (typeof content !== 'string') {
+		return String(content || '');
+	}
+
 	return content
 		.split('\n')
 		.map(line => {
@@ -73,15 +78,25 @@ export default function DiffViewer({
 					{filename && <Text color="cyan"> {filename}</Text>}
 				</Box>
 				<Box flexDirection="column">
-			{allLines.map((line, index) => (
-				<Text key={index} color="white" backgroundColor={theme.colors.diffAdded}>
-					+ {line}
-				</Text>
-			))}
+					{allLines.map((line, index) => (
+						<Text
+							key={index}
+							color="white"
+							backgroundColor={theme.colors.diffAdded}
+						>
+							+ {line}
+						</Text>
+					))}
 				</Box>
 			</Box>
 		);
-	}, [isNewFile, diffNewContent, filename, theme.colors.text, theme.colors.diffAdded]);
+	}, [
+		isNewFile,
+		diffNewContent,
+		filename,
+		theme.colors.text,
+		theme.colors.diffAdded,
+	]);
 
 	if (isNewFile) {
 		return newFileContent;
@@ -223,29 +238,29 @@ export default function DiffViewer({
 								? String(lineNum).padStart(4, ' ')
 								: '    ';
 
-				if (change.type === 'added') {
-					return (
-						<Text
-							key={changeIndex}
-							color="white"
-							backgroundColor={theme.colors.diffAdded}
-						>
-							{lineNumStr} + {change.content}
-						</Text>
-					);
-				}
+							if (change.type === 'added') {
+								return (
+									<Text
+										key={changeIndex}
+										color="white"
+										backgroundColor={theme.colors.diffAdded}
+									>
+										{lineNumStr} + {change.content}
+									</Text>
+								);
+							}
 
-				if (change.type === 'removed') {
-					return (
-						<Text
-							key={changeIndex}
-							color="white"
-							backgroundColor={theme.colors.diffRemoved}
-						>
-							{lineNumStr} - {change.content}
-						</Text>
-					);
-				}
+							if (change.type === 'removed') {
+								return (
+									<Text
+										key={changeIndex}
+										color="white"
+										backgroundColor={theme.colors.diffRemoved}
+									>
+										{lineNumStr} - {change.content}
+									</Text>
+								);
+							}
 
 							// Unchanged lines (context)
 							return (
