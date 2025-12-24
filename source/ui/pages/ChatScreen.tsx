@@ -6,7 +6,8 @@ import {useTheme} from '../contexts/ThemeContext.js';
 import {type Message} from '../components/chat/MessageList.js';
 import PendingMessages from '../components/chat/PendingMessages.js';
 import ToolConfirmation from '../components/tools/ToolConfirmation.js';
-import AskUserQuestion from '../components/special/AskUserQuestion.js';
+import QuestionHeader from '../components/special/QuestionHeader.js';
+import QuestionInput from '../components/special/AskUserQuestion.js';
 import {
 	BashCommandConfirmation,
 	BashCommandExecutionStatus,
@@ -2270,6 +2271,15 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 								/>
 							);
 						}),
+					// 添加提问头部到Static（静态显示问题）
+					...(pendingUserQuestion
+						? [
+								<QuestionHeader
+									key="question-header"
+									question={pendingUserQuestion.question}
+								/>,
+						  ]
+						: []),
 				]}
 			>
 				{item => item}
@@ -2359,8 +2369,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 
 			{/* Show user question panel if askuser tool is called */}
 			{pendingUserQuestion && (
-				<AskUserQuestion
-					question={pendingUserQuestion.question}
+				<QuestionInput
+					_question={pendingUserQuestion.question}
 					options={pendingUserQuestion.options}
 					onAnswer={handleUserQuestionAnswer}
 				/>

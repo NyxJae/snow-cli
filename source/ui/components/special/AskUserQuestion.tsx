@@ -3,34 +3,36 @@ import {Box, Text, useInput} from 'ink';
 import TextInput from 'ink-text-input';
 import {useTheme} from '../../contexts/ThemeContext.js';
 import {useI18n} from '../../../i18n/index.js';
-
-export interface AskUserQuestionResult {
+export interface QuestionInputResult {
 	selected: string | string[];
 	customInput?: string;
 }
 
 interface Props {
-	question: string;
+	_question: string;
 	options: string[];
-	onAnswer: (result: AskUserQuestionResult) => void;
+	onAnswer: (result: QuestionInputResult) => void;
 }
 
 /**
- * Agent提问组件 - 支持选项选择、多选和自定义输入
+ * Agent提问输入组件 - 支持选项选择、多选和自定义输入
  *
  * @description
- * 显示问题和建议选项列表，用户可以：
+ * 显示建议选项列表，用户可以：
  * - 直接选择建议选项（回车确认单个高亮项）
  * - 按空格键切换选项勾选状态（可多选）
  * - 按'e'键编辑当前高亮选项
  * - 选择「Custom input」从头输入
  * - 数字键快速切换选项勾选状态
  *
- * @param question - 要问用户的问题
+ * 注意：问题标题和文本由QuestionHeader组件在Static中渲染
+ *
+ * @param question - 要问用户的问题（传递给QuestionHeader）
  * @param options - 建议选项数组
  * @param onAnswer - 用户回答后的回调函数
  */
-export default function AskUserQuestion({question, options, onAnswer}: Props) {
+// @ts-expect-error - question param is kept for API compatibility but not used internally
+export default function QuestionInput({_question, options, onAnswer}: Props) {
 	const {theme} = useTheme();
 	const {t} = useI18n();
 	const [hasAnswered, setHasAnswered] = useState(false);
@@ -180,25 +182,7 @@ export default function AskUserQuestion({question, options, onAnswer}: Props) {
 	);
 
 	return (
-		<Box
-			flexDirection="column"
-			marginX={1}
-			marginY={1}
-			borderStyle={'round'}
-			borderColor={theme.colors.menuInfo}
-			paddingX={1}
-		>
-			<Box marginBottom={1}>
-				<Text bold color={theme.colors.menuInfo}>
-					{t.askUser.header}
-				</Text>
-				<Text dimColor> ({t.askUser.multiSelectHint || '可多选'})</Text>
-			</Box>
-
-			<Box marginBottom={1}>
-				<Text>{question}</Text>
-			</Box>
-
+		<Box flexDirection="column" paddingX={1} paddingY={1}>
 			{!showCustomInput ? (
 				<Box flexDirection="column">
 					<Box marginBottom={1}>
