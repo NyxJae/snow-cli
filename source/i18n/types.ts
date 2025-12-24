@@ -206,6 +206,13 @@ export type TranslationKeys = {
 		deleteProfileShort: string;
 		fetchingModels: string;
 		fetchingHint: string;
+		systemPrompt: string;
+		customHeadersField: string;
+		followGlobalNone: string;
+		followGlobal: string;
+		followGlobalWithParentheses: string;
+		followGlobalNoneWithParentheses: string;
+		notUse: string;
 	};
 	// Custom Headers Screen
 	customHeaders: {
