@@ -35,6 +35,8 @@ import {
 } from './utils/filesystem/similarity.utils.js';
 import {
 	analyzeCodeStructure,
+	analyzeContentBalance,
+	checkEdgeIndentationConsistency,
 	findSmartContextBoundaries,
 } from './utils/filesystem/code-analysis.utils.js';
 import {
@@ -1231,6 +1233,86 @@ export class FilesystemMCPService {
 			const modifiedLines = [...beforeLines, ...replaceLines, ...afterLines];
 			const modifiedContent = modifiedLines.join('\n');
 
+			// Pre-check: refuse edits that look structurally unsafe
+			{
+				const searchBalance = analyzeContentBalance(normalizedSearch, filePath);
+				const replaceBalance = analyzeContentBalance(
+					normalizedReplace,
+					filePath,
+				);
+
+				const indentCheck = checkEdgeIndentationConsistency(
+					filePath,
+					normalizedReplace,
+				);
+				if (!indentCheck.ok) {
+					throw new Error(
+						`❌ 拒绝执行 filesystem-edit_search：${indentCheck.message}\n` +
+							`💡 建议：每次 search/replace 都以“完整代码块”为最小单位（函数/类/条件块需包含完整大括号；JSX/HTML 需完整开闭标签；Python/YAML 需完整缩进块）。`,
+					);
+				}
+
+				const issues: string[] = [];
+
+				// Brackets / tags
+				if (!searchBalance.bracketBalance.curly.balanced)
+					issues.push('searchContent 大括号不平衡');
+				if (!searchBalance.bracketBalance.round.balanced)
+					issues.push('searchContent 小括号不平衡');
+				if (!searchBalance.bracketBalance.square.balanced)
+					issues.push('searchContent 中括号不平衡');
+				if (searchBalance.htmlTags && !searchBalance.htmlTags.balanced)
+					issues.push('searchContent HTML/JSX 标签不平衡');
+				if (!replaceBalance.bracketBalance.curly.balanced)
+					issues.push('replaceContent 大括号不平衡');
+				if (!replaceBalance.bracketBalance.round.balanced)
+					issues.push('replaceContent 小括号不平衡');
+				if (!replaceBalance.bracketBalance.square.balanced)
+					issues.push('replaceContent 中括号不平衡');
+				if (replaceBalance.htmlTags && !replaceBalance.htmlTags.balanced)
+					issues.push('replaceContent HTML/JSX 标签不平衡');
+
+				// Quotes / block comments (only when analysis provides it)
+				if (searchBalance.quoteBalance) {
+					if (!searchBalance.quoteBalance.single.balanced)
+						issues.push('searchContent 单引号不平衡');
+					if (!searchBalance.quoteBalance.double.balanced)
+						issues.push('searchContent 双引号不平衡');
+					if (!searchBalance.quoteBalance.backtick.balanced)
+						issues.push('searchContent 反引号不平衡');
+				}
+				if (replaceBalance.quoteBalance) {
+					if (!replaceBalance.quoteBalance.single.balanced)
+						issues.push('replaceContent 单引号不平衡');
+					if (!replaceBalance.quoteBalance.double.balanced)
+						issues.push('replaceContent 双引号不平衡');
+					if (!replaceBalance.quoteBalance.backtick.balanced)
+						issues.push('replaceContent 反引号不平衡');
+				}
+				if (
+					searchBalance.commentBalance &&
+					!searchBalance.commentBalance.block.balanced
+				) {
+					issues.push('searchContent 多行注释不平衡');
+				}
+				if (
+					replaceBalance.commentBalance &&
+					!replaceBalance.commentBalance.block.balanced
+				) {
+					issues.push('replaceContent 多行注释不平衡');
+				}
+
+				if (issues.length > 0) {
+					throw new Error(
+						`❌ 拒绝执行 filesystem-edit_search：检测到潜在结构风险：\n` +
+							issues.map(i => `  • ${i}`).join('\n') +
+							`\n\n` +
+							`这通常意味着你复制/构造的是“半个代码块”，非常容易导致丢括号/丢引号/丢注释闭合并破坏文件结构。\n` +
+							`💡 请改为从 filesystem-read 复制“完整代码块”（不要包含行号），再执行替换。`,
+					);
+				}
+			}
+
 			// Calculate replaced content for display (compress whitespace for readability)
 
 			const replacedLines = lines.slice(startLine - 1, endLine);
@@ -2008,7 +2090,7 @@ export const mcpTools = [
 	{
 		name: 'filesystem-edit_search',
 		description:
-			'RECOMMENDED for most edits: Search-and-replace with SMART FUZZY MATCHING. **CRITICAL PATH REQUIREMENTS**: (1) filePath parameter is REQUIRED - MUST be a valid non-empty string or array, never use undefined/null/empty string, (2) Use EXACT file paths from search results or user input - never use placeholders like "path/to/file", (3) If uncertain about path, use search tools first to find the correct file. **SUPPORTS BATCH EDITING**: Pass (1) single file with search/replace, (2) array of file paths with unified search/replace, or (3) array of {path, searchContent, replaceContent, occurrence?} for per-file edits. **CRITICAL WORKFLOW FOR CODE SAFETY**: (1) Use search tools (codebase-search or ACE tools) to locate code, (2) MUST use filesystem-read to identify COMPLETE code boundaries (entire function body with all braces, complete markup tags with opening/closing pairs, full code blocks), (3) Copy the COMPLETE code block (without line numbers), (4) Verify boundaries are intact (matching braces/brackets/tags), (5) Use THIS tool. **WHY USE THIS**: No line tracking needed, auto-handles spacing/tabs differences, finds best fuzzy match even with whitespace changes, safer than line-based editing. **SMART MATCHING**: Uses similarity algorithm (60% threshold) to find code even if indentation/spacing differs from your search string. Automatically corrects over-escaped content. If multiple matches found, selects best match first (highest similarity score). **COMMON ERRORS TO AVOID**: Using invalid/empty file paths, modifying only part of a function (missing closing brace), incomplete markup tags (HTML/Vue/JSX), partial code blocks, copying line numbers from filesystem-read output. Always include complete syntactic units with all opening/closing pairs. **BATCH EXAMPLE**: filePath=[{path:"a.ts", searchContent:"old1", replaceContent:"new1"}, {path:"b.ts", searchContent:"old2", replaceContent:"new2"}]',
+			'RECOMMENDED for most edits: Search-and-replace with SMART FUZZY MATCHING. **CRITICAL PATH REQUIREMENTS**: (1) filePath parameter is REQUIRED - MUST be a valid non-empty string or array, never use undefined/null/empty string, (2) Use EXACT file paths from search results or user input - never use placeholders like "path/to/file", (3) If uncertain about path, use search tools first to find the correct file. **SUPPORTS BATCH EDITING**: Pass (1) single file with search/replace, (2) array of file paths with unified search/replace, or (3) array of {path, searchContent, replaceContent, occurrence?} for per-file edits. **CRITICAL WORKFLOW FOR CODE SAFETY**: (1) Use search tools (codebase-search or ACE tools) to locate code, (2) MUST use filesystem-read to identify COMPLETE代码块边界（函数/类/if 等必须从开头到闭合大括号；JSX/HTML 必须包含完整开闭标签；Python/YAML 必须包含完整缩进块），(3) Copy the COMPLETE code block (without line numbers), (4) Verify boundaries are intact (matching braces/brackets/tags/indent), (5) Use THIS tool. **PRE-CHECK (NEW)**: 在执行替换前，会对 searchContent/replaceContent 做结构预检查（括号/标签平衡；对 .py/.yml/.yaml 做缩进边界一致性检查）。若不通过会直接拒绝执行并给出提示。**WHY USE THIS**: No line tracking needed, auto-handles spacing/tabs differences, finds best fuzzy match even with whitespace changes, safer than line-based editing. **SMART MATCHING**: Uses similarity algorithm (60% threshold) to find code even if indentation/spacing differs from your search string. Automatically corrects over-escaped content. If multiple matches found, selects best match first (highest similarity score). **COMMON ERRORS TO AVOID**: Using invalid/empty file paths, modifying only part of a function (missing closing brace), incomplete markup tags (HTML/Vue/JSX), partial code blocks, copying line numbers from filesystem-read output. Always include complete syntactic units with all opening/closing pairs. **BATCH EXAMPLE**: filePath=[{path:"a.ts", searchContent:"old1", replaceContent:"new1"}, {path:"b.ts", searchContent:"old2", replaceContent:"new2"}]',
 		inputSchema: {
 			type: 'object',
 			properties: {
