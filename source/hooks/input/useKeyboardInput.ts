@@ -8,6 +8,7 @@ import type {SubAgent} from '../../utils/config/subAgentConfig.js';
 type KeyboardInputOptions = {
 	buffer: TextBuffer;
 	disabled: boolean;
+	disableKeyboardNavigation?: boolean;
 	triggerUpdate: () => void;
 	forceUpdate: React.Dispatch<React.SetStateAction<{}>>;
 	// Mode state
@@ -103,6 +104,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 	const {
 		buffer,
 		disabled,
+		disableKeyboardNavigation = false,
 		triggerUpdate,
 		forceUpdate,
 		yoloMode,
@@ -971,7 +973,12 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			return;
 		}
 
-		if (key.upArrow && !showCommands && !showFilePicker) {
+		if (
+			key.upArrow &&
+			!showCommands &&
+			!showFilePicker &&
+			!disableKeyboardNavigation
+		) {
 			// If there's accumulated input, process it immediately before moving cursor
 			if (inputBuffer.current) {
 				if (inputTimer.current) {
@@ -1022,7 +1029,12 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			return;
 		}
 
-		if (key.downArrow && !showCommands && !showFilePicker) {
+		if (
+			key.downArrow &&
+			!showCommands &&
+			!showFilePicker &&
+			!disableKeyboardNavigation
+		) {
 			// If there's accumulated input, process it immediately before moving cursor
 			if (inputBuffer.current) {
 				if (inputTimer.current) {

@@ -103,6 +103,7 @@ type Props = {
 	}>;
 	handleProfileSelect?: (profileName: string) => void;
 	onSwitchProfile?: () => void; // Callback when Ctrl+P is pressed to switch profile
+	disableKeyboardNavigation?: boolean; // Disable arrow keys and Ctrl+K when background panel is active
 };
 
 export default function ChatInput({
@@ -127,6 +128,7 @@ export default function ChatInput({
 	getFilteredProfiles,
 	handleProfileSelect,
 	onSwitchProfile,
+	disableKeyboardNavigation = false,
 }: Props) {
 	// Use i18n hook for translations
 	const {t} = useI18n();
@@ -246,6 +248,7 @@ export default function ChatInput({
 	useKeyboardInput({
 		buffer,
 		disabled,
+		disableKeyboardNavigation,
 		triggerUpdate,
 		forceUpdate,
 		yoloMode,

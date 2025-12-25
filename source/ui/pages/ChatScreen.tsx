@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useRef} from 'react';
+import React, {useState, useEffect, useRef, useMemo} from 'react';
 import {Box, Text, useInput, Static, useStdout, useApp} from 'ink';
 import ansiEscapes from 'ansi-escapes';
 import {useI18n} from '../../i18n/I18nContext.js';
@@ -42,8 +42,7 @@ import {
 import {sessionManager} from '../../utils/session/sessionManager.js';
 import {useSessionSave} from '../../hooks/session/useSessionSave.js';
 import {useToolConfirmation} from '../../hooks/conversation/useToolConfirmation.js';
-import {handleConversationWithTools} from '../../hooks/conversation/useConversation.js';
-import {promptOptimizeAgent} from '../../agents/promptOptimizeAgent.js';
+
 import {useVSCodeState} from '../../hooks/integration/useVSCodeState.js';
 import {useSnapshotState} from '../../hooks/session/useSnapshotState.js';
 import {useStreamingState} from '../../hooks/conversation/useStreamingState.js';
@@ -52,20 +51,13 @@ import {useTerminalSize} from '../../hooks/ui/useTerminalSize.js';
 import {useBashMode} from '../../hooks/input/useBashMode.js';
 
 import {useTerminalExecutionState} from '../../hooks/execution/useTerminalExecutionState.js';
-import {
-	parseAndValidateFileReferences,
-	createMessageWithFileInstructions,
-	cleanIDEContext,
-} from '../../utils/core/fileUtils.js';
+import {useBackgroundProcesses} from '../../hooks/execution/useBackgroundProcesses.js';
+import {useChatLogic} from '../../hooks/conversation/useChatLogic.js';
 import {vscodeConnection} from '../../utils/ui/vscodeConnection.js';
 import {convertSessionMessagesToUI} from '../../utils/session/sessionConverter.js';
 import {validateGitignore} from '../../utils/codebase/gitignoreValidator.js';
 import {hashBasedSnapshotManager} from '../../utils/codebase/hashBasedSnapshot.js';
 
-import {
-	shouldAutoCompress,
-	performAutoCompression,
-} from '../../utils/core/autoCompress.js';
 import {CodebaseIndexAgent} from '../../agents/codebaseIndexAgent.js';
 import {reindexCodebase} from '../../utils/codebase/reindexCodebase.js';
 import {loadCodebaseConfig} from '../../utils/config/codebaseConfig.js';
@@ -212,6 +204,29 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const snapshotState = useSnapshotState(messages.length);
 	const bashMode = useBashMode();
 	const terminalExecutionState = useTerminalExecutionState();
+	const backgroundProcesses = useBackgroundProcesses();
+
+	// Background process panel state
+	const [selectedProcessIndex, setSelectedProcessIndex] = useState(0);
+
+	// Sort background processes (running first, then by time)
+	const sortedBackgroundProcesses = useMemo(() => {
+		return [...backgroundProcesses.processes].sort((a, b) => {
+			if (a.status === 'running' && b.status !== 'running') return -1;
+			if (a.status !== 'running' && b.status === 'running') return 1;
+			return b.startedAt.getTime() - a.startedAt.getTime();
+		});
+	}, [backgroundProcesses.processes]);
+
+	// Auto-adjust selected index when process count changes
+	useEffect(() => {
+		if (
+			sortedBackgroundProcesses.length > 0 &&
+			selectedProcessIndex >= sortedBackgroundProcesses.length
+		) {
+			setSelectedProcessIndex(sortedBackgroundProcesses.length - 1);
+		}
+	}, [sortedBackgroundProcesses.length, selectedProcessIndex]);
 
 	// Use session save hook
 	const {saveMessage, clearSavedMessages, initializeFromSession} =
@@ -249,6 +264,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			import('../../utils/commands/reindex.js'),
 			import('../../utils/commands/addDir.js'),
 			import('../../utils/commands/permissions.js'),
+			import('../../utils/commands/backend.js'),
 		])
 			.then(async () => {
 				// Load and register custom commands from user directory
@@ -633,6 +649,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		resolve: (result: {
 			selected: string | string[];
 			customInput?: string;
+			cancelled?: boolean;
 		}) => void;
 	} | null>(null);
 
@@ -652,31 +669,44 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		});
 	};
 
-	// Handle user question answer
-	const handleUserQuestionAnswer = (result: {
-		selected: string | string[];
-		customInput?: string;
-	}) => {
-		if (pendingUserQuestion) {
-			//直接传递结果，保留数组形式用于多选
-			pendingUserQuestion.resolve(result);
-			setPendingUserQuestion(null);
-		}
-	};
-
 	// Minimum terminal height required for proper rendering
 	const MIN_TERMINAL_HEIGHT = 10;
 
-	// Forward reference for processMessage (defined below)
-	const processMessageRef =
-		useRef<
-			(
-				message: string,
-				images?: Array<{data: string; mimeType: string}>,
-				useBasicModel?: boolean,
-				hideUserMessage?: boolean,
-			) => Promise<void>
-		>();
+	// Use chat logic hook to handle all AI interaction business logic
+	const {
+		handleMessageSubmit,
+		processMessage,
+		processPendingMessages,
+		handleHistorySelect,
+		handleRollbackConfirm,
+		handleUserQuestionAnswer,
+	} = useChatLogic({
+		messages,
+		setMessages,
+		pendingMessages,
+		setPendingMessages,
+		streamingState,
+		vscodeState,
+		snapshotState,
+		bashMode,
+		yoloMode,
+		saveMessage,
+		clearSavedMessages,
+		setRemountKey,
+		requestToolConfirmation,
+		requestUserQuestion,
+		isToolAutoApproved,
+		addMultipleToAlwaysApproved,
+		setRestoreInputContent,
+		setIsCompressing,
+		setCompressionError,
+		currentContextPercentageRef,
+		userInterruptedRef,
+		pendingMessagesRef,
+		setBashSensitiveCommand,
+		pendingUserQuestion,
+		setPendingUserQuestion,
+	});
 	// Handle quit command - clean up resources and exit application
 	const handleQuit = async () => {
 		// Show exiting message
@@ -810,18 +840,13 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setShowSkillsCreation,
 		setShowWorkingDirPanel,
 		setShowPermissionsPanel,
+		setShowBackgroundPanel: backgroundProcesses.enablePanel,
 		setYoloMode,
 		setContextUsage: streamingState.setContextUsage,
 		setCurrentContextPercentage,
 		setVscodeConnectionStatus: vscodeState.setVscodeConnectionStatus,
 		setIsExecutingTerminalCommand,
-		processMessage: (message, images, useBasicModel, hideUserMessage) =>
-			processMessageRef.current?.(
-				message,
-				images,
-				useBasicModel,
-				hideUserMessage,
-			) || Promise.resolve(),
+		processMessage: processMessage,
 		onQuit: handleQuit,
 		onReindexCodebase: handleReindexCodebase,
 	});
@@ -952,6 +977,65 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 
 	// ESC key handler to interrupt streaming or close overlays
 	useInput((input, key) => {
+		// Handle background process panel navigation (only when panel is visible)
+		if (backgroundProcesses.showPanel) {
+			// Handle ESC to close panel
+			if (key.escape) {
+				backgroundProcesses.hidePanel();
+				return;
+			}
+
+			// Only handle navigation keys when there are processes to navigate
+			if (sortedBackgroundProcesses.length > 0) {
+				// Handle arrow up/down for process selection
+				if (key.upArrow) {
+					setSelectedProcessIndex(prev =>
+						prev > 0 ? prev - 1 : sortedBackgroundProcesses.length - 1,
+					);
+					return;
+				}
+				if (key.downArrow) {
+					setSelectedProcessIndex(prev =>
+						prev < sortedBackgroundProcesses.length - 1 ? prev + 1 : 0,
+					);
+					return;
+				}
+
+				// Handle Enter to kill selected process
+				if (key.return) {
+					const selectedProcess =
+						sortedBackgroundProcesses[selectedProcessIndex];
+					if (selectedProcess && selectedProcess.status === 'running') {
+						backgroundProcesses.killProcess(selectedProcess.id);
+					}
+					return;
+				}
+			}
+		}
+
+		// Handle Ctrl+B to move terminal command to background
+		if (
+			key.ctrl &&
+			input === 'b' &&
+			terminalExecutionState.state.isExecuting &&
+			!terminalExecutionState.state.isBackgrounded
+		) {
+			// Import background process functions
+			Promise.all([
+				import('../../mcp/bash.js'),
+				import('../../hooks/execution/useBackgroundProcesses.js'),
+			]).then(([{markCommandAsBackgrounded}, {showBackgroundPanel}]) => {
+				markCommandAsBackgrounded();
+				showBackgroundPanel();
+			});
+			terminalExecutionState.moveToBackground();
+			return;
+		}
+
+		// Skip ESC handling when tool confirmation is showing (let ToolConfirmation handle it)
+		if (pendingToolConfirmation) {
+			return;
+		}
 		// Handle bash sensitive command confirmation
 		if (bashSensitiveCommand) {
 			if (input.toLowerCase() === 'y') {
@@ -1108,397 +1192,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setShowProfilePanel(false);
 		setProfileSelectedIndex(0);
 	};
-
-	const handleHistorySelect = async (
-		selectedIndex: number,
-		message: string,
-		images?: Array<{type: 'image'; data: string; mimeType: string}>,
-	) => {
-		// Clear context percentage and usage when user performs history rollback
-		setCurrentContextPercentage(0);
-		currentContextPercentageRef.current = 0;
-		streamingState.setContextUsage(null);
-
-		const currentSession = sessionManager.getCurrentSession();
-		if (!currentSession) return;
-
-		// 检查是否需要跨会话回滚（仅适用于新版本压缩产生的会话）
-		// 条件：选择 index 0（压缩摘要），且当前会话有 compressedFrom 字段（新版本）
-		if (
-			selectedIndex === 0 &&
-			currentSession.compressedFrom !== undefined &&
-			currentSession.compressedFrom !== null
-		) {
-			// 跨会话回滚前，先检查当前会话是否有快照（压缩后的编辑）
-			// 如果有，应该先提示用户是否回滚这些编辑
-			let totalFileCount = 0;
-			for (const [index, count] of snapshotState.snapshotFileCount.entries()) {
-				if (index >= selectedIndex) {
-					totalFileCount += count;
-				}
-			}
-
-			// 如果当前会话有快照（压缩后的编辑），先提示回滚
-			if (totalFileCount > 0) {
-				const filePaths = await hashBasedSnapshotManager.getFilesToRollback(
-					currentSession.id,
-					selectedIndex,
-				);
-				snapshotState.setPendingRollback({
-					messageIndex: selectedIndex,
-					fileCount: filePaths.length,
-					filePaths,
-					message: cleanIDEContext(message),
-					images,
-					// 添加跨会话回滚标记
-					crossSessionRollback: true,
-					originalSessionId: currentSession.compressedFrom,
-				});
-				return; // 等待用户确认
-			}
-
-			// 如果没有快照，直接跨会话回滚
-			// 需要跨会话回滚到原会话
-			const originalSessionId = currentSession.compressedFrom;
-
-			try {
-				// 加载原会话
-				const originalSession = await sessionManager.loadSession(
-					originalSessionId,
-				);
-				if (!originalSession) {
-					console.error('Failed to load original session for rollback');
-					// 失败则继续正常回滚流程
-				} else {
-					// 切换到原会话
-					sessionManager.setCurrentSession(originalSession);
-
-					// 转换原会话消息为UI格式
-					const {convertSessionMessagesToUI} = await import(
-						'../../utils/session/sessionConverter.js'
-					);
-					const uiMessages = convertSessionMessagesToUI(
-						originalSession.messages,
-					);
-
-					// 更新UI
-					clearSavedMessages();
-					setMessages(uiMessages);
-					setRemountKey(prev => prev + 1);
-
-					// 加载原会话的快照计数
-					const snapshots = await hashBasedSnapshotManager.listSnapshots(
-						originalSession.id,
-					);
-					const counts = new Map<number, number>();
-					for (const snapshot of snapshots) {
-						counts.set(snapshot.messageIndex, snapshot.fileCount);
-					}
-					snapshotState.setSnapshotFileCount(counts);
-
-					// 提示用户已切换到原会话
-					console.log(
-						`Switched to original session (before compression) with ${originalSession.messageCount} messages`,
-					);
-
-					return;
-				}
-			} catch (error) {
-				console.error('Failed to switch to original session:', error);
-				// 失败则继续正常回滚流程
-			}
-		}
-
-		// 正常的当前会话内回滚逻辑（兼容旧版本会话）
-		// Count total files that will be rolled back (from selectedIndex onwards)
-		let totalFileCount = 0;
-		for (const [index, count] of snapshotState.snapshotFileCount.entries()) {
-			if (index >= selectedIndex) {
-				totalFileCount += count;
-			}
-		}
-
-		// Show confirmation dialog if there are files to rollback
-		if (totalFileCount > 0) {
-			// Get list of files that will be rolled back
-			const filePaths = await hashBasedSnapshotManager.getFilesToRollback(
-				currentSession.id,
-				selectedIndex,
-			);
-			snapshotState.setPendingRollback({
-				messageIndex: selectedIndex,
-				fileCount: filePaths.length, // Use actual unique file count
-				filePaths,
-				message: cleanIDEContext(message), // Clean IDE context before saving
-				images, // Save images for restore after rollback
-			});
-		} else {
-			// No files to rollback, just rollback conversation
-			// Restore message to input buffer (with or without images)
-			setRestoreInputContent({
-				text: cleanIDEContext(message), // Clean IDE context before restoring
-				images: images,
-			});
-			await performRollback(selectedIndex, false);
-		}
-	};
-	const performRollback = async (
-		selectedIndex: number,
-		rollbackFiles: boolean,
-	) => {
-		const currentSession = sessionManager.getCurrentSession();
-
-		// Rollback workspace to checkpoint if requested
-		if (rollbackFiles && currentSession) {
-			// Use rollbackToMessageIndex to rollback all snapshots >= selectedIndex
-			await hashBasedSnapshotManager.rollbackToMessageIndex(
-				currentSession.id,
-				selectedIndex,
-			);
-		}
-
-		// For session file: find the correct truncation point based on session messages
-		// We need to truncate to the same user message in the session file
-		if (currentSession) {
-			// Count how many user messages we're deleting (from selectedIndex onwards in UI)
-			// But exclude any uncommitted user messages that weren't saved to session
-			const messagesAfterSelected = messages.slice(selectedIndex);
-			const hasDiscontinuedMessage = messagesAfterSelected.some(
-				msg => msg.discontinued,
-			);
-
-			let uiUserMessagesToDelete = 0;
-			if (hasDiscontinuedMessage) {
-				// If there's a discontinued message, it means all messages from selectedIndex onwards
-				// (including user messages) were not saved to session
-				// So we don't need to delete any user messages from session
-				uiUserMessagesToDelete = 0;
-			} else {
-				// Normal case: count all user messages from selectedIndex onwards
-				uiUserMessagesToDelete = messagesAfterSelected.filter(
-					msg => msg.role === 'user',
-				).length;
-			}
-			// Check if the selected message is a user message that might not be in session
-			// (e.g., interrupted before AI response)
-			const selectedMessage = messages[selectedIndex];
-			const isUncommittedUserMessage =
-				selectedMessage?.role === 'user' &&
-				uiUserMessagesToDelete === 1 &&
-				// Check if this is the last or second-to-last message (before discontinued)
-				(selectedIndex === messages.length - 1 ||
-					(selectedIndex === messages.length - 2 &&
-						messages[messages.length - 1]?.discontinued));
-
-			// If this is an uncommitted user message, just truncate UI and skip session modification
-			if (isUncommittedUserMessage) {
-				// Check if session ends with a complete assistant response
-				const lastSessionMsg =
-					currentSession.messages[currentSession.messages.length - 1];
-				const sessionEndsWithAssistant =
-					lastSessionMsg?.role === 'assistant' && !lastSessionMsg?.tool_calls;
-
-				if (sessionEndsWithAssistant) {
-					// Session is complete, this user message wasn't saved
-					// Just truncate UI, don't modify session
-					setMessages(prev => prev.slice(0, selectedIndex));
-					clearSavedMessages();
-					snapshotState.setPendingRollback(null);
-
-					// Trigger remount in next tick to ensure messages update is applied
-					setTimeout(() => {
-						setRemountKey(prev => prev + 1);
-					}, 0);
-					return;
-				}
-			}
-
-			// Special case: if rolling back to index 0 (first message), always delete entire session
-			// This handles the case where user interrupts the first conversation
-			let sessionTruncateIndex = currentSession.messages.length;
-
-			if (selectedIndex === 0) {
-				// Rolling back to the very first message means deleting entire session
-				sessionTruncateIndex = 0;
-			} else {
-				// Calculate truncate index based on user messages position
-				// Count user messages up to (but not including) selectedIndex in UI
-				const userMessagesBeforeSelected = messages
-					.slice(0, selectedIndex)
-					.filter(msg => msg.role === 'user').length;
-
-				// Find the (N+1)th user message in session (where N = userMessagesBeforeSelected)
-				// This is the first user message we want to delete
-				let foundUserCount = 0;
-				for (let i = 0; i < currentSession.messages.length; i++) {
-					const msg = currentSession.messages[i];
-					if (msg && msg.role === 'user') {
-						foundUserCount++;
-						if (foundUserCount > userMessagesBeforeSelected) {
-							// Truncate from this user message onwards
-							sessionTruncateIndex = i;
-							break;
-						}
-					}
-				}
-			}
-
-			// Special case: rolling back to index 0 means deleting the entire session
-			if (sessionTruncateIndex === 0 && currentSession) {
-				// Delete all snapshots for this session
-				await hashBasedSnapshotManager.clearAllSnapshots(currentSession.id);
-
-				// Delete the session file
-				await sessionManager.deleteSession(currentSession.id);
-
-				// Clear current session
-				sessionManager.clearCurrentSession();
-
-				// Clear all messages
-				setMessages([]);
-
-				// Clear saved messages
-				clearSavedMessages();
-
-				// Clear snapshot state
-				snapshotState.setSnapshotFileCount(new Map());
-
-				// Clear pending rollback dialog
-				snapshotState.setPendingRollback(null);
-
-				// Trigger remount in next tick to ensure messages update is applied
-				setTimeout(() => {
-					setRemountKey(prev => prev + 1);
-				}, 0);
-
-				return;
-			}
-
-			// Delete snapshot files >= selectedIndex (regardless of whether files were rolled back)
-			await hashBasedSnapshotManager.deleteSnapshotsFromIndex(
-				currentSession.id,
-				selectedIndex,
-			);
-
-			// Reload snapshot file counts from disk after deletion
-			const snapshots = await hashBasedSnapshotManager.listSnapshots(
-				currentSession.id,
-			);
-			const counts = new Map<number, number>();
-			for (const snapshot of snapshots) {
-				counts.set(snapshot.messageIndex, snapshot.fileCount);
-			}
-			snapshotState.setSnapshotFileCount(counts);
-
-			// Truncate session messages
-			await sessionManager.truncateMessages(sessionTruncateIndex);
-		}
-
-		// Reload messages directly from the (now truncated) session to ensure UI and session are in sync
-		const truncatedSession = sessionManager.getCurrentSession();
-		if (truncatedSession && truncatedSession.messages.length > 0) {
-			const uiMessages = convertSessionMessagesToUI(truncatedSession.messages);
-			setMessages(uiMessages);
-		} else {
-			// Session is empty or deleted, clear UI messages
-			setMessages([]);
-		}
-
-		clearSavedMessages();
-
-		// Force UI refresh - this is needed because Ink sometimes doesn't re-render properly
-		// The useEffect triggered by remountKey will reload from session, but session is already truncated
-		// so it will show the correct truncated messages
-		setRemountKey(prev => prev + 1);
-
-		// Clear pending rollback dialog first
-		snapshotState.setPendingRollback(null);
-
-		// Trigger remount in next tick to ensure messages update is applied
-		setTimeout(() => {
-			setRemountKey(prev => prev + 1);
-		}, 0);
-	};
-
-	const handleRollbackConfirm = async (rollbackFiles: boolean | null) => {
-		if (rollbackFiles === null) {
-			// User cancelled - just close the dialog without doing anything
-			snapshotState.setPendingRollback(null);
-			return;
-		}
-
-		if (snapshotState.pendingRollback) {
-			// Restore message and images to input before rollback
-			if (snapshotState.pendingRollback.message) {
-				setRestoreInputContent({
-					text: snapshotState.pendingRollback.message,
-					images: snapshotState.pendingRollback.images,
-				});
-			}
-
-			// 如果是跨会话回滚，先执行当前会话的文件回滚，再切换到原会话
-			if (snapshotState.pendingRollback.crossSessionRollback) {
-				const {originalSessionId} = snapshotState.pendingRollback;
-
-				// 先回滚当前会话的文件（如果用户选择了回滚）
-				if (rollbackFiles) {
-					await performRollback(
-						snapshotState.pendingRollback.messageIndex,
-						true,
-					);
-				}
-
-				// 清除待处理回滚状态
-				snapshotState.setPendingRollback(null);
-
-				// 加载并切换到原会话
-				if (originalSessionId) {
-					try {
-						const originalSession = await sessionManager.loadSession(
-							originalSessionId,
-						);
-						if (originalSession) {
-							// 切换到原会话
-							sessionManager.setCurrentSession(originalSession);
-
-							// 转换原会话消息为UI格式
-							const uiMessages = convertSessionMessagesToUI(
-								originalSession.messages,
-							);
-
-							// 更新UI
-							clearSavedMessages();
-							setMessages(uiMessages);
-							setRemountKey(prev => prev + 1);
-
-							// 加载原会话的快照计数
-							const snapshots = await hashBasedSnapshotManager.listSnapshots(
-								originalSession.id,
-							);
-							const counts = new Map<number, number>();
-							for (const snapshot of snapshots) {
-								counts.set(snapshot.messageIndex, snapshot.fileCount);
-							}
-							snapshotState.setSnapshotFileCount(counts);
-
-							console.log(
-								`Switched to original session (before compression) with ${originalSession.messageCount} messages`,
-							);
-						}
-					} catch (error) {
-						console.error('Failed to switch to original session:', error);
-					}
-				}
-			} else {
-				// 正常的会话内回滚
-				await performRollback(
-					snapshotState.pendingRollback.messageIndex,
-					rollbackFiles,
-				);
-			}
-		}
-	};
-
 	const handleSessionPanelSelect = async (sessionId: string) => {
 		setShowSessionPanel(false);
 		try {
@@ -1548,674 +1241,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			}
 		} catch (error) {
 			console.error('Failed to load session:', error);
-		}
-	};
-
-	const handleMessageSubmit = async (
-		message: string,
-		images?: Array<{data: string; mimeType: string}>,
-	) => {
-		// If streaming, add to pending messages instead of sending immediately
-		if (streamingState.isStreaming) {
-			setPendingMessages(prev => [...prev, {text: message, images}]);
-			return;
-		}
-
-		// Execute onUserMessage hook before processing
-		try {
-			const {unifiedHooksExecutor} = await import(
-				'../../utils/execution/unifiedHooksExecutor.js'
-			);
-			const hookResult = await unifiedHooksExecutor.executeHooks(
-				'onUserMessage',
-				{
-					message,
-					imageCount: images?.length || 0,
-					source: 'normal',
-				},
-			);
-			// Handle hook result using centralized handler
-			const {handleHookResult} = await import(
-				'../../utils/execution/hookResultHandler.js'
-			);
-			const handlerResult = handleHookResult(hookResult, message);
-
-			if (!handlerResult.shouldContinue && handlerResult.errorDetails) {
-				// Critical error: display using HookErrorDisplay component
-				setMessages(prev => [
-					...prev,
-					{
-						role: 'assistant',
-						content: '', // Content will be rendered by HookErrorDisplay
-						timestamp: new Date(),
-						hookError: handlerResult.errorDetails,
-					},
-				]);
-				return; // Abort - don't send to AI
-			}
-
-			// Update message with any modifications (e.g., warning appended)
-			message = handlerResult.modifiedMessage!;
-		} catch (error) {
-			console.error('Failed to execute onUserMessage hook:', error);
-		}
-
-		// Process bash commands if message contains !`command` syntax
-		try {
-			const result = await bashMode.processBashMessage(
-				message,
-				async (command: string) => {
-					// Show sensitive command confirmation dialog
-					return new Promise<boolean>(resolve => {
-						setBashSensitiveCommand({command, resolve});
-					});
-				},
-			);
-
-			// If user rejected any command, restore message to input and abort
-			if (result.hasRejectedCommands) {
-				setRestoreInputContent({
-					text: message,
-					images: images?.map(img => ({type: 'image' as const, ...img})),
-				});
-				return; // Don't send message to AI
-			}
-
-			message = result.processedMessage;
-		} catch (error) {
-			console.error('Failed to process bash commands:', error);
-		}
-
-		// Create checkpoint (lightweight, only tracks modifications)
-		const currentSession = sessionManager.getCurrentSession();
-		if (!currentSession) {
-			await sessionManager.createNewSession();
-		}
-		const session = sessionManager.getCurrentSession();
-		if (session) {
-			// NOTE: New on-demand backup system - snapshot creation is now automatic
-		}
-
-		// Process the message normally
-		await processMessage(message, images);
-	};
-
-	const processMessage = async (
-		message: string,
-		images?: Array<{data: string; mimeType: string}>,
-		useBasicModel?: boolean,
-		hideUserMessage?: boolean,
-	) => {
-		// 检查 token 占用，如果 >= 80% 且配置启用了自动压缩，先执行自动压缩
-		const autoCompressConfig = getOpenAiConfig();
-		if (
-			autoCompressConfig.enableAutoCompress !== false &&
-			shouldAutoCompress(currentContextPercentageRef.current)
-		) {
-			setIsCompressing(true);
-			setCompressionError(null);
-
-			try {
-				// 显示压缩提示消息
-				const compressingMessage: Message = {
-					role: 'assistant',
-					content: '✵ Auto-compressing context due to token limit...',
-					streaming: false,
-				};
-				setMessages(prev => [...prev, compressingMessage]);
-
-				// 获取当前会话ID并传递给压缩函数
-				const session = sessionManager.getCurrentSession();
-				const compressionResult = await performAutoCompression(session?.id);
-
-				if (compressionResult) {
-					// 更新UI和token使用情况
-					clearSavedMessages();
-					setMessages(compressionResult.uiMessages);
-					setRemountKey(prev => prev + 1);
-					streamingState.setContextUsage(compressionResult.usage);
-
-					// 压缩创建了新会话，新会话的快照系统是独立的
-					// 清空当前的快照计数，因为新会话还没有快照
-					snapshotState.setSnapshotFileCount(new Map());
-				} else {
-					// 压缩失败或跳过，移除压缩提示消息，继续执行
-					setMessages(prev => prev.filter(m => m !== compressingMessage));
-				}
-			} catch (error) {
-				const errorMsg =
-					error instanceof Error ? error.message : 'Unknown error';
-				setCompressionError(errorMsg);
-
-				const errorMessage: Message = {
-					role: 'assistant',
-					content: `**Auto-compression Failed**\n\n${errorMsg}`,
-					streaming: false,
-				};
-				setMessages(prev => [...prev, errorMessage]);
-				setIsCompressing(false);
-				return; // 停止处理，等待用户手动处理
-			} finally {
-				setIsCompressing(false);
-			}
-		}
-
-		// Clear any previous retry status when starting a new request
-		streamingState.setRetryStatus(null);
-
-		// Parse and validate file references (use original message for immediate UI display)
-		const {cleanContent, validFiles} = await parseAndValidateFileReferences(
-			message,
-		);
-
-		// Separate image files from regular files
-		const imageFiles = validFiles.filter(
-			f => f.isImage && f.imageData && f.mimeType,
-		);
-		const regularFiles = validFiles.filter(f => !f.isImage);
-
-		// Convert image files to image content format
-		const imageContents = [
-			...(images || []).map(img => ({
-				type: 'image' as const,
-				data: img.data,
-				mimeType: img.mimeType,
-			})),
-			...imageFiles.map(f => {
-				// Extract base64 data from data URL (format: data:image/svg+xml;base64,...)
-				let base64Data = f.imageData!;
-				const base64Match = base64Data.match(/^data:[^;]+;base64,(.+)$/);
-				if (base64Match && base64Match[1]) {
-					base64Data = base64Match[1];
-				}
-				return {
-					type: 'image' as const,
-					data: base64Data,
-					mimeType: f.mimeType!,
-				};
-			}),
-		];
-
-		// Only add user message to UI if not hidden (显示原始用户消息)
-		if (!hideUserMessage) {
-			const userMessage: Message = {
-				role: 'user',
-				content: cleanContent,
-				files: validFiles.length > 0 ? validFiles : undefined,
-				images: imageContents.length > 0 ? imageContents : undefined,
-			};
-			setMessages(prev => [...prev, userMessage]);
-		}
-		streamingState.setIsStreaming(true);
-
-		// Create new abort controller for this request
-		const controller = new AbortController();
-		streamingState.setAbortController(controller);
-
-		// Optimize user prompt in the background (silent execution)
-		let originalMessage = message;
-		let optimizedMessage = message;
-		let optimizedCleanContent = cleanContent;
-
-		// Check if prompt optimization is enabled in config
-		const config = getOpenAiConfig();
-		const isOptimizationEnabled = config.enablePromptOptimization !== false; // Default to true
-
-		if (isOptimizationEnabled) {
-			try {
-				// Convert current UI messages to ChatMessage format for context
-				const conversationHistory = messages
-					.filter(m => m.role === 'user' || m.role === 'assistant')
-					.map(m => ({
-						role: m.role as 'user' | 'assistant',
-						content: typeof m.content === 'string' ? m.content : '',
-					}));
-
-				// Try to optimize the prompt (background execution)
-				optimizedMessage = await promptOptimizeAgent.optimizePrompt(
-					message,
-					conversationHistory,
-					controller.signal,
-				);
-
-				// Re-parse the optimized message to get clean content for AI
-				if (optimizedMessage !== originalMessage) {
-					const optimizedParsed = await parseAndValidateFileReferences(
-						optimizedMessage,
-					);
-					optimizedCleanContent = optimizedParsed.cleanContent;
-				}
-			} catch (error) {
-				// If optimization fails, silently fall back to original message
-				logger.warn('Prompt optimization failed, using original:', error);
-			}
-		}
-
-		try {
-			// Create message for AI with file read instructions and editor context (使用优化后的内容)
-			const messageForAI = createMessageWithFileInstructions(
-				optimizedCleanContent,
-				regularFiles,
-				vscodeState.vscodeConnected ? vscodeState.editorContext : undefined,
-			);
-
-			// Wrap saveMessage to add originalContent for user messages
-			const saveMessageWithOriginal = async (msg: any) => {
-				// If this is a user message and we have an optimized version, add originalContent
-				if (msg.role === 'user' && optimizedMessage !== originalMessage) {
-					await saveMessage({
-						...msg,
-						originalContent: originalMessage,
-					});
-				} else {
-					await saveMessage(msg);
-				}
-			};
-
-			// Start conversation with tool support
-			await handleConversationWithTools({
-				userContent: messageForAI,
-				imageContents,
-				controller,
-				messages,
-				saveMessage: saveMessageWithOriginal,
-				setMessages,
-				setStreamTokenCount: streamingState.setStreamTokenCount,
-				requestToolConfirmation,
-				requestUserQuestion,
-				isToolAutoApproved,
-				addMultipleToAlwaysApproved,
-				yoloMode,
-				setContextUsage: streamingState.setContextUsage,
-				useBasicModel,
-
-				getPendingMessages: () => pendingMessagesRef.current,
-				clearPendingMessages: () => setPendingMessages([]),
-				setIsStreaming: streamingState.setIsStreaming,
-				setIsReasoning: streamingState.setIsReasoning,
-				setRetryStatus: streamingState.setRetryStatus,
-				setIsStopping: streamingState.setIsStopping,
-				clearSavedMessages,
-				setRemountKey,
-				setSnapshotFileCount: snapshotState.setSnapshotFileCount,
-				getCurrentContextPercentage: () => currentContextPercentageRef.current,
-				setCurrentModel: streamingState.setCurrentModel,
-			});
-		} catch (error) {
-			if (controller.signal.aborted) {
-				// Don't return here - let finally block execute
-				// Just skip error display for aborted requests
-			} else {
-				const errorMessage =
-					error instanceof Error ? error.message : 'Unknown error occurred';
-				const finalMessage: Message = {
-					role: 'assistant',
-					content: `Error: ${errorMessage}`,
-					streaming: false,
-				};
-				setMessages(prev => [...prev, finalMessage]);
-			}
-		} finally {
-			// Handle user interruption uniformly
-			if (userInterruptedRef.current) {
-				// Clean up incomplete conversation in session
-				const session = sessionManager.getCurrentSession();
-				if (session && session.messages.length > 0) {
-					(async () => {
-						try {
-							// Find the last complete conversation round
-							const messages = session.messages;
-							let truncateIndex = messages.length;
-
-							// Scan from the end to find incomplete round
-							for (let i = messages.length - 1; i >= 0; i--) {
-								const msg = messages[i];
-								if (!msg) continue;
-
-								// If last message is user message without assistant response, remove it
-								// The user message was saved via await saveMessage() before interruption
-								// So it's safe to truncate it from session when incomplete
-								if (msg.role === 'user' && i === messages.length - 1) {
-									truncateIndex = i;
-									break;
-								}
-
-								// If assistant message has tool_calls, verify all tool results exist
-								if (
-									msg.role === 'assistant' &&
-									msg.tool_calls &&
-									msg.tool_calls.length > 0
-								) {
-									const toolCallIds = new Set(msg.tool_calls.map(tc => tc.id));
-									// Check if all tool results exist after this assistant message
-									for (let j = i + 1; j < messages.length; j++) {
-										const followMsg = messages[j];
-										if (
-											followMsg &&
-											followMsg.role === 'tool' &&
-											followMsg.tool_call_id
-										) {
-											toolCallIds.delete(followMsg.tool_call_id);
-										}
-									}
-									// If some tool results are missing, remove from this assistant message onwards
-									// But only if this is the last assistant message with tool_calls in the entire conversation
-									if (toolCallIds.size > 0) {
-										// Additional check: ensure this is the last assistant message with tool_calls
-										let hasLaterAssistantWithTools = false;
-										for (let k = i + 1; k < messages.length; k++) {
-											const laterMsg = messages[k];
-											if (
-												laterMsg?.role === 'assistant' &&
-												laterMsg?.tool_calls &&
-												laterMsg.tool_calls.length > 0
-											) {
-												hasLaterAssistantWithTools = true;
-												break;
-											}
-										}
-
-										// Only truncate if no later assistant messages have tool_calls
-										// This preserves complete historical conversations
-										if (!hasLaterAssistantWithTools) {
-											truncateIndex = i;
-											break;
-										}
-									}
-								}
-
-								// If we found a complete assistant response without tool calls, we're done
-								if (msg.role === 'assistant' && !msg.tool_calls) {
-									break;
-								}
-							}
-
-							// Truncate session if needed
-							if (truncateIndex < messages.length) {
-								await sessionManager.truncateMessages(truncateIndex);
-								// Also clear from saved messages tracking
-								clearSavedMessages();
-							}
-						} catch (error) {
-							console.error(
-								'Failed to clean up incomplete conversation:',
-								error,
-							);
-						}
-					})();
-				}
-
-				// Add discontinued message after all processing is done
-				setMessages(prev => [
-					...prev,
-					{
-						role: 'assistant',
-						content: '',
-						streaming: false,
-						discontinued: true,
-					},
-				]);
-
-				// Reset interruption flag
-				userInterruptedRef.current = false;
-			}
-
-			// End streaming
-			streamingState.setIsStreaming(false);
-			streamingState.setAbortController(null);
-			streamingState.setStreamTokenCount(0);
-		}
-	};
-
-	// Set the ref to the actual function
-	processMessageRef.current = processMessage;
-
-	const processPendingMessages = async () => {
-		if (pendingMessages.length === 0) return;
-
-		// Clear any previous retry status when starting a new request
-		streamingState.setRetryStatus(null);
-
-		// Get current pending messages and clear them immediately
-		const messagesToProcess = [...pendingMessages];
-		setPendingMessages([]);
-
-		// Combine multiple pending messages into one
-		const combinedMessage = messagesToProcess.map(m => m.text).join('\n\n');
-
-		// Execute onUserMessage hook for pending messages
-		let messageToSend = combinedMessage;
-		try {
-			const {unifiedHooksExecutor} = await import(
-				'../../utils/execution/unifiedHooksExecutor.js'
-			);
-			const allImages = messagesToProcess.flatMap(m => m.images || []);
-			const hookResult = await unifiedHooksExecutor.executeHooks(
-				'onUserMessage',
-				{
-					message: combinedMessage,
-					imageCount: allImages.length,
-					source: 'pending',
-				},
-			);
-			// Handle hook result using centralized handler
-			const {handleHookResult} = await import(
-				'../../utils/execution/hookResultHandler.js'
-			);
-			const handlerResult = handleHookResult(hookResult, combinedMessage);
-
-			if (!handlerResult.shouldContinue && handlerResult.errorDetails) {
-				// Critical error: display using HookErrorDisplay component
-				setMessages(prev => [
-					...prev,
-					{
-						role: 'assistant',
-						content: '', // Content will be rendered by HookErrorDisplay
-						timestamp: new Date(),
-						hookError: handlerResult.errorDetails,
-					},
-				]);
-				return; // Abort - don't send to AI
-			}
-
-			// Update message with any modifications (e.g., warning appended)
-			messageToSend = handlerResult.modifiedMessage!;
-		} catch (error) {
-			console.error('Failed to execute onUserMessage hook:', error);
-		}
-
-		// Parse and validate file references (same as processMessage)
-		const {cleanContent, validFiles} = await parseAndValidateFileReferences(
-			messageToSend,
-		);
-
-		// Separate image files from regular files
-		const imageFiles = validFiles.filter(
-			f => f.isImage && f.imageData && f.mimeType,
-		);
-		const regularFiles = validFiles.filter(f => !f.isImage);
-
-		// Collect all images from pending messages
-		const allImages = messagesToProcess
-			.flatMap(m => m.images || [])
-			.concat(
-				imageFiles.map(f => {
-					// Extract base64 data from data URL (format: data:image/svg+xml;base64,...)
-					let base64Data = f.imageData!;
-					const base64Match = base64Data.match(/^data:[^;]+;base64,(.+)$/);
-					if (base64Match && base64Match[1]) {
-						base64Data = base64Match[1];
-					}
-					return {
-						data: base64Data,
-						mimeType: f.mimeType!,
-					};
-				}),
-			);
-
-		// Convert to image content format
-		const imageContents =
-			allImages.length > 0
-				? allImages.map(img => ({
-						type: 'image' as const,
-						data: img.data,
-						mimeType: img.mimeType,
-				  }))
-				: undefined;
-
-		// Add user message to chat with file references and images
-		const userMessage: Message = {
-			role: 'user',
-			content: cleanContent,
-			files: validFiles.length > 0 ? validFiles : undefined,
-			images: imageContents,
-		};
-		setMessages(prev => [...prev, userMessage]);
-
-		// Start streaming response
-		streamingState.setIsStreaming(true);
-
-		// Create new abort controller for this request
-		const controller = new AbortController();
-		streamingState.setAbortController(controller);
-
-		try {
-			// Create message for AI with file read instructions and editor context
-			const messageForAI = createMessageWithFileInstructions(
-				cleanContent,
-				regularFiles,
-				vscodeState.vscodeConnected ? vscodeState.editorContext : undefined,
-			);
-
-			await handleConversationWithTools({
-				userContent: messageForAI,
-				imageContents,
-				controller,
-				messages,
-				saveMessage,
-				setMessages,
-				setStreamTokenCount: streamingState.setStreamTokenCount,
-				requestToolConfirmation,
-				requestUserQuestion,
-				isToolAutoApproved,
-				addMultipleToAlwaysApproved,
-				yoloMode,
-				setContextUsage: streamingState.setContextUsage,
-				getPendingMessages: () => pendingMessagesRef.current,
-
-				clearPendingMessages: () => setPendingMessages([]),
-				setIsStreaming: streamingState.setIsStreaming,
-				setIsReasoning: streamingState.setIsReasoning,
-				setRetryStatus: streamingState.setRetryStatus,
-				setIsStopping: streamingState.setIsStopping,
-				clearSavedMessages,
-				setRemountKey,
-				setSnapshotFileCount: snapshotState.setSnapshotFileCount,
-				getCurrentContextPercentage: () => currentContextPercentageRef.current,
-				setCurrentModel: streamingState.setCurrentModel,
-			});
-		} catch (error) {
-			if (controller.signal.aborted) {
-				// Don't return here - let finally block execute
-				// Just skip error display for aborted requests
-			} else {
-				const errorMessage =
-					error instanceof Error ? error.message : 'Unknown error occurred';
-				const finalMessage: Message = {
-					role: 'assistant',
-					content: `Error: ${errorMessage}`,
-					streaming: false,
-				};
-				setMessages(prev => [...prev, finalMessage]);
-			}
-		} finally {
-			// Handle user interruption uniformly
-			if (userInterruptedRef.current) {
-				// Clean up incomplete conversation in session
-				const session = sessionManager.getCurrentSession();
-				if (session && session.messages.length > 0) {
-					(async () => {
-						try {
-							// Find the last complete conversation round
-							const messages = session.messages;
-							let truncateIndex = messages.length;
-
-							// Scan from the end to find incomplete round
-							for (let i = messages.length - 1; i >= 0; i--) {
-								const msg = messages[i];
-								if (!msg) continue;
-
-								// If last message is user message without assistant response, remove it
-								if (msg.role === 'user' && i === messages.length - 1) {
-									truncateIndex = i;
-									break;
-								}
-
-								// If assistant message has tool_calls, verify all tool results exist
-								if (
-									msg.role === 'assistant' &&
-									msg.tool_calls &&
-									msg.tool_calls.length > 0
-								) {
-									const toolCallIds = new Set(msg.tool_calls.map(tc => tc.id));
-									// Check if all tool results exist after this assistant message
-									for (let j = i + 1; j < messages.length; j++) {
-										const followMsg = messages[j];
-										if (
-											followMsg &&
-											followMsg.role === 'tool' &&
-											followMsg.tool_call_id
-										) {
-											toolCallIds.delete(followMsg.tool_call_id);
-										}
-									}
-									// If some tool results are missing, remove from this assistant message onwards
-									if (toolCallIds.size > 0) {
-										truncateIndex = i;
-										break;
-									}
-								}
-
-								// If we found a complete assistant response without tool calls, we're done
-								if (msg.role === 'assistant' && !msg.tool_calls) {
-									break;
-								}
-							}
-
-							// Truncate session if needed
-							if (truncateIndex < messages.length) {
-								await sessionManager.truncateMessages(truncateIndex);
-								// Also clear from saved messages tracking
-								clearSavedMessages();
-							}
-						} catch (error) {
-							console.error(
-								'Failed to clean up incomplete conversation:',
-								error,
-							);
-						}
-					})();
-				}
-
-				// Add discontinued message after all processing is done
-				setMessages(prev => [
-					...prev,
-					{
-						role: 'assistant',
-						content: '',
-						streaming: false,
-						discontinued: true,
-					},
-				]);
-
-				// Reset interruption flag
-				userInterruptedRef.current = false;
-			}
-
-			// End streaming
-			streamingState.setIsStreaming(false);
-			streamingState.setAbortController(null);
-			streamingState.setStreamTokenCount(0);
 		}
 	};
 
@@ -2357,6 +1382,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 
 			{/* Show terminal-execute tool execution status */}
 			{terminalExecutionState.state.isExecuting &&
+				!terminalExecutionState.state.isBackgrounded &&
 				terminalExecutionState.state.command && (
 					<Box paddingX={1} width={terminalWidth}>
 						<BashCommandExecutionStatus
@@ -2538,6 +1564,10 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						currentAgentName={currentAgentName}
 						isCompressing={isCompressing}
 						compressionError={compressionError}
+						backgroundProcesses={backgroundProcesses.processes}
+						showBackgroundPanel={backgroundProcesses.showPanel}
+						selectedProcessIndex={selectedProcessIndex}
+						terminalWidth={terminalWidth}
 					/>
 				)}
 		</Box>

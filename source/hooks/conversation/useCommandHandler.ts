@@ -291,6 +291,7 @@ type CommandHandlerOptions = {
 	setShowSkillsCreation: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowWorkingDirPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowPermissionsPanel: React.Dispatch<React.SetStateAction<boolean>>;
+	setShowBackgroundPanel: () => void;
 	setYoloMode: React.Dispatch<React.SetStateAction<boolean>>;
 	setContextUsage: React.Dispatch<React.SetStateAction<UsageInfo | null>>;
 	setCurrentContextPercentage: React.Dispatch<React.SetStateAction<number>>;
@@ -487,6 +488,22 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				})();
 			} else if (result.success && result.action === 'showSessionPanel') {
 				options.setShowSessionPanel(true);
+				const commandMessage: Message = {
+					role: 'command',
+					content: '',
+					commandName: commandName,
+				};
+				options.setMessages(prev => [...prev, commandMessage]);
+			} else if (result.success && result.action === 'showUsagePanel') {
+				options.setShowUsagePanel(true);
+				const commandMessage: Message = {
+					role: 'command',
+					content: '',
+					commandName: commandName,
+				};
+				options.setMessages(prev => [...prev, commandMessage]);
+			} else if (result.success && result.action === 'showBackgroundPanel') {
+				options.setShowBackgroundPanel();
 				const commandMessage: Message = {
 					role: 'command',
 					content: '',

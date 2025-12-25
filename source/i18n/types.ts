@@ -450,6 +450,7 @@ export type TranslationKeys = {
 			home: string;
 			review: string;
 			usage: string;
+			backend: string;
 			export: string;
 			custom: string;
 			skills: string;
@@ -824,6 +825,7 @@ export type TranslationKeys = {
 		header: string;
 		customInputOption: string;
 		customInputLabel: string;
+		cancelOption: string;
 		selectPrompt: string;
 		enterResponse: string;
 		keyboardHints: string;
@@ -858,6 +860,17 @@ export type TranslationKeys = {
 		executingCommand: string;
 		timeout: string;
 		customTimeout: string;
+		backgroundHint: string;
+	};
+	backgroundProcesses: {
+		title: string;
+		status: string;
+		statusRunning: string;
+		statusCompleted: string;
+		statusFailed: string;
+		duration: string;
+		navigateHint: string;
+		emptyHint: string;
 	};
 	fileRollback: {
 		title: string;
@@ -876,6 +889,7 @@ export type TranslationKeys = {
 		cancelHint: string;
 		scrollHint: string;
 		navigateHint: string;
+		emptyHint: string;
 		toggleHint: string;
 		backHint: string;
 		closeHint: string;
