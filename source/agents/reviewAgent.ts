@@ -219,22 +219,24 @@ Please provide your review in a clear, structured format.`;
 			];
 		}
 
+		// Create the stream generator
+		let streamGenerator: AsyncGenerator<any, void, unknown>;
+
 		// Route to appropriate streaming API based on request method
 		switch (this.requestMethod) {
 			case 'anthropic':
-				yield* createStreamingAnthropicCompletion(
+				streamGenerator = createStreamingAnthropicCompletion(
 					{
 						model: this.modelName,
 						messages: processedMessages,
 						max_tokens: 4096,
-						disableThinking: true, // Agents 不使用 Extended Thinking
 					},
 					abortSignal,
 				);
 				break;
 
 			case 'gemini':
-				yield* createStreamingGeminiCompletion(
+				streamGenerator = createStreamingGeminiCompletion(
 					{
 						model: this.modelName,
 						messages: processedMessages,
@@ -244,7 +246,7 @@ Please provide your review in a clear, structured format.`;
 				break;
 
 			case 'responses':
-				yield* createStreamingResponse(
+				streamGenerator = createStreamingResponse(
 					{
 						model: this.modelName,
 						messages: processedMessages,
@@ -256,7 +258,7 @@ Please provide your review in a clear, structured format.`;
 
 			case 'chat':
 			default:
-				yield* createStreamingChatCompletion(
+				streamGenerator = createStreamingChatCompletion(
 					{
 						model: this.modelName,
 						messages: processedMessages,
@@ -265,6 +267,39 @@ Please provide your review in a clear, structured format.`;
 					abortSignal,
 				);
 				break;
+		}
+
+		// Process the stream and handle reasoning content
+		let reasoningContent = ''; // 专门存储思考内容，不返回给上层
+		try {
+			for await (const chunk of streamGenerator) {
+				// 检查是否是 reasoning 相关内容，如果是则过滤掉
+				if (this.requestMethod === 'chat') {
+					if (
+						chunk.type === 'reasoning_delta' ||
+						chunk.type === 'reasoning_started'
+					) {
+						if (chunk.type === 'reasoning_delta' && chunk.delta) {
+							reasoningContent += chunk.delta; // 存储到专门的变量中
+						}
+						continue; // 跳过 reasoning 相关的 chunk
+					}
+				} else {
+					if (
+						chunk.type === 'reasoning_delta' ||
+						chunk.type === 'reasoning_started'
+					) {
+						if (chunk.type === 'reasoning_delta' && chunk.delta) {
+							reasoningContent += chunk.delta; // 存储到专门的变量中
+						}
+						continue; // 跳过 reasoning 相关的 chunk
+					}
+				}
+				// 只输出非 reasoning 的内容
+				yield chunk;
+			}
+		} catch (error) {
+			throw error;
 		}
 	}
 

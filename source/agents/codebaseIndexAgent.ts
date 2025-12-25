@@ -83,6 +83,7 @@ export class CodebaseIndexAgent {
 		'.less',
 		'.vue',
 		'.svelte',
+		'.txt',
 	]);
 
 	constructor(projectRoot: string) {

@@ -90,7 +90,6 @@ export class PromptOptimizeAgent {
 						messages,
 						max_tokens: 1000, // Limited tokens for prompt optimization
 						includeBuiltinSystemPrompt: false,
-						disableThinking: true, // Agents don't use Extended Thinking
 					},
 					abortSignal,
 				);
@@ -135,6 +134,7 @@ export class PromptOptimizeAgent {
 
 		// Assemble complete content from streaming response
 		let completeContent = '';
+		let reasoningContent = ''; // 专门存储思考内容，不返回给上层
 
 		try {
 			for await (const chunk of streamGenerator) {
@@ -149,10 +149,18 @@ export class PromptOptimizeAgent {
 					if (chunk.choices && chunk.choices[0]?.delta?.content) {
 						completeContent += chunk.choices[0].delta.content;
 					}
+					// 处理 reasoning 内容
+					if (chunk.type === 'reasoning_delta' && chunk.delta) {
+						reasoningContent += chunk.delta; // 存储到专门的变量中
+					}
 				} else {
 					// Responses, Gemini, and Anthropic APIs use unified format
 					if (chunk.type === 'content' && chunk.content) {
 						completeContent += chunk.content;
+					}
+					// 处理 reasoning 内容
+					if (chunk.type === 'reasoning_delta' && chunk.delta) {
+						reasoningContent += chunk.delta; // 存储到专门的变量中
 					}
 				}
 			}

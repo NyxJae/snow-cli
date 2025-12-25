@@ -127,7 +127,6 @@ export class CodebaseReviewAgent {
 						messages,
 						tools: [this.REVIEW_TOOL],
 						includeBuiltinSystemPrompt: false,
-						disableThinking: true,
 					},
 					abortSignal,
 				);
@@ -175,15 +174,28 @@ export class CodebaseReviewAgent {
 
 		let completeContent = '';
 		let tool_calls: any[] = [];
+		let reasoningContent = ''; // 专门存储思考内容，不返回给上层
 
 		try {
+			let chunkCount = 0;
 			for await (const chunk of streamGenerator) {
+				chunkCount++;
 				if (abortSignal?.aborted) {
 					throw new Error('Request aborted');
 				}
 
 				if (this.requestMethod === 'chat') {
 					// OpenAI chat format
+					if (chunk.type === 'content' && chunk.content) {
+						completeContent += chunk.content;
+					}
+					if (chunk.type === 'tool_calls' && chunk.tool_calls) {
+						tool_calls = chunk.tool_calls;
+					}
+					// 处理 reasoning 内容
+					if (chunk.type === 'reasoning_delta' && chunk.delta) {
+						reasoningContent += chunk.delta; // 存储到专门的变量中
+					}
 					if (chunk.choices && chunk.choices[0]?.delta?.content) {
 						completeContent += chunk.choices[0].delta.content;
 					}
@@ -196,7 +208,7 @@ export class CodebaseReviewAgent {
 									tool_calls[tc.index] = {
 										id: tc.id || '',
 										type: 'function',
-										function: {name: '', arguments: ''},
+										function: { name: '', arguments: '' },
 									};
 								}
 								if (tc.function?.name) {
@@ -217,12 +229,16 @@ export class CodebaseReviewAgent {
 					if (chunk.type === 'tool_calls' && chunk.tool_calls) {
 						tool_calls = chunk.tool_calls;
 					}
+					// 处理 reasoning 内容
+					if (chunk.type === 'reasoning_delta' && chunk.delta) {
+						reasoningContent += chunk.delta; // 存储到专门的变量中
+					}
 				}
 			}
 		} catch (streamError) {
-			logger.error('Codebase review agent: Streaming error:', streamError);
-			throw streamError;
-		}
+		logger.error('Codebase review agent: Streaming error:', streamError);
+		throw streamError;
+	}
 
 		return {content: completeContent, tool_calls};
 	}

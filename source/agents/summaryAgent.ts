@@ -96,7 +96,6 @@ export class SummaryAgent {
 						messages,
 						max_tokens: 500, // Limited tokens for summary generation
 						includeBuiltinSystemPrompt: false, // 不需要内置系统提示词
-						disableThinking: true, // Agents 不使用 Extended Thinking
 					},
 					abortSignal,
 				);
@@ -141,6 +140,7 @@ export class SummaryAgent {
 
 		// Assemble complete content from streaming response
 		let completeContent = '';
+		let reasoningContent = ''; // 专门存储思考内容，不返回给上层
 
 		try {
 			for await (const chunk of streamGenerator) {
@@ -155,10 +155,18 @@ export class SummaryAgent {
 					if (chunk.choices && chunk.choices[0]?.delta?.content) {
 						completeContent += chunk.choices[0].delta.content;
 					}
+					// 处理 reasoning 内容
+					if (chunk.type === 'reasoning_delta' && chunk.delta) {
+						reasoningContent += chunk.delta; // 存储到专门的变量中
+					}
 				} else {
 					// Responses, Gemini, and Anthropic APIs use unified format
 					if (chunk.type === 'content' && chunk.content) {
 						completeContent += chunk.content;
+					}
+					// 处理 reasoning 内容
+					if (chunk.type === 'reasoning_delta' && chunk.delta) {
+						reasoningContent += chunk.delta; // 存储到专门的变量中
 					}
 				}
 			}

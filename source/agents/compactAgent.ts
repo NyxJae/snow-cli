@@ -111,7 +111,6 @@ export class CompactAgent {
 							messages,
 							max_tokens: 4096,
 							includeBuiltinSystemPrompt: false, // 不需要内置系统提示词
-							disableThinking: true, // Agents 不使用 Extended Thinking
 						},
 						abortSignal,
 					);
@@ -156,6 +155,7 @@ export class CompactAgent {
 
 			// Intercept streaming response and assemble complete content
 			let completeContent = '';
+			let reasoningContent = ''; // 专门存储思考内容，不返回给上层
 			let chunkCount = 0;
 
 			// Initialize token encoder for token counting
@@ -193,6 +193,10 @@ export class CompactAgent {
 								}
 							}
 						}
+						// 处理 reasoning 内容
+						if (chunk.type === 'reasoning_delta' && chunk.delta) {
+							reasoningContent += chunk.delta; // 存储到专门的变量中
+						}
 					} else {
 						// Responses, Gemini, and Anthropic APIs all use: {type: 'content', content: string}
 						if (chunk.type === 'content' && chunk.content) {
@@ -207,6 +211,10 @@ export class CompactAgent {
 									// Ignore encoding errors
 								}
 							}
+						}
+						// 处理 reasoning 内容
+						if (chunk.type === 'reasoning_delta' && chunk.delta) {
+							reasoningContent += chunk.delta; // 存储到专门的变量中
 						}
 					}
 				}
