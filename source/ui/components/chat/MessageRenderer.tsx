@@ -126,7 +126,7 @@ export default function MessageRenderer({
 						>
 							{shouldShowParallelIndicator && !isFirstInGroup ? '│' : ''}
 							{message.role === 'user'
-								? '𖨆 '
+								? '❯'
 								: message.role === 'command'
 								? '⌘'
 								: '❆'}
@@ -229,7 +229,21 @@ export default function MessageRenderer({
 															</Text>
 														</Box>
 													)}
-													<MarkdownRenderer content={message.content || ' '} />
+													{message.role === 'user' ? (
+														<Box paddingX={1}>
+															<Text
+																backgroundColor={
+																	theme.colors.userMessageBackground
+																}
+															>
+																{message.content || ' '}
+															</Text>
+														</Box>
+													) : (
+														<MarkdownRenderer
+															content={message.content || ' '}
+														/>
+													)}
 												</>
 											);
 										})()
