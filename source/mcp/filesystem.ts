@@ -14,13 +14,11 @@ import {
 // Type definitions
 import type {
 	EditBySearchConfig,
-	EditByLineConfig,
 	EditBySearchResult,
 	EditByLineResult,
 	EditBySearchSingleResult,
 	EditByLineSingleResult,
 	EditBySearchBatchResultItem,
-	EditByLineBatchResultItem,
 	SingleFileReadResult,
 	MultipleFilesReadResult,
 	MultimodalContent,
@@ -45,7 +43,6 @@ import {
 } from './utils/filesystem/match-finder.utils.js';
 import {
 	parseEditBySearchParams,
-	parseEditByLineParams,
 	executeBatchOperation,
 } from './utils/filesystem/batch-operations.utils.js';
 import {tryFixPath} from './utils/filesystem/path-fixer.utils.js';
@@ -1574,48 +1571,23 @@ export class FilesystemMCPService {
 	 * @throws Error if file editing fails
 	 */
 	async editFile(
-		filePath: string | string[] | EditByLineConfig[],
-		startLine?: number,
-		endLine?: number,
-		newContent?: string,
+		filePath: string,
+		line: number,
+		newContent: string,
 		contextLines: number = 8,
 	): Promise<EditByLineResult> {
-		// Handle array of files
-		if (Array.isArray(filePath)) {
-			return await executeBatchOperation<
-				EditByLineConfig,
-				EditByLineSingleResult,
-				EditByLineBatchResultItem
-			>(
-				filePath,
-				fileItem =>
-					parseEditByLineParams(fileItem, startLine, endLine, newContent),
-				(path, start, end, content) =>
-					this.editFileSingle(path, start, end, content, contextLines),
-				(path, result) => {
-					return {path, ...result};
-				},
-			);
-		}
-
-		// Single file mode
-		if (
-			startLine === undefined ||
-			endLine === undefined ||
-			newContent === undefined
-		) {
+		// Validate parameters
+		if (typeof filePath !== 'string') {
 			throw new Error(
-				'startLine, endLine, and newContent are required for single file mode',
+				'⚠️ Batch editing is not supported. filePath must be a single file path (string), not an array. For batch operations, use filesystem-edit_search instead.',
 			);
 		}
 
-		return await this.editFileSingle(
-			filePath,
-			startLine,
-			endLine,
-			newContent,
-			contextLines,
-		);
+		if (line === undefined || newContent === undefined) {
+			throw new Error('line and newContent are required');
+		}
+
+		return await this.editFileSingle(filePath, line, line, newContent, contextLines);
 	}
 
 	/**
@@ -1665,12 +1637,12 @@ export class FilesystemMCPService {
 				// Don't fail the operation if backup fails
 			}
 
-			// Validate line numbers
+			// Validate line numbers - ONLY single line editing is supported
 			if (startLine < 1 || endLine < 1) {
 				throw new Error('Line numbers must be greater than 0');
 			}
-			if (startLine > endLine) {
-				throw new Error('Start line must be less than or equal to end line');
+			if (startLine !== endLine) {
+				throw new Error('⚠️ Multi-line editing is not supported. This tool only supports single-line editing of individual symbols. For multi-line edits, please use filesystem-edit_search instead.');
 			}
 
 			// Adjust startLine and endLine if they exceed file length
@@ -1820,7 +1792,8 @@ export class FilesystemMCPService {
 					`   Result: ${newContentLines.length} new lines` +
 					(smartBoundaries.extended
 						? `\n   📍 Context auto-extended to show complete code block (lines ${contextStart}-${finalContextEnd})`
-						: ''),
+						: '') +
+					`\n\n⚠️ 注意：行号编辑工具仅适用于特殊单符号修改场景。对于常规编辑，请优先使用 filesystem-edit_search 工具。`,
 				oldContent,
 				newContent: finalContextContent,
 				replacedLines: replacedContent,
@@ -2164,84 +2137,35 @@ export const mcpTools = [
 					default: 8,
 				},
 			},
-			required: ['filePath'],
+			required: ['filePath', 'searchContent', 'replaceContent'],
 		},
 	},
 	{
-		name: 'filesystem-edit',
+			name: 'filesystem-edit',
 		description:
-			'Line-based editing for precise control. **CRITICAL PATH REQUIREMENTS**: (1) filePath parameter is REQUIRED - MUST be a valid non-empty string or array, never use undefined/null/empty string, (2) Use EXACT file paths from search results or user input - never use placeholders like "path/to/file", (3) If uncertain about path, use search tools first to find the correct file. **SUPPORTS BATCH EDITING**: Pass (1) single file with line range, (2) array of file paths with unified line range, or (3) array of {path, startLine, endLine, newContent} for per-file edits. **WHEN TO USE**: (1) Adding new code sections, (2) Deleting specific line ranges, (3) When search-replace not suitable. **CRITICAL WORKFLOW FOR CODE SAFETY**: (1) Use search tools (codebase-search or ACE tools) to locate area, (2) MUST use filesystem-read to identify COMPLETE code boundaries - for functions: include opening line to closing brace; for markup tags (HTML/Vue/JSX): include opening tag to closing tag; for code blocks: include all braces/brackets, (3) Verify line range covers the ENTIRE syntactic unit (check indentation levels, matching pairs), (4) Use THIS tool with exact startLine/endLine. **BEST PRACTICE**: Keep edits small (under 15 lines recommended) for better accuracy. For larger changes, make multiple parallel edits to non-overlapping sections instead of one large edit. **RECOMMENDATION**: For modifying existing code, use filesystem-edit_search - safer and no line tracking needed. **WHY LINE-BASED IS RISKIER**: Line numbers can shift during editing, making it easy to target wrong lines. Search-replace avoids this by matching actual content. **COMMON ERRORS TO AVOID**: Using invalid/empty file paths, line range stops mid-function (missing closing brace), partial markup tags, incomplete code blocks, targeting wrong lines after file changes. Always verify boundaries with filesystem-read first. **BATCH EXAMPLE**: filePath=[{path:"a.ts", startLine:10, endLine:20, newContent:"..."}, {path:"b.ts", startLine:50, endLine:60, newContent:"..."}]',
+			'⚠️ **WARNING: USE ONLY AS LAST RESORT** - This tool is highly restricted and should only be used when absolutely necessary. **USAGE LIMITATIONS**: (1) ONLY for single-line editing of individual symbols (e.g., removing a single brace, adding a semicolon), (2) NOT for multi-line edits or code blocks, (3) NOT for batch editing multiple files. **WHEN TO USE**: Only when search-replace tools cannot handle the specific case (e.g., single symbol modifications). **FOR ALL OTHER CASES**: Use filesystem-edit_search - much safer and recommended. **CRITICAL PATH REQUIREMENTS**: (1) filePath parameter MUST be a valid non-empty string, never use undefined/null/empty string, (2) Use EXACT file paths from search results or user input - never use placeholders like "path/to/file", (3) If uncertain about path, use search tools first to find the correct file. **PARAMETERS**: filePath (string, single file only), line (number, single line only), newContent (string, new line content). **COMMON ERRORS TO AVOID**: Multi-line editing (not supported), batch editing (not supported), invalid/empty file paths. Always verify with filesystem-read first.',
 		inputSchema: {
 			type: 'object',
 			properties: {
 				filePath: {
-					oneOf: [
-						{
-							type: 'string',
-							description: 'Path to a single file to edit',
-						},
-						{
-							type: 'array',
-							items: {
-								type: 'string',
-							},
-							description:
-								'Array of file paths (uses unified startLine/endLine/newContent from top-level)',
-						},
-						{
-							type: 'array',
-							items: {
-								type: 'object',
-								properties: {
-									path: {
-										type: 'string',
-										description: 'File path',
-									},
-									startLine: {
-										type: 'number',
-										description: 'Starting line number (1-indexed, inclusive)',
-									},
-									endLine: {
-										type: 'number',
-										description: 'Ending line number (1-indexed, inclusive)',
-									},
-									newContent: {
-										type: 'string',
-										description:
-											'New content to replace lines (without line numbers)',
-									},
-								},
-								required: ['path', 'startLine', 'endLine', 'newContent'],
-							},
-							description:
-								'Array of edit config objects for per-file line-based edits',
-						},
-					],
-					description: 'File path(s) to edit',
+					type: 'string',
+					description: 'Path to a single file to edit (MUST be string, not array)',
 				},
-				startLine: {
+				line: {
 					type: 'number',
-					description:
-						'CRITICAL: Starting line number (1-indexed, inclusive) for single file or unified mode. MUST match filesystem-read output.',
-				},
-				endLine: {
-					type: 'number',
-					description:
-						'CRITICAL: Ending line number (1-indexed, inclusive) for single file or unified mode. Keep edits small (under 15 lines recommended).',
+					description: 'CRITICAL: Line number to edit (1-indexed, single line only). MUST match filesystem-read output.',
 				},
 				newContent: {
 					type: 'string',
-					description:
-						'New content to replace specified lines (for single file or unified mode). CRITICAL: Do NOT include line numbers. Ensure proper indentation.',
+					description: 'New content for the line (CRITICAL: Do NOT include line numbers. Ensure proper indentation).',
 				},
 				contextLines: {
 					type: 'number',
-					description:
-						'Number of context lines to show before/after edit for verification (default: 8)',
+					description: 'Number of context lines to show before/after edit for verification (default: 8)',
 					default: 8,
 				},
 			},
-			required: ['filePath'],
+			required: ['filePath', 'line', 'newContent'],
 		},
 	},
 ];
