@@ -355,6 +355,8 @@ export type TranslationKeys = {
 		title: string;
 		current: string;
 		preview: string;
+		userMessagePreview: string;
+		userMessageSample: string;
 		back: string;
 		backInfo: string;
 		simpleMode: string;
@@ -393,6 +395,8 @@ export type TranslationKeys = {
 		cancel: string;
 		confirm: string;
 		preview: string;
+		userMessagePreview: string;
+		userMessageSample: string;
 		colorHint: string;
 	};
 	helpPanel: {

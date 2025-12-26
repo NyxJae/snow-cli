@@ -382,6 +382,8 @@ export const en: TranslationKeys = {
 		title: 'Theme Settings',
 		current: 'Current:',
 		preview: 'Preview:',
+		userMessagePreview: 'User message preview:',
+		userMessageSample: 'Check if user message background looks right.',
 		back: '← Back',
 		backInfo: 'Return to main menu',
 		simpleMode: 'Simple Mode:',
@@ -420,6 +422,8 @@ export const en: TranslationKeys = {
 		cancel: 'Cancel',
 		confirm: 'Confirm',
 		preview: 'Preview',
+		userMessagePreview: 'User message preview',
+		userMessageSample: 'Check if userMessageBackground looks right.',
 		colorHint: 'Press Enter to edit this color',
 	},
 	helpPanel: {
