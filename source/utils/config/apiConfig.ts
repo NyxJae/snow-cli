@@ -10,10 +10,6 @@ import {
 
 export type RequestMethod = 'chat' | 'responses' | 'gemini' | 'anthropic';
 
-export interface CompactModelConfig {
-	modelName: string;
-}
-
 export interface ThinkingConfig {
 	type: 'enabled';
 	budget_tokens: number;
@@ -37,7 +33,6 @@ export interface ApiConfig {
 	basicModel?: string;
 	maxContextTokens?: number;
 	maxTokens?: number; // Max tokens for single response (API request parameter)
-	compactModel?: CompactModelConfig;
 	anthropicBeta?: boolean; // Enable Anthropic Beta features
 	anthropicCacheTTL?: '5m' | '1h'; // Anthropic prompt cache TTL (default: 5m)
 	thinking?: ThinkingConfig; // Anthropic thinking configuration
@@ -50,6 +45,8 @@ export interface ApiConfig {
 	systemPromptId?: string;
 	// 选填：覆盖 custom-headers.json 的 active（undefined=跟随全局；''=不使用；其它=按ID选择）
 	customHeadersSchemeId?: string;
+	// 文件搜索编辑相似度阈值 (0.0-1.0, 默认: 0.75, 建议非必要不修改)
+	editSimilarityThreshold?: number;
 }
 
 export interface MCPServer {
@@ -116,6 +113,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 		maxContextTokens: 120000,
 		maxTokens: 32000,
 		anthropicBeta: false,
+		editSimilarityThreshold: 0.75,
 	},
 };
 

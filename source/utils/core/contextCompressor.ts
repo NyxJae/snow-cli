@@ -407,9 +407,8 @@ async function compressWithChatCompletions(
 			};
 		}
 	}
-
 	if (!summary) {
-		throw new Error('Failed to generate summary from compact model');
+		throw new Error('Failed to generate summary');
 	}
 
 	return {summary, usage};
@@ -457,9 +456,7 @@ async function compressWithResponses(
 	}
 
 	if (!summary) {
-		throw new Error(
-			'Failed to generate summary from compact model (Responses API)',
-		);
+		throw new Error('Failed to generate summary (Responses API)');
 	}
 
 	return {summary, usage};
@@ -506,7 +503,7 @@ async function compressWithGemini(
 	}
 
 	if (!summary) {
-		throw new Error('Failed to generate summary from Gemini model');
+		throw new Error('Failed to generate summary (Gemini)');
 	}
 
 	return {summary, usage};
@@ -555,14 +552,14 @@ async function compressWithAnthropic(
 	}
 
 	if (!summary) {
-		throw new Error('Failed to generate summary from Anthropic model');
+		throw new Error('Failed to generate summary (Anthropic)');
 	}
 
 	return {summary, usage};
 }
 
 /**
- * Compress conversation history using the compact model
+ * Compress conversation history using the advanced model
  * @param messages - Array of messages to compress
  * @returns Compressed summary and token usage information, or null if compression should be skipped
  */
@@ -642,19 +639,19 @@ export async function compressContext(
 
 	const config = getOpenAiConfig();
 
-	// Check if compact model is configured
-	if (!config.compactModel || !config.compactModel.modelName) {
-		throw new Error(
-			'Compact model not configured. Please configure it in API & Model Settings.',
-		);
-	}
-
 	if (messages.length === 0) {
 		console.warn('No messages to compress');
 		return null;
 	}
 
-	const modelName = config.compactModel.modelName;
+	// Use advancedModel for compression
+	if (!config.advancedModel) {
+		throw new Error(
+			'Advanced model not configured. Please configure it in API & Model Settings.',
+		);
+	}
+
+	const modelName = config.advancedModel;
 	const requestMethod = config.requestMethod;
 
 	// Get custom system prompt if configured
