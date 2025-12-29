@@ -643,7 +643,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 		// Append AGENTS.md content if available
 		const agentsPrompt = getAgentsPrompt();
 		if (agentsPrompt) {
-			finalPrompt = `${prompt}\n\n${agentsPrompt}`;
+			finalPrompt = `${finalPrompt}\n\n${agentsPrompt}`;
 		}
 
 		// Append system environment and platform guidance

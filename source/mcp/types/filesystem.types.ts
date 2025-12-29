@@ -94,11 +94,7 @@ export interface StructureAnalysis {
 	commentBalance?: {
 		block: {open: number; close: number; balanced: boolean};
 	};
-	htmlTags?: {
-		unclosedTags: string[];
-		unopenedTags: string[];
-		balanced: boolean;
-	};
+
 	indentationWarnings: string[];
 	codeBlockBoundary?: {
 		isInCompleteBlock: boolean;
