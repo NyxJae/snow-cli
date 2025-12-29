@@ -44,10 +44,12 @@ function analyzeJsxHtmlTagBalance(content: string): HtmlTagBalance {
 
 	const isNameStart = (ch: string) => /[A-Za-z]/.test(ch);
 	const isNameChar = (ch: string) => /[A-Za-z0-9-]/.test(ch);
+	const isIdentifierChar = (ch: string) => /[A-Za-z0-9_]/.test(ch);
 
 	let i = 0;
-	let mode: 'text' | 'tag' | 'jsxExpr' = 'text';
+	let mode: 'text' | 'tag' | 'jsxExpr' | 'tsGeneric' = 'text';
 	let braceDepth = 0;
+	let angleDepth = 0;
 	let inSingle = false;
 	let inDouble = false;
 	let inBacktick = false;
@@ -110,6 +112,29 @@ function analyzeJsxHtmlTagBalance(content: string): HtmlTagBalance {
 			continue;
 		}
 
+		if (mode === 'tsGeneric') {
+			if (inSingle || inDouble || inBacktick) {
+				i++;
+				continue;
+			}
+			if (ch === '<') {
+				angleDepth++;
+				i++;
+				continue;
+			}
+			if (ch === '>') {
+				angleDepth--;
+				i++;
+				if (angleDepth <= 0) {
+					mode = 'text';
+					angleDepth = 0;
+				}
+				continue;
+			}
+			i++;
+			continue;
+		}
+
 		if (mode === 'tag') {
 			if (inSingle || inDouble || inBacktick) {
 				i++;
@@ -140,6 +165,29 @@ function analyzeJsxHtmlTagBalance(content: string): HtmlTagBalance {
 
 		// mode === 'text'
 		if (ch === '<') {
+			// Check if this might be a TypeScript generic (e.g., Array<T>, Promise<T>)
+			// Generic pattern: identifier followed by <...>
+			// We look backward to see if there's an identifier before the <
+			let k = i - 1;
+			while (k >= 0 && /\s/.test(content[k] || '')) k--;
+			const prevChar = k >= 0 ? (content[k] || '') : '';
+
+			// If previous character is an identifier char (letter, digit, underscore, closing bracket/paren),
+			// this is likely a TypeScript generic, not an HTML tag
+			// Exception: after 'new' keyword (e.g., new Component<T>()) - still treat as generic
+			if (
+				isIdentifierChar(prevChar) ||
+				prevChar === ']' ||
+				prevChar === ')' ||
+				prevChar === '}'
+			) {
+				// This looks like a TypeScript generic, skip it
+				mode = 'tsGeneric';
+				angleDepth = 1;
+				i++;
+				continue;
+			}
+
 			// fragment open <>
 			if (next === '>') {
 				pushOpen('#fragment');
