@@ -199,19 +199,19 @@ export function useChatLogic(props: UseChatLogicProps) {
 		await processMessage(message, images);
 	};
 
-	// Handle user question answer
 	const handleUserQuestionAnswer = (result: {
 		selected: string | string[];
 		customInput?: string;
 		cancelled?: boolean;
 	}) => {
 		if (pendingUserQuestion) {
+			const resolver = pendingUserQuestion.resolve;
+
+			// 先清空pendingUserQuestion，确保LoadingIndicator可以显示
+			setPendingUserQuestion(null);
+
 			// 如果用户选择取消，先resolve Promise让工具执行器继续，然后触发中断
 			if (result.cancelled) {
-				// 先清空pendingUserQuestion，确保LoadingIndicator可以显示
-				const resolver = pendingUserQuestion.resolve;
-				setPendingUserQuestion(null);
-
 				// 标记用户手动中断（关键：让finally块能清除停止状态）
 				userInterruptedRef.current = true;
 
@@ -229,13 +229,11 @@ export function useChatLogic(props: UseChatLogicProps) {
 				// 清空pending状态
 				setMessages(prev => prev.filter(msg => !msg.toolPending));
 				setPendingMessages([]);
-
 				return;
 			}
 
-			//直接传递结果，保留数组形式用于多选
-			pendingUserQuestion.resolve(result);
-			setPendingUserQuestion(null);
+			// 直接传递结果，保留数组形式用于多选
+			resolver(result);
 		}
 	};
 

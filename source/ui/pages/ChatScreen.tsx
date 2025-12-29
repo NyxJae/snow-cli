@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useRef, useMemo} from 'react';
+import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import {Box, Text, useInput, Static, useStdout, useApp} from 'ink';
 import ansiEscapes from 'ansi-escapes';
 import {useI18n} from '../../i18n/I18nContext.js';
@@ -655,6 +655,46 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		}) => void;
 	} | null>(null);
 
+	// Queue for askuser tool interaction
+	const pendingUserQuestionQueueRef = useRef<
+		Array<{
+			question: string;
+			options: string[];
+			toolCall: any;
+			resolve: (result: {
+				selected: string | string[];
+				customInput?: string;
+				cancelled?: boolean;
+			}) => void;
+		}>
+	>([]);
+
+	const pendingUserQuestionRef = useRef(pendingUserQuestion);
+	useEffect(() => {
+		pendingUserQuestionRef.current = pendingUserQuestion;
+	}, [pendingUserQuestion]);
+
+	const drainUserQuestionQueue = useCallback(() => {
+		if (pendingUserQuestionRef.current) return;
+
+		const next = pendingUserQuestionQueueRef.current.shift();
+		if (!next) return;
+
+		logger.debug('askuser dequeue -> active', {
+			question: next.question,
+			optionsCount: next.options.length,
+			queueLength: pendingUserQuestionQueueRef.current.length,
+			toolCallId: next.toolCall?.id,
+		});
+		setPendingUserQuestion(next);
+	}, []);
+
+	useEffect(() => {
+		if (!pendingUserQuestion) {
+			drainUserQuestionQueue();
+		}
+	}, [pendingUserQuestion, drainUserQuestionQueue]);
+
 	// Request user question callback for askuser tool
 	const requestUserQuestion = async (
 		question: string,
@@ -662,12 +702,19 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		toolCall: any,
 	): Promise<{selected: string | string[]; customInput?: string}> => {
 		return new Promise(resolve => {
-			setPendingUserQuestion({
+			pendingUserQuestionQueueRef.current.push({
 				question,
 				options,
 				toolCall,
 				resolve,
 			});
+			logger.debug('askuser enqueued', {
+				question,
+				optionsCount: options.length,
+				queueLength: pendingUserQuestionQueueRef.current.length,
+				toolCallId: toolCall?.id,
+			});
+			drainUserQuestionQueue();
 		});
 	};
 
