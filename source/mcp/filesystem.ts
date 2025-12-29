@@ -1127,7 +1127,7 @@ export class FilesystemMCPService {
 					);
 
 					let errorMessage = `❌ Search content not found in file: ${filePath}\n\n`;
-					errorMessage += `🔍 Using smart fuzzy matching (threshold: 60%)\n`;
+					errorMessage += `🔍 Using smart fuzzy matching (threshold: ${threshold})\n`;
 					if (isOverEscaped(searchContent)) {
 						errorMessage += `⚠️  Detected over-escaped content, automatic fix attempted but failed\n`;
 					}
@@ -1247,8 +1247,8 @@ export class FilesystemMCPService {
 				);
 				if (!indentCheck.ok) {
 					throw new Error(
-						`❌ 拒绝执行 filesystem-edit_search：${indentCheck.message}\n` +
-							`💡 建议：每次 search/replace 都以“完整代码块”为最小单位（函数/类/条件块需包含完整大括号；JSX/HTML 需完整开闭标签；Python/YAML 需完整缩进块）。`,
+						`❌ 拒绝执行 filesystem-edit_search:${indentCheck.message}\n` +
+							`💡 建议:每次 search/replace 都以“完整代码块”为最小单位(函数/类/条件块需包含完整大括号;JSX/HTML 需完整开闭标签;Python/YAML 需完整缩进块).`,
 					);
 				}
 
@@ -1304,11 +1304,11 @@ export class FilesystemMCPService {
 
 				if (issues.length > 0) {
 					throw new Error(
-						`❌ 拒绝执行 filesystem-edit_search：检测到潜在结构风险：\n` +
+						`❌ 拒绝执行 filesystem-edit_search:检测到潜在结构风险:\n` +
 							issues.map(i => `  • ${i}`).join('\n') +
 							`\n\n` +
-							`这通常意味着你复制/构造的是“半个代码块”，非常容易导致丢括号/丢引号/丢注释闭合并破坏文件结构。\n` +
-							`💡 请改为从 filesystem-read 复制“完整代码块”（不要包含行号），再执行替换。`,
+							`这通常意味着你复制/构造的是“半个代码块”,非常容易导致丢括号/丢引号/丢注释闭合并破坏文件结构.\n` +
+							`💡 请改为从 filesystem-read 复制“完整代码块”(不要包含行号),再执行替换.`,
 					);
 				}
 			}
@@ -1793,7 +1793,7 @@ export class FilesystemMCPService {
 					(smartBoundaries.extended
 						? `\n   📍 Context auto-extended to show complete code block (lines ${contextStart}-${finalContextEnd})`
 						: '') +
-					`\n\n⚠️ 注意：行号编辑工具仅适用于特殊单符号修改场景。对于常规编辑，请优先使用 filesystem-edit_search 工具。`,
+					`\n\n⚠️ 注意:行号编辑工具仅适用于特殊单符号修改场景.对于常规编辑,请优先使用 filesystem-edit_search 工具.`,
 				oldContent,
 				newContent: finalContextContent,
 				replacedLines: replacedContent,
@@ -2066,7 +2066,7 @@ export const mcpTools = [
 	{
 		name: 'filesystem-edit_search',
 		description:
-			'RECOMMENDED for most edits: Search-and-replace with SMART FUZZY MATCHING. **CRITICAL PATH REQUIREMENTS**: (1) filePath parameter is REQUIRED - MUST be a valid non-empty string or array, never use undefined/null/empty string, (2) Use EXACT file paths from search results or user input - never use placeholders like "path/to/file", (3) If uncertain about path, use search tools first to find the correct file. **SUPPORTS BATCH EDITING**: Pass (1) single file with search/replace, (2) array of file paths with unified search/replace, or (3) array of {path, searchContent, replaceContent, occurrence?} for per-file edits. **CRITICAL WORKFLOW FOR CODE SAFETY**: (1) Use search tools (codebase-search or ACE tools) to locate code, (2) MUST use filesystem-read to identify COMPLETE代码块边界（函数/类/if 等必须从开头到闭合大括号；JSX/HTML 必须包含完整开闭标签；Python/YAML 必须包含完整缩进块），(3) Copy the COMPLETE code block (without line numbers), (4) Verify boundaries are intact (matching braces/brackets/tags/indent), (5) Use THIS tool. **PRE-CHECK (NEW)**: 在执行替换前，会对 searchContent/replaceContent 做结构预检查（括号/标签平衡；对 .py/.yml/.yaml 做缩进边界一致性检查）。若不通过会直接拒绝执行并给出提示。**WHY USE THIS**: No line tracking needed, auto-handles spacing/tabs differences, finds best fuzzy match even with whitespace changes, safer than line-based editing. **SMART MATCHING**: Uses similarity algorithm (60% threshold) to find code even if indentation/spacing differs from your search string. Automatically corrects over-escaped content. If multiple matches found, selects best match first (highest similarity score). **COMMON ERRORS TO AVOID**: Using invalid/empty file paths, modifying only part of a function (missing closing brace), incomplete markup tags (HTML/Vue/JSX), partial code blocks, copying line numbers from filesystem-read output. Always include complete syntactic units with all opening/closing pairs. **BATCH EXAMPLE**: filePath=[{path:"a.ts", searchContent:"old1", replaceContent:"new1"}, {path:"b.ts", searchContent:"old2", replaceContent:"new2"}]',
+			'最优先的文件编辑工具 - MUST用于大多数编辑操作:使用智能模糊匹配进行搜索和替换.**关键路径要求**:(1) filePath 参数是必需的 - 必须是有效的非空字符串或数组,切勿使用 undefined/null/空字符串,(2) 使用搜索结果或用户输入中的确切文件路径 - 切勿使用像 "path/to/file" 这样的占位符,(3) 如果不确定路径,请先使用搜索工具找到正确的文件.**支持批量编辑**:传入 (1) 带有搜索/替换单个文件,(2) 带有统一搜索/替换的文件路径数组,或 (3) 针对每个文件编辑的包含 {path, searchContent, replaceContent, occurrence?} 的数组.**代码安全的关键工作流程**:(1) 使用搜索工具 (codebase-search 或 ACE 工具) 定位代码,(2) 必须使用 filesystem-read 来识别完整的代码块边界(函数/类/if 等必须从开头到闭合大括号;JSX/HTML 必须包含完整的开闭标签;Python/YAML 必须包含完整的缩进块),(3) 复制完整的代码块(不带行号),(4) 验证边界是否完整(大括号/中括号/标签/缩进匹配),(5) **预检查**:在执行替换前,会对 searchContent/replaceContent 进行结构预检查(括号/标签平衡;对 .py/.yml/.yaml 文件做缩进边界一致性检查).若不通过会直接拒绝执行并给出提示.若文件中本来存在不闭合的成对符号,则先将非闭合符号删除后再搜索编辑.始终包含完整的语法单元及其所有开始/结束对.**批量编辑示例**:filePath=[{path:"a.ts", searchContent:"old1", replaceContent:"new1"}, {path:"b.ts", searchContent:"old2", replaceContent:"new2"}]',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -2143,7 +2143,7 @@ export const mcpTools = [
 	{
 			name: 'filesystem-edit',
 		description:
-			'⚠️ **WARNING: USE ONLY AS LAST RESORT** - This tool is highly restricted and should only be used when absolutely necessary. **USAGE LIMITATIONS**: (1) ONLY for single-line editing of individual symbols (e.g., removing a single brace, adding a semicolon), (2) NOT for multi-line edits or code blocks, (3) NOT for batch editing multiple files. **WHEN TO USE**: Only when search-replace tools cannot handle the specific case (e.g., single symbol modifications). **FOR ALL OTHER CASES**: Use filesystem-edit_search - much safer and recommended. **CRITICAL PATH REQUIREMENTS**: (1) filePath parameter MUST be a valid non-empty string, never use undefined/null/empty string, (2) Use EXACT file paths from search results or user input - never use placeholders like "path/to/file", (3) If uncertain about path, use search tools first to find the correct file. **PARAMETERS**: filePath (string, single file only), line (number, single line only), newContent (string, new line content). **COMMON ERRORS TO AVOID**: Multi-line editing (not supported), batch editing (not supported), invalid/empty file paths. Always verify with filesystem-read first.',
+			'⚠️ 警告:此工具受到严格限制,应仅在绝对必要时使用.使用限制:(1) 仅用于单个符号的单行编辑(例如:删除单个大括号、添加分号),(2) 不适用于多行编辑或代码块,(3) 不适用于批量编辑多个文件.何时使用:仅当搜索-替换工具无法处理特定情况时(例如:单个符号修改).对于所有其他情况:请使用 filesystem-edit_search - 更加安全且推荐使用.关键路径要求:(1) filePath 参数必须是有效的非空字符串,切勿使用 undefined/null/空字符串,(2) 使用搜索结果或用户输入中的确切文件路径 - 切勿使用像 "path/to/file" 这样的占位符,(3) 如果不确定路径,请先使用搜索工具找到正确的文件.参数:filePath(字符串,仅限单个文件),line(数字,仅限单行),newContent(字符串,新行内容).需避免的常见错误:多行编辑(不支持),批量编辑(不支持),无效/空的文件路径.请务必先使用 filesystem-read 进行验证.',
 		inputSchema: {
 			type: 'object',
 			properties: {

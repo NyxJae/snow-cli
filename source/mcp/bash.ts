@@ -282,7 +282,7 @@ export const mcpTools = [
 	{
 		name: 'terminal-execute',
 		description:
-			'Execute terminal commands like npm, git, build scripts, etc. BEST PRACTICE: For file modifications, prefer filesystem-edit/filesystem-create tools first - they are more reliable and provide better error handling. Terminal commands (sed, awk, echo >file, cat <<EOF) can be used for file editing, but only as a fallback option when filesystem tools are not suitable. Primary use cases: (1) Running build/test/lint scripts, (2) Version control operations, (3) Package management, (4) System utilities, (5) Fallback file editing when needed.',
+			'执行终端命令,如 npm、git、构建脚本等。最佳实践:对于文件编辑,MUST ONLY 使用 `filesystem-xxx` 系列工具,不可使用本工具进行任何文件编辑!!!——主要使用场景:(1) 运行构建/测试/代码检查脚本,(2) 版本控制操作,(3) 包管理,(4) 系统工具',
 		inputSchema: {
 			type: 'object',
 			properties: {

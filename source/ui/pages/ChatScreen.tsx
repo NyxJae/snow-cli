@@ -29,8 +29,8 @@ import {
 	type CommandLocation,
 } from '../../utils/commands/custom.js';
 import {
+	createSkillFromGenerated,
 	createSkillTemplate,
-	type SkillLocation,
 } from '../../utils/commands/skills.js';
 import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
 import {getSimpleMode} from '../../utils/config/themeConfig.js';
@@ -49,6 +49,7 @@ import {useStreamingState} from '../../hooks/conversation/useStreamingState.js';
 import {useCommandHandler} from '../../hooks/conversation/useCommandHandler.js';
 import {useTerminalSize} from '../../hooks/ui/useTerminalSize.js';
 import {useBashMode} from '../../hooks/input/useBashMode.js';
+import {usePanelState} from '../../hooks/ui/usePanelState.js';
 
 import {useTerminalExecutionState} from '../../hooks/execution/useTerminalExecutionState.js';
 import {useBackgroundProcesses} from '../../hooks/execution/useBackgroundProcesses.js';
@@ -91,6 +92,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const currentContextPercentageRef = useRef(0); // Use ref to avoid closure issues
 	const [isExecutingTerminalCommand, setIsExecutingTerminalCommand] =
 		useState(false); // Track terminal command execution
+	const panelState = usePanelState(); // Panel state for managing various UI panels
 
 	// Sync state to ref
 	useEffect(() => {
@@ -1439,46 +1441,69 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					await registerCustomCommands(workingDirectory);
 					setShowCustomCommandConfig(false);
 					const typeDesc =
-						type === 'execute' ? 'Execute in terminal' : 'Send to AI';
+						type === 'execute'
+							? t.customCommand.resultTypeExecute
+							: t.customCommand.resultTypePrompt;
 					const locationDesc =
 						location === 'global'
-							? 'Global (~/.snow/commands/)'
-							: 'Project (.snow/commands/)';
+							? t.customCommand.resultLocationGlobal
+							: t.customCommand.resultLocationProject;
+					const content = t.customCommand.saveSuccessMessage
+						.replace('{name}', name)
+						.replace('{type}', typeDesc)
+						.replace('{location}', locationDesc);
 					const successMessage: Message = {
 						role: 'command',
-						content: `Custom command '${name}' saved successfully!\nType: ${typeDesc}\nLocation: ${locationDesc}\nYou can now use /${name}`,
+						content,
 						commandName: 'custom',
 					};
 					setMessages(prev => [...prev, successMessage]);
 				}}
-				onSkillsSave={async (
-					skillName: string,
-					description: string,
-					location: SkillLocation,
-				) => {
-					const result = await createSkillTemplate(
-						skillName,
-						description,
-						location,
-						workingDirectory,
-					);
-					setShowSkillsCreation(false);
+				onSkillsSave={async (skillName, description, location, generated) => {
+					const result = generated
+						? await createSkillFromGenerated(
+								skillName,
+								description,
+								generated,
+								location,
+								workingDirectory,
+						  )
+						: await createSkillTemplate(
+								skillName,
+								description,
+								location,
+								workingDirectory,
+						  );
+					panelState.setShowSkillsCreation(false);
 
 					if (result.success) {
 						const locationDesc =
 							location === 'global'
-								? 'Global (~/.snow/skills/)'
-								: 'Project (.snow/skills/)';
+								? t.skillsCreation.locationGlobal
+								: t.skillsCreation.locationProject;
+						const modeDesc = generated
+							? t.skillsCreation.resultModeAi
+							: t.skillsCreation.resultModeManual;
+						const content = t.skillsCreation.createSuccessMessage
+							.replace('{name}', skillName)
+							.replace('{mode}', modeDesc)
+							.replace('{location}', locationDesc)
+							.replace('{path}', result.path);
 						const successMessage: Message = {
 							role: 'command',
-							content: `Skill '${skillName}' created successfully!\nLocation: ${locationDesc}\nPath: ${result.path}\n\nThe following files have been created:\n- SKILL.md (main skill documentation)\n- reference.md (detailed reference)\n- examples.md (usage examples)\n- templates/template.txt (template file)\n- scripts/helper.py (helper script)\n\nYou can now edit these files to customize your skill.`,
+							content,
 							commandName: 'skills',
 						};
 						setMessages(prev => [...prev, successMessage]);
 					} else {
+						const errorText = result.error || t.skillsCreation.errorUnknown;
+						const content = t.skillsCreation.createErrorMessage.replace(
+							'{error}',
+							errorText,
+						);
 						const errorMessage: Message = {
 							role: 'command',
-							content: `Failed to create skill: ${result.error}`,
+							content,
 							commandName: 'skills',
 						};
 						setMessages(prev => [...prev, errorMessage]);
