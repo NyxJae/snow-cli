@@ -1044,6 +1044,15 @@ export type TranslationKeys = {
 		navigationHint: string;
 		pleaseWait: string;
 	};
+	sseServer: {
+		started: string;
+		port: string;
+		workingDir: string;
+		running: string;
+		endpoints: string;
+		logs: string;
+		stopHint: string;
+	};
 };
 
 import type {Language as Lang} from '../utils/config/languageConfig.js';

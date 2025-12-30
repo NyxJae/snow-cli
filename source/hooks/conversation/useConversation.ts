@@ -9,7 +9,6 @@ import {createStreamingAnthropicCompletion} from '../../api/anthropic.js';
 import {mainAgentManager} from '../../utils/MainAgentManager.js';
 import {
 	collectAllMCPTools,
-	getTodoService,
 	getUsefulInfoService,
 } from '../../utils/execution/mcpToolsManager.js';
 import {filterToolsByMainAgent} from '../../utils/core/toolFilterUtils.js';
@@ -19,10 +18,9 @@ import {
 } from '../../utils/execution/toolExecutor.js';
 import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
-import {formatTodoContext} from '../../utils/core/todoPreprocessor.js';
 import {unifiedHooksExecutor} from '../../utils/execution/unifiedHooksExecutor.js';
+import {formatTodoContext} from '../../utils/core/todoPreprocessor.js';
 import {formatUsefulInfoContext} from '../../utils/core/usefulInfoPreprocessor.js';
-import {formatFolderNotebookContext} from '../../utils/core/folderNotebookPreprocessor.js';
 import type {Message} from '../../ui/components/chat/MessageList.js';
 import {filterToolsBySensitivity} from '../../utils/execution/yoloPermissionChecker.js';
 import {
@@ -37,6 +35,12 @@ import {
 	shouldAutoCompress,
 	performAutoCompression,
 } from '../../utils/core/autoCompress.js';
+import {cleanOrphanedToolCalls} from './utils/messageCleanup.js';
+import {extractThinkingContent} from './utils/thinkingExtractor.js';
+import {buildEditorContextContent} from './core/editorContextBuilder.js';
+import {initializeConversationSession} from './core/sessionInitializer.js';
+import {handleToolRejection} from './core/toolRejectionHandler.js';
+import {processToolCallsAfterStream} from './core/toolCallProcessor.js';
 
 export type UserQuestionResult = {
 	selected: string | string[];
@@ -45,6 +49,12 @@ export type UserQuestionResult = {
 
 export type ConversationHandlerOptions = {
 	userContent: string;
+	editorContext?: {
+		workspaceFolder?: string;
+		activeFile?: string;
+		cursorPosition?: {line: number; character: number};
+		selectedText?: string;
+	};
 	imageContents:
 		| Array<{type: 'image'; data: string; mimeType: string}>
 		| undefined;
@@ -95,93 +105,6 @@ export type ConversationHandlerOptions = {
 	setCurrentModel?: React.Dispatch<React.SetStateAction<string | null>>; // Set current model name for display
 	setIsStopping?: React.Dispatch<React.SetStateAction<boolean>>; // Control stopping state
 };
-
-/**
- * LAYER 3 PROTECTION: Clean orphaned tool_calls from conversation messages
- *
- * Removes two types of problematic messages:
- * 1. Assistant messages with tool_calls that have no corresponding tool results
- * 2. Tool result messages that have no corresponding tool_calls
- *
- * This prevents OpenAI API errors when sessions have incomplete tool_calls
- * due to force quit (Ctrl+C/ESC) during tool execution.
- *
- * @param messages - Array of conversation messages (will be modified in-place)
- */
-function cleanOrphanedToolCalls(messages: ChatMessage[]): void {
-	// Build map of tool_call_ids that have results
-	const toolResultIds = new Set<string>();
-	for (const msg of messages) {
-		if (msg.role === 'tool' && msg.tool_call_id) {
-			toolResultIds.add(msg.tool_call_id);
-		}
-	}
-
-	// Build map of tool_call_ids that are declared in assistant messages
-	const declaredToolCallIds = new Set<string>();
-	for (const msg of messages) {
-		if (msg.role === 'assistant' && msg.tool_calls) {
-			for (const tc of msg.tool_calls) {
-				declaredToolCallIds.add(tc.id);
-			}
-		}
-	}
-
-	// Find indices to remove (iterate backwards for safe removal)
-	const indicesToRemove: number[] = [];
-
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
-		if (!msg) continue; // Skip undefined messages (should never happen, but TypeScript requires check)
-
-		// Check for orphaned assistant messages with tool_calls
-		if (msg.role === 'assistant' && msg.tool_calls) {
-			const hasAllResults = msg.tool_calls.every(tc =>
-				toolResultIds.has(tc.id),
-			);
-
-			if (!hasAllResults) {
-				const orphanedIds = msg.tool_calls
-					.filter(tc => !toolResultIds.has(tc.id))
-					.map(tc => tc.id);
-
-				console.warn(
-					'[cleanOrphanedToolCalls] Removing assistant message with orphaned tool_calls',
-					{
-						messageIndex: i,
-						toolCallIds: msg.tool_calls.map(tc => tc.id),
-						orphanedIds,
-					},
-				);
-
-				indicesToRemove.push(i);
-			}
-		}
-
-		// Check for orphaned tool result messages
-		if (msg.role === 'tool' && msg.tool_call_id) {
-			if (!declaredToolCallIds.has(msg.tool_call_id)) {
-				console.warn('[cleanOrphanedToolCalls] Removing orphaned tool result', {
-					messageIndex: i,
-					toolCallId: msg.tool_call_id,
-				});
-
-				indicesToRemove.push(i);
-			}
-		}
-	}
-
-	// Remove messages in reverse order (from end to start) to preserve indices
-	for (const idx of indicesToRemove) {
-		messages.splice(idx, 1);
-	}
-
-	if (indicesToRemove.length > 0) {
-		console.log(
-			`[cleanOrphanedToolCalls] Removed ${indicesToRemove.length} orphaned messages from conversation`,
-		);
-	}
-}
 
 /**
  * Handle conversation with streaming and tool calls
@@ -284,6 +207,7 @@ async function executeWithInternalRetry(
 ): Promise<{usage: any | null}> {
 	const {
 		userContent,
+		editorContext,
 		imageContents,
 		controller,
 		// messages, // No longer used - we load from session instead to get complete history with tool calls
@@ -305,88 +229,28 @@ async function executeWithInternalRetry(
 		addMultipleToAlwaysApproved([toolName]);
 	};
 
-	// Step 1: Ensure session exists and get existing TODOs
-	let currentSession = sessionManager.getCurrentSession();
-	if (!currentSession) {
-		// Check if running in task mode (temporary session)
-		const isTaskMode = process.env['SNOW_TASK_MODE'] === 'true';
+	// Initialize session and TODO context
+	let {conversationMessages, existingTodoList} =
+		await initializeConversationSession();
 
-		currentSession = await sessionManager.createNewSession(isTaskMode);
-	}
-	const todoService = getTodoService();
-
-	// Get existing TODO list
-	const existingTodoList = await todoService.getTodoList(currentSession.id);
-
-	// Collect all MCP tools
+	// Collect all MCP tools and filter based on main agent configuration
 	const allMcpTools = await collectAllMCPTools();
-
-	// Filter tools based on main agent configuration
 	const {filteredTools} = filterToolsByMainAgent({tools: allMcpTools});
 	const mcpTools = filteredTools;
-	// Build conversation history with TODO context as pinned user message
-	let conversationMessages: ChatMessage[] = [
-		{
-			role: 'system',
-			content: mainAgentManager.getSystemPrompt(),
-		},
-	];
-
-	// If there are TODOs, add pinned context message at the front
-	if (existingTodoList && existingTodoList.todos.length > 0) {
-		const todoContext = formatTodoContext(existingTodoList.todos);
-		conversationMessages.push({
-			role: 'user',
-			content: todoContext,
-		});
-	}
-
-	// Add useful information context if available
-	const usefulInfoService = getUsefulInfoService();
-	const usefulInfoList = await usefulInfoService.getUsefulInfoList(
-		currentSession.id,
-	);
-
-	if (usefulInfoList && usefulInfoList.items.length > 0) {
-		const usefulInfoContext = await formatUsefulInfoContext(
-			usefulInfoList.items,
-		);
-		conversationMessages.push({
-			role: 'user',
-			content: usefulInfoContext,
-		});
-	}
-
-	// Add folder notebook context if available (notes from folders of read files)
-	const folderNotebookContext = formatFolderNotebookContext();
-	if (folderNotebookContext) {
-		conversationMessages.push({
-			role: 'user',
-			content: folderNotebookContext,
-		});
-	}
-
-	// Add history messages from session (includes tool_calls and tool results)
-	// Load from session to get complete conversation history with tool interactions
-	// Filter out internal sub-agent messages (marked with subAgentInternal: true)
-	const session = sessionManager.getCurrentSession();
-	if (session && session.messages.length > 0) {
-		// Use session messages directly (they are already in API format)
-		// Filter out sub-agent internal messages before sending to API
-		const filteredMessages = session.messages.filter(
-			msg => !msg.subAgentInternal,
-		);
-		conversationMessages.push(...filteredMessages);
-	}
 
 	// LAYER 3 PROTECTION: Clean orphaned tool_calls before sending to API
 	// This prevents API errors if session has incomplete tool_calls due to force quit
 	cleanOrphanedToolCalls(conversationMessages);
 
-	// Add current user message
+	// Add current user message (build editorContext if present)
+	const finalUserContent = buildEditorContextContent(
+		editorContext,
+		userContent,
+	);
+
 	conversationMessages.push({
 		role: 'user',
-		content: userContent,
+		content: finalUserContent,
 		images: imageContents,
 	});
 
@@ -479,26 +343,6 @@ async function executeWithInternalRetry(
 				| undefined; // Accumulate thinking content from all platforms
 			let receivedReasoningContent: string | undefined; // DeepSeek R1 reasoning content
 			let hasStartedReasoning = false; // Track if reasoning has started (for Gemini thinking)
-
-			// Helper function to extract thinking content from all sources
-			const extractThinkingContent = (): string | undefined => {
-				// 1. Anthropic Extended Thinking
-				if (receivedThinking?.thinking) {
-					return receivedThinking.thinking;
-				}
-				// 2. Responses API reasoning summary
-				if (
-					receivedReasoning?.summary &&
-					receivedReasoning.summary.length > 0
-				) {
-					return receivedReasoning.summary.map(item => item.text).join('\n');
-				}
-				// 3. DeepSeek R1 reasoning content
-				if (receivedReasoningContent) {
-					return receivedReasoningContent;
-				}
-				return undefined;
-			};
 
 			// Stream AI response - choose API based on config
 			let toolCallAccumulator = ''; // Accumulate tool call deltas for token counting
@@ -730,97 +574,17 @@ async function executeWithInternalRetry(
 
 			// If there are tool calls, we need to handle them specially
 			if (shouldProcessToolCalls) {
-				// Add assistant message with tool_calls to conversation (OpenAI requires this format)
-				// Extract shared thoughtSignature from the first tool call (Gemini only returns it on the first one)
-				const sharedThoughtSignature = (
-					receivedToolCalls!.find(tc => (tc as any).thoughtSignature) as any
-				)?.thoughtSignature as string | undefined;
-
-				const assistantMessage: ChatMessage = {
-					role: 'assistant',
-					content: streamedContent || '',
-					tool_calls: receivedToolCalls!.map(tc => ({
-						id: tc.id,
-						type: 'function' as const,
-						function: {
-							name: tc.function.name,
-							arguments: tc.function.arguments,
-						},
-						// Preserve thoughtSignature for Gemini thinking mode
-						// If this tool call has its own signature, use it; otherwise use shared signature
-						...(((tc as any).thoughtSignature || sharedThoughtSignature) && {
-							thoughtSignature:
-								(tc as any).thoughtSignature || sharedThoughtSignature,
-						}),
-					})),
-					reasoning: receivedReasoning, // Include reasoning data for caching (Responses API)
-					thinking: receivedThinking, // Include thinking content (Anthropic/OpenAI)
-					reasoning_content: receivedReasoningContent, // Include reasoning content (DeepSeek R1)
-				} as any;
-				conversationMessages.push(assistantMessage);
-
-				// CRITICAL: Save assistant message with tool calls synchronously (await)
-				// This ensures the message is persisted BEFORE auto-compression check
-				// If compression happens after tool_calls but before tool results,
-				// the new session MUST include this tool_calls message (via preservedMessages)
-				try {
-					await saveMessage(assistantMessage);
-				} catch (error) {
-					console.error('Failed to save assistant message:', error);
-				}
-
-				// Display thinking content and text content before tool calls
-				const thinkingContent = extractThinkingContent();
-				// Show message if there's text content OR thinking content
-				if ((streamedContent && streamedContent.trim()) || thinkingContent) {
-					setMessages(prev => [
-						...prev,
-						{
-							role: 'assistant',
-							content: streamedContent?.trim() || '',
-							streaming: false,
-							thinking: thinkingContent,
-						},
-					]);
-				}
-
-				// Display tool calls in UI - 只有耗时工具才显示进行中状态
-				// Generate parallel group ID when there are multiple tools
-				const parallelGroupId =
-					receivedToolCalls!.length > 1
-						? `parallel-${Date.now()}-${Math.random()}`
-						: undefined;
-
-				for (const toolCall of receivedToolCalls!) {
-					const toolDisplay = formatToolCallMessage(toolCall);
-					let toolArgs;
-					try {
-						toolArgs = JSON.parse(toolCall.function.arguments);
-					} catch (e) {
-						toolArgs = {};
-					}
-
-					// 只有耗时工具才在动态区显示进行中状态
-					if (isToolNeedTwoStepDisplay(toolCall.function.name)) {
-						setMessages(prev => [
-							...prev,
-							{
-								role: 'assistant',
-								content: `⚡ ${toolDisplay.toolName}`,
-								streaming: false,
-								toolCall: {
-									name: toolCall.function.name,
-									arguments: toolArgs,
-								},
-								toolDisplay,
-								toolCallId: toolCall.id, // Store tool call ID for later update
-								toolPending: true, // Mark as pending execution
-								// Mark parallel group for ALL tools (time-consuming or not)
-								parallelGroup: parallelGroupId,
-							},
-						]);
-					}
-				}
+				const {parallelGroupId} = await processToolCallsAfterStream({
+					receivedToolCalls: receivedToolCalls!,
+					streamedContent,
+					receivedReasoning,
+					receivedThinking,
+					receivedReasoningContent,
+					conversationMessages,
+					saveMessage,
+					setMessages,
+					extractThinkingContent,
+				});
 
 				// askuser-ask_question tools are now handled through normal executeToolCalls flow
 				// No special interception needed - they will trigger UserInteractionNeededError
@@ -892,98 +656,23 @@ async function executeWithInternalRetry(
 							(typeof confirmation === 'object' &&
 								confirmation.type === 'reject_with_reply')
 						) {
-							setMessages(prev => prev.filter(msg => !msg.toolPending));
+							const result = await handleToolRejection({
+								confirmation,
+								toolsNeedingConfirmation: sensitiveTools,
+								autoApprovedTools,
+								nonSensitiveTools,
+								conversationMessages,
+								accumulatedUsage,
+								saveMessage,
+								setMessages,
+								setIsStreaming: options.setIsStreaming,
+								freeEncoder,
+							});
 
-							const rejectMessage =
-								typeof confirmation === 'object'
-									? `Tool execution rejected by user: ${confirmation.reason}`
-									: 'Error: Tool execution rejected by user';
-
-							// Create UI messages for rejected tools
-							const rejectedToolUIMessages: Message[] = [];
-
-							// Handle sensitive tools that needed confirmation
-							for (const toolCall of sensitiveTools) {
-								const rejectionMessage = {
-									role: 'tool' as const,
-									tool_call_id: toolCall.id,
-									content: rejectMessage,
-								};
-								conversationMessages.push(rejectionMessage);
-								saveMessage(rejectionMessage).catch(error => {
-									console.error(
-										'Failed to save tool rejection message:',
-										error,
-									);
-								});
-
-								// Add UI message for each rejected tool
-								const toolDisplay = formatToolCallMessage(toolCall);
-								const statusIcon = '✗';
-								let statusText = '';
-
-								if (typeof confirmation === 'object' && confirmation.reason) {
-									statusText = `\n  └─ Rejection reason: ${confirmation.reason}`;
-								} else {
-									statusText = `\n  └─ ${rejectMessage}`;
-								}
-
-								rejectedToolUIMessages.push({
-									role: 'assistant' as const,
-									content: `${statusIcon} ${toolDisplay.toolName}${statusText}`,
-									streaming: false,
-								});
-							}
-
-							// Also handle auto-approved tools (including TODO tools) - they weren't executed either
-							for (const toolCall of [
-								...autoApprovedTools,
-								...nonSensitiveTools,
-							]) {
-								const rejectionMessage = {
-									role: 'tool' as const,
-									tool_call_id: toolCall.id,
-									content: rejectMessage,
-								};
-								conversationMessages.push(rejectionMessage);
-								saveMessage(rejectionMessage).catch(error => {
-									console.error(
-										'Failed to save auto-approved tool rejection message:',
-										error,
-									);
-								});
-
-								// No UI message for auto-approved tools since they were meant to be silent
-							}
-
-							// Add rejected tool messages to UI
-							if (rejectedToolUIMessages.length > 0) {
-								setMessages(prev => [...prev, ...rejectedToolUIMessages]);
-							}
-
-							// If reject_with_reply, continue the conversation instead of ending
-							if (
-								typeof confirmation === 'object' &&
-								confirmation.type === 'reject_with_reply'
-							) {
-								// Continue to next iteration - AI will see the rejection message and respond
+							if (result.shouldContinue) {
 								continue;
 							} else {
-								// Original reject behavior - end session
-								setMessages(prev => [
-									...prev,
-									{
-										role: 'assistant',
-										content: 'Tool call rejected, session ended',
-										streaming: false,
-									},
-								]);
-
-								if (options.setIsStreaming) {
-									options.setIsStreaming(false);
-								}
-								freeEncoder();
-								return {usage: accumulatedUsage};
+								return {usage: result.accumulatedUsage};
 							}
 						}
 
@@ -1008,92 +697,22 @@ async function executeWithInternalRetry(
 						(typeof confirmation === 'object' &&
 							confirmation.type === 'reject_with_reply')
 					) {
-						setMessages(prev => prev.filter(msg => !msg.toolPending));
+						const result = await handleToolRejection({
+							confirmation,
+							toolsNeedingConfirmation,
+							autoApprovedTools,
+							conversationMessages,
+							accumulatedUsage,
+							saveMessage,
+							setMessages,
+							setIsStreaming: options.setIsStreaming,
+							freeEncoder,
+						});
 
-						const rejectMessage =
-							typeof confirmation === 'object'
-								? `Tool execution rejected by user: ${confirmation.reason}`
-								: 'Error: Tool execution rejected by user';
-
-						// Create UI messages for rejected tools
-						const rejectedToolUIMessages: Message[] = [];
-
-						// Handle tools that needed confirmation
-						for (const toolCall of toolsNeedingConfirmation) {
-							const rejectionMessage = {
-								role: 'tool' as const,
-								tool_call_id: toolCall.id,
-								content: rejectMessage,
-							};
-							conversationMessages.push(rejectionMessage);
-							saveMessage(rejectionMessage).catch(error => {
-								console.error('Failed to save tool rejection message:', error);
-							});
-
-							// Add UI message for each rejected tool
-							const toolDisplay = formatToolCallMessage(toolCall);
-							const statusIcon = '✗';
-							let statusText = '';
-
-							if (typeof confirmation === 'object' && confirmation.reason) {
-								statusText = `\n  └─ Rejection reason: ${confirmation.reason}`;
-							} else {
-								statusText = `\n  └─ ${rejectMessage}`;
-							}
-
-							rejectedToolUIMessages.push({
-								role: 'assistant' as const,
-								content: `${statusIcon} ${toolDisplay.toolName}${statusText}`,
-								streaming: false,
-							});
-						}
-
-						// Also handle auto-approved tools (including TODO tools) - they weren't executed either
-						for (const toolCall of autoApprovedTools) {
-							const rejectionMessage = {
-								role: 'tool' as const,
-								tool_call_id: toolCall.id,
-								content: rejectMessage,
-							};
-							conversationMessages.push(rejectionMessage);
-							saveMessage(rejectionMessage).catch(error => {
-								console.error(
-									'Failed to save auto-approved tool rejection message:',
-									error,
-								);
-							});
-
-							// No UI message for auto-approved tools since they were meant to be silent
-						}
-
-						// Add rejected tool messages to UI
-						if (rejectedToolUIMessages.length > 0) {
-							setMessages(prev => [...prev, ...rejectedToolUIMessages]);
-						}
-
-						// If reject_with_reply, continue the conversation instead of ending
-						if (
-							typeof confirmation === 'object' &&
-							confirmation.type === 'reject_with_reply'
-						) {
-							// Continue to next iteration - AI will see the rejection message and respond
+						if (result.shouldContinue) {
 							continue;
 						} else {
-							// Original reject behavior - end session
-							setMessages(prev => [
-								...prev,
-								{
-									role: 'assistant',
-									content: 'Tool call rejected, session ended',
-									streaming: false,
-								},
-							]);
-
-							if (options.setIsStreaming) {
-								options.setIsStreaming(false);
-							}
-							freeEncoder();
-							return {usage: accumulatedUsage};
+							return {usage: result.accumulatedUsage};
 						}
 					}
 
@@ -1122,6 +741,7 @@ async function executeWithInternalRetry(
 							role: 'tool' as const,
 							tool_call_id: toolCall.id,
 							content: 'Tool execution aborted by user',
+							messageStatus: 'error' as const,
 						};
 						conversationMessages.push(abortedResult);
 						await saveMessage(abortedResult);
@@ -1177,6 +797,7 @@ async function executeWithInternalRetry(
 											},
 											toolCallId: toolCall.id,
 											toolPending: true,
+											messageStatus: 'pending',
 											subAgent: {
 												agentId: subAgentMessage.agentId,
 												agentName: subAgentMessage.agentName,
@@ -1258,6 +879,7 @@ async function executeWithInternalRetry(
 									role: 'tool' as const,
 									tool_call_id: msg.tool_call_id,
 									content: msg.content,
+									messageStatus: isError ? 'error' : 'success',
 									subAgentInternal: true,
 								};
 								saveMessage(sessionMsg).catch(err =>
@@ -1567,6 +1189,7 @@ async function executeWithInternalRetry(
 								role: 'tool' as const,
 								tool_call_id: toolCall.id,
 								content: 'Error: Tool execution aborted by user',
+								messageStatus: 'error' as const,
 							};
 							conversationMessages.push(abortedResult);
 							try {
@@ -1615,9 +1238,14 @@ async function executeWithInternalRetry(
 				// 这样压缩时读取的会话才包含完整的工具调用和结果
 				// 否则新会话只有 tool_calls 没有对应的 tool results
 				for (const result of toolResults) {
-					conversationMessages.push(result as any);
+					const isError = result.content.startsWith('Error:');
+					const resultToSave = {
+						...result,
+						messageStatus: isError ? 'error' : 'success',
+					};
+					conversationMessages.push(resultToSave as any);
 					try {
-						await saveMessage(result);
+						await saveMessage(resultToSave as any);
 					} catch (error) {
 						console.error(
 							'Failed to save tool result before compression:',
@@ -1827,6 +1455,7 @@ async function executeWithInternalRetry(
 								role: 'assistant',
 								content: `${statusIcon} ${toolCall.function.name}${statusText}`,
 								streaming: false,
+								messageStatus: isError ? 'error' : 'success',
 								// Pass the full result.content for ToolResultPreview to parse
 								toolResult: !isError ? result.content : undefined,
 								subAgentUsage: usage,
@@ -1901,6 +1530,7 @@ async function executeWithInternalRetry(
 							role: 'assistant',
 							content: `${statusIcon} ${toolCall.function.name}${statusText}`,
 							streaming: false,
+							messageStatus: isError ? 'error' : 'success',
 							toolCall: editDiffData
 								? {
 										name: toolCall.function.name,
@@ -2164,7 +1794,11 @@ async function executeWithInternalRetry(
 					content: streamedContent.trim(),
 					streaming: false,
 					discontinued: controller.signal.aborted,
-					thinking: extractThinkingContent(),
+					thinking: extractThinkingContent(
+						receivedThinking,
+						receivedReasoning,
+						receivedReasoningContent,
+					),
 				};
 				setMessages(prev => [...prev, finalAssistantMessage!]);
 
