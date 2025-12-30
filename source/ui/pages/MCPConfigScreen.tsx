@@ -165,6 +165,10 @@ export default function MCPConfigScreen({onBack}: Props) {
 					return;
 				}
 
+				if (process.stdin.isTTY) {
+					process.stdin.pause();
+				}
+
 				exit();
 
 				const child = spawn(editor, [configPath], {
@@ -172,6 +176,11 @@ export default function MCPConfigScreen({onBack}: Props) {
 				});
 
 				child.on('close', () => {
+					if (process.stdin.isTTY) {
+						process.stdin.resume();
+						process.stdin.setRawMode(true);
+					}
+
 					// 读取编辑后的配置
 					if (existsSync(configPath)) {
 						try {
@@ -198,9 +207,15 @@ export default function MCPConfigScreen({onBack}: Props) {
 				});
 
 				child.on('error', (error: Error) => {
+					if (process.stdin.isTTY) {
+						process.stdin.resume();
+						process.stdin.setRawMode(true);
+					}
 					console.error('Failed to open editor:', error.message);
 					gracefulExit();
 				});
+
+				onBack();
 			} catch (error) {
 				setMessage(
 					'打开失败: ' +
