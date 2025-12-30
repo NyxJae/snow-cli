@@ -981,6 +981,13 @@ export class FilesystemMCPService {
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
 
+			// If original file is already bracket-unbalanced (common during conflict resolution),
+			// allow filesystem-edit_search to proceed by skipping bracket precheck on payloads.
+			const originalBracketsUnbalanced = runPrecheck(normalizedContent, {
+				filePath,
+				contentKind: 'search',
+			}).some(i => i.code === 'brackets_unbalanced');
+
 			// Split into lines for matching
 			let searchLines = normalizedSearch.split('\n');
 			const contentLines = normalizedContent.split('\n');
@@ -1234,12 +1241,16 @@ export class FilesystemMCPService {
 
 			// Pre-check: refuse edits that look structurally unsafe
 			{
-				const searchIssues = runPrecheck(normalizedSearch, {
+				const ctxBase = {
 					filePath,
+					skipBracketsCheck: originalBracketsUnbalanced,
+				} as const;
+				const searchIssues = runPrecheck(normalizedSearch, {
+					...ctxBase,
 					contentKind: 'search',
 				});
 				const replaceIssues = runPrecheck(normalizedReplace, {
-					filePath,
+					...ctxBase,
 					contentKind: 'replace',
 				});
 				const issues = [...searchIssues, ...replaceIssues];

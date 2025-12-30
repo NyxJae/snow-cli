@@ -11,6 +11,13 @@ export type PrecheckContext = {
 	filePath: string;
 	contentKind: 'search' | 'replace';
 	profile: LanguageProfile;
+
+	/**
+	 * If the original file content is already bracket-unbalanced, editing that file is often still
+	 * desirable (e.g. fixing merge conflicts). In that case we skip the bracket-balance check for
+	 * search/replace payloads to avoid blocking recovery edits.
+	 */
+	skipBracketsCheck?: boolean;
 };
 
 export type PairToken = {open: string; close: string; label: string};
@@ -21,7 +28,12 @@ export type BracketToken = PairToken & {
 	kind: BracketKind;
 };
 
-export type QuoteKind = 'single' | 'double' | 'backtick' | 'triple-single' | 'triple-double';
+export type QuoteKind =
+	| 'single'
+	| 'double'
+	| 'backtick'
+	| 'triple-single'
+	| 'triple-double';
 
 export type QuoteToken = PairToken & {
 	kind: QuoteKind;

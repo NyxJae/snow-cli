@@ -4,8 +4,8 @@ import {isEscaped, startsWithAt} from './shared.js';
 export class BracketsRule implements PrecheckRule {
 	id = 'brackets';
 
-	applies(): boolean {
-		return true;
+	applies(ctx: any): boolean {
+		return !ctx?.skipBracketsCheck;
 	}
 
 	check(text: string, ctx: any): PrecheckIssue[] {
