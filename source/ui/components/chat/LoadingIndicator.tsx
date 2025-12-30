@@ -43,6 +43,8 @@ type LoadingIndicatorProps = {
 	currentModel?: string | null;
 };
 
+const ERROR_MESSAGE_MAX_LENGTH = 250;
+
 export default function LoadingIndicator({
 	isStreaming,
 	isStopping,
@@ -97,7 +99,13 @@ export default function LoadingIndicator({
 							<Box flexDirection="column">
 								{retryStatus.errorMessage && (
 									<Text color="red" dimColor>
-										✗ Error: {retryStatus.errorMessage}
+										✗ Error:{' '}
+										{retryStatus.errorMessage.length > ERROR_MESSAGE_MAX_LENGTH
+											? retryStatus.errorMessage.slice(
+													0,
+													ERROR_MESSAGE_MAX_LENGTH,
+											  ) + '...'
+											: retryStatus.errorMessage}
 									</Text>
 								)}
 								{retryStatus.remainingSeconds !== undefined &&
