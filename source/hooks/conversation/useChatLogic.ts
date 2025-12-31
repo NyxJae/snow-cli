@@ -1006,6 +1006,43 @@ export function useChatLogic(props: UseChatLogicProps) {
 		}
 	};
 
+	const rollbackViaSSE = async (params: {
+		serverUrl: string;
+		sessionId: string;
+		messageIndex: number;
+		rollbackFiles: boolean;
+		selectedFiles?: string[];
+		requestId?: string;
+	}) => {
+		const response = await fetch(`${params.serverUrl}/message`, {
+			method: 'POST',
+			headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify({
+				type: 'rollback',
+				sessionId: params.sessionId,
+				requestId: params.requestId,
+				rollback: {
+					messageIndex: params.messageIndex,
+					rollbackFiles: params.rollbackFiles,
+					selectedFiles: params.selectedFiles,
+				},
+			}),
+		});
+
+		if (!response.ok) {
+			let detail: any = undefined;
+			try {
+				detail = await response.json();
+			} catch {
+				// ignore
+			}
+			throw new Error(
+				`Rollback request failed: ${response.status} ${response.statusText}` +
+					(detail ? ` (${JSON.stringify(detail)})` : ''),
+			);
+		}
+	};
+
 	return {
 		handleMessageSubmit,
 		processMessage: processMessageRef.current!,
@@ -1013,5 +1050,6 @@ export function useChatLogic(props: UseChatLogicProps) {
 		handleHistorySelect,
 		handleRollbackConfirm,
 		handleUserQuestionAnswer,
+		rollbackViaSSE,
 	};
 }

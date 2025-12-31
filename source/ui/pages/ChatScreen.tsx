@@ -154,7 +154,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const [showHelpPanel, setShowHelpPanel] = useState(false);
 	const [showCustomCommandConfig, setShowCustomCommandConfig] = useState(false);
 	const [showSkillsCreation, setShowSkillsCreation] = useState(false);
-	const [showWorkingDirPanel, setShowWorkingDirPanel] = useState(false);
 	const [showPermissionsPanel, setShowPermissionsPanel] = useState(false);
 	const [showProfilePanel, setShowProfilePanel] = useState(false);
 	const [profileSelectedIndex, setProfileSelectedIndex] = useState(0);
@@ -881,14 +880,14 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		clearSavedMessages,
 		setIsCompressing,
 		setCompressionError,
-		setShowSessionPanel,
-		setShowMcpPanel,
-		setShowUsagePanel,
-		setShowHelpPanel,
-		setShowCustomCommandConfig,
-		setShowSkillsCreation,
-		setShowWorkingDirPanel,
-		setShowPermissionsPanel,
+		setShowSessionPanel: panelState.setShowSessionPanel,
+		setShowMcpPanel: panelState.setShowMcpPanel,
+		setShowUsagePanel: panelState.setShowUsagePanel,
+		setShowHelpPanel: panelState.setShowHelpPanel,
+		setShowCustomCommandConfig: panelState.setShowCustomCommandConfig,
+		setShowSkillsCreation: panelState.setShowSkillsCreation,
+		setShowWorkingDirPanel: panelState.setShowWorkingDirPanel,
+		setShowPermissionsPanel: panelState.setShowPermissionsPanel,
 		setShowBackgroundPanel: backgroundProcesses.enablePanel,
 		setYoloMode,
 		setContextUsage: streamingState.setContextUsage,
@@ -1454,19 +1453,19 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			<PanelsManager
 				terminalWidth={terminalWidth}
 				workingDirectory={workingDirectory}
-				showSessionPanel={showSessionPanel}
-				showMcpPanel={showMcpPanel}
-				showUsagePanel={showUsagePanel}
-				showHelpPanel={showHelpPanel}
-				showCustomCommandConfig={showCustomCommandConfig}
-				showSkillsCreation={showSkillsCreation}
-				showWorkingDirPanel={showWorkingDirPanel}
-				showPermissionsPanel={showPermissionsPanel}
-				setShowSessionPanel={setShowSessionPanel}
-				setShowCustomCommandConfig={setShowCustomCommandConfig}
-				setShowSkillsCreation={setShowSkillsCreation}
-				setShowWorkingDirPanel={setShowWorkingDirPanel}
-				setShowPermissionsPanel={setShowPermissionsPanel}
+				showSessionPanel={panelState.showSessionPanel}
+				showMcpPanel={panelState.showMcpPanel}
+				showUsagePanel={panelState.showUsagePanel}
+				showHelpPanel={panelState.showHelpPanel}
+				showCustomCommandConfig={panelState.showCustomCommandConfig}
+				showSkillsCreation={panelState.showSkillsCreation}
+				showWorkingDirPanel={panelState.showWorkingDirPanel}
+				showPermissionsPanel={panelState.showPermissionsPanel}
+				setShowSessionPanel={panelState.setShowSessionPanel}
+				setShowCustomCommandConfig={panelState.setShowCustomCommandConfig}
+				setShowSkillsCreation={panelState.setShowSkillsCreation}
+				setShowWorkingDirPanel={panelState.setShowWorkingDirPanel}
+				setShowPermissionsPanel={panelState.setShowPermissionsPanel}
 				handleSessionPanelSelect={handleSessionPanelSelect}
 				alwaysApprovedTools={alwaysApprovedTools}
 				onRemoveTool={removeFromAlwaysApproved}
@@ -1572,14 +1571,14 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				!pendingUserQuestion &&
 				!bashSensitiveCommand &&
 				!(
-					showSessionPanel ||
-					showMcpPanel ||
-					showUsagePanel ||
-					showHelpPanel ||
-					showCustomCommandConfig ||
-					showSkillsCreation ||
-					showWorkingDirPanel ||
-					showPermissionsPanel
+					panelState.showSessionPanel ||
+					panelState.showMcpPanel ||
+					panelState.showUsagePanel ||
+					panelState.showHelpPanel ||
+					panelState.showCustomCommandConfig ||
+					panelState.showSkillsCreation ||
+					panelState.showWorkingDirPanel ||
+					panelState.showPermissionsPanel
 				) &&
 				!snapshotState.pendingRollback && (
 					<ChatFooter

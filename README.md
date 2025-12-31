@@ -20,7 +20,7 @@ _An intelligent AI-powered CLI tool for developers_
 
 ## ❤️Thanks Support 💖
 
-* [UUCode](https://www.uucode.org/)
+* [UUCode](https://www.uucode.org)
 
 ## << [Click to view the detailed complete document](docs/usage/en/0.Catalogue.md) >>
 

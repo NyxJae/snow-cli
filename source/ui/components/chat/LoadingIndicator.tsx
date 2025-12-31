@@ -6,6 +6,19 @@ import ShimmerText from '../common/ShimmerText.js';
 import CodebaseSearchStatus from './CodebaseSearchStatus.js';
 import {formatElapsedTime} from '../../../utils/core/textUtils.js';
 
+/**
+ * 截断错误消息，避免过长显示
+ */
+function truncateErrorMessage(
+	message: string,
+	maxLength: number = 100,
+): string {
+	if (message.length <= maxLength) {
+		return message;
+	}
+	return message.substring(0, maxLength) + '...';
+}
+
 type LoadingIndicatorProps = {
 	isStreaming: boolean;
 	isStopping: boolean;
@@ -42,8 +55,6 @@ type LoadingIndicatorProps = {
 	elapsedSeconds: number;
 	currentModel?: string | null;
 };
-
-const ERROR_MESSAGE_MAX_LENGTH = 250;
 
 export default function LoadingIndicator({
 	isStreaming,
@@ -101,12 +112,7 @@ export default function LoadingIndicator({
 									<Text color="red" dimColor>
 										{t.chatScreen.retryError.replace(
 											'{message}',
-											retryStatus.errorMessage.length > ERROR_MESSAGE_MAX_LENGTH
-												? retryStatus.errorMessage.slice(
-														0,
-														ERROR_MESSAGE_MAX_LENGTH,
-												  ) + '...'
-												: retryStatus.errorMessage,
+											truncateErrorMessage(retryStatus.errorMessage),
 										)}
 									</Text>
 								)}

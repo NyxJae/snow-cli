@@ -14,6 +14,7 @@ export type PanelState = {
 	showCustomCommandConfig: boolean;
 	showSkillsCreation: boolean;
 	showWorkingDirPanel: boolean;
+	showPermissionsPanel: boolean;
 	showProfilePanel: boolean;
 	profileSelectedIndex: number;
 	profileSearchQuery: string;
@@ -28,6 +29,7 @@ export type PanelActions = {
 	setShowCustomCommandConfig: Dispatch<SetStateAction<boolean>>;
 	setShowSkillsCreation: Dispatch<SetStateAction<boolean>>;
 	setShowWorkingDirPanel: Dispatch<SetStateAction<boolean>>;
+	setShowPermissionsPanel: Dispatch<SetStateAction<boolean>>;
 	setShowProfilePanel: Dispatch<SetStateAction<boolean>>;
 	setProfileSelectedIndex: Dispatch<SetStateAction<number>>;
 	setProfileSearchQuery: Dispatch<SetStateAction<string>>;
@@ -50,6 +52,7 @@ export function usePanelState(): PanelState & PanelActions {
 	const [showCustomCommandConfig, setShowCustomCommandConfig] = useState(false);
 	const [showSkillsCreation, setShowSkillsCreation] = useState(false);
 	const [showWorkingDirPanel, setShowWorkingDirPanel] = useState(false);
+	const [showPermissionsPanel, setShowPermissionsPanel] = useState(false);
 	const [showProfilePanel, setShowProfilePanel] = useState(false);
 	const [profileSelectedIndex, setProfileSelectedIndex] = useState(0);
 	const [profileSearchQuery, setProfileSearchQuery] = useState('');
@@ -74,6 +77,8 @@ export function usePanelState(): PanelState & PanelActions {
 			showHelpPanel ||
 			showCustomCommandConfig ||
 			showSkillsCreation ||
+			showWorkingDirPanel ||
+			showPermissionsPanel ||
 			showProfilePanel ||
 			options.hasPendingRollback ||
 			options.hasPendingToolConfirmation ||
@@ -143,6 +148,11 @@ export function usePanelState(): PanelState & PanelActions {
 			return true;
 		}
 
+		if (showPermissionsPanel) {
+			setShowPermissionsPanel(false);
+			return true;
+		}
+
 		if (showProfilePanel) {
 			setShowProfilePanel(false);
 			return true;
@@ -160,6 +170,7 @@ export function usePanelState(): PanelState & PanelActions {
 			showCustomCommandConfig ||
 			showSkillsCreation ||
 			showWorkingDirPanel ||
+			showPermissionsPanel ||
 			showProfilePanel
 		);
 	};
@@ -173,6 +184,7 @@ export function usePanelState(): PanelState & PanelActions {
 		showCustomCommandConfig,
 		showSkillsCreation,
 		showWorkingDirPanel,
+		showPermissionsPanel,
 		showProfilePanel,
 		profileSelectedIndex,
 		profileSearchQuery,
@@ -185,6 +197,7 @@ export function usePanelState(): PanelState & PanelActions {
 		setShowCustomCommandConfig,
 		setShowSkillsCreation,
 		setShowWorkingDirPanel,
+		setShowPermissionsPanel,
 		setShowProfilePanel,
 		setProfileSelectedIndex,
 		setProfileSearchQuery,
