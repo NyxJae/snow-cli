@@ -1525,23 +1525,16 @@ export class FilesystemMCPService {
 			throw new Error('line and newContent are required');
 		}
 
-		return await this.editFileSingle(
-			filePath,
-			line,
-			line,
-			newContent,
-			contextLines,
-		);
+		return await this.editFileSingle(filePath, line, newContent, contextLines);
 	}
 
 	/**
-	 * Internal method: Edit a single file by line range
+	 * Internal method: Edit a single file by line number
 	 * @private
 	 */
 	private async editFileSingle(
 		filePath: string,
-		startLine: number,
-		endLine: number,
+		line: number,
 		newContent: string,
 		contextLines: number,
 	): Promise<EditByLineSingleResult> {
@@ -1581,37 +1574,27 @@ export class FilesystemMCPService {
 				// Don't fail the operation if backup fails
 			}
 
-			// Validate line numbers - ONLY single line editing is supported
-			if (startLine < 1 || endLine < 1) {
-				throw new Error('Line numbers must be greater than 0');
-			}
-			if (startLine !== endLine) {
-				throw new Error(
-					'⚠️ Multi-line editing is not supported. This tool only supports single-line editing of individual symbols. For multi-line edits, please use filesystem-edit_search instead.',
-				);
+			// Validate line number - ONLY single line editing is supported
+			if (line < 1) {
+				throw new Error('Line number must be greater than 0');
 			}
 
-			// Adjust startLine and endLine if they exceed file length
-			const adjustedStartLine = Math.min(startLine, totalLines);
-			const adjustedEndLine = Math.min(endLine, totalLines);
-			const linesToModify = adjustedEndLine - adjustedStartLine + 1;
+			// Adjust line if it exceeds file length
+			const adjustedLine = Math.min(line, totalLines);
 
-			// Extract the lines that will be replaced (for comparison)
+			// Extract the line that will be replaced (for comparison)
 			// Compress whitespace for display readability
 
-			const replacedLines = lines.slice(adjustedStartLine - 1, adjustedEndLine);
-			const replacedContent = replacedLines
-				.map((line, idx) => {
-					const lineNum = adjustedStartLine + idx;
-					return `${lineNum}→${normalizeForDisplay(line)}`;
-				})
-				.join('\n');
+			const replacedLine = lines[adjustedLine - 1] ?? '';
+			const replacedContent = `${adjustedLine}→${normalizeForDisplay(
+				replacedLine,
+			)}`;
 
 			// Calculate context range using smart boundary detection
 			const smartBoundaries = findSmartContextBoundaries(
 				lines,
-				adjustedStartLine,
-				adjustedEndLine,
+				adjustedLine,
+				adjustedLine,
 				contextLines,
 			);
 			const contextStart = smartBoundaries.start;
@@ -1626,16 +1609,15 @@ export class FilesystemMCPService {
 				})
 				.join('\n');
 
-			// Replace the specified lines
+			// Replace the specified line
 			const newContentLines = newContent.split('\n');
-			const beforeLines = lines.slice(0, adjustedStartLine - 1);
-			const afterLines = lines.slice(adjustedEndLine);
+			const beforeLines = lines.slice(0, adjustedLine - 1);
+			const afterLines = lines.slice(adjustedLine);
 			const modifiedLines = [...beforeLines, ...newContentLines, ...afterLines];
 
 			// Calculate new context range
 			const newTotalLines = modifiedLines.length;
-			const lineDifference =
-				newContentLines.length - (adjustedEndLine - adjustedStartLine + 1);
+			const lineDifference = newContentLines.length - 1;
 			const newContextEnd = Math.min(
 				newTotalLines,
 				contextEnd + lineDifference,
@@ -1707,8 +1689,8 @@ export class FilesystemMCPService {
 
 			// Analyze code structure of the edited content (using formatted content if available)
 			const editedContentLines = finalLines.slice(
-				adjustedStartLine - 1,
-				adjustedStartLine - 1 + newContentLines.length,
+				adjustedLine - 1,
+				adjustedLine - 1 + newContentLines.length,
 			);
 			const structureAnalysis = analyzeCodeStructure(
 				finalLines.join('\n'),
@@ -1734,7 +1716,7 @@ export class FilesystemMCPService {
 			const result: EditByLineSingleResult = {
 				message:
 					`✅ File edited successfully,Please check the edit results and pay attention to code boundary issues to avoid syntax errors caused by missing closed parts: ${filePath}\n` +
-					`   Replaced: lines ${adjustedStartLine}-${adjustedEndLine} (${linesToModify} lines)\n` +
+					`   Replaced: line ${adjustedLine} (1 line)\n` +
 					`   Result: ${newContentLines.length} new lines` +
 					(smartBoundaries.extended
 						? `\n   📍 Context auto-extended to show complete code block (lines ${contextStart}-${finalContextEnd})`
@@ -1746,7 +1728,7 @@ export class FilesystemMCPService {
 				contextStartLine: contextStart,
 				contextEndLine: finalContextEnd,
 				totalLines: finalTotalLines,
-				linesModified: linesToModify,
+				linesModified: 1,
 				structureAnalysis,
 			};
 
