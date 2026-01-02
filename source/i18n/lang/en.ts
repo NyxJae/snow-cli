@@ -460,8 +460,7 @@ export const en: TranslationKeys = {
 		navigateHistory: '↑/↓ - Navigate command/message history',
 		selectItem: 'Tab/Enter - Select item in pickers',
 		cancelClose: 'ESC - Cancel/close pickers or interrupt AI response',
-		toggleYolo:
-			'Shift+Tab/Ctrl+Y - Toggle YOLO/Team modes (cycle: YOLO → YOLO+Team → Off)',
+		toggleYolo: 'Shift+Tab/Ctrl+Y - Toggle YOLO mode',
 		tipsTitle: '💡 Tips:',
 		tipUseHelp: 'Use /help anytime to see this information',
 		tipShowCommands: 'Type / to see all available commands',
@@ -651,8 +650,7 @@ export const en: TranslationKeys = {
 		headerSubtitle: '❆ SNOW AI CLI',
 		headerExplanations: 'Ask for code explanations and debugging help',
 		headerInterrupt: 'Press ESC during response to interrupt',
-		headerYolo:
-			'Press Shift+Tab/Ctrl+Y: toggle YOLO/Plan modes (cycle: YOLO → YOLO+Plan → Plan → Off)',
+		headerYolo: 'Press Shift+Tab/Ctrl+Y: toggle YOLO mode',
 		headerShortcuts:
 			"Shortcuts: Ctrl+L (delete to start) • Ctrl+R (delete to end) • {pasteKey} (paste images) • '@' (files) • '@@' (search content) • '#' (sub-agents) • '/' (commands)",
 		headerWorkingDirectory: 'Working directory: {directory}',
@@ -772,7 +770,7 @@ export const en: TranslationKeys = {
 		shortcutDeleteToEnd: 'Delete to end',
 		shortcutCancel: 'Cancel (ESC)',
 		shortcutRegenerate: 'Regenerate (Ctrl+R)',
-		shortcutToggleYolo: 'Toggle YOLO/Plan (Shift+Tab/Ctrl+Y)',
+		shortcutToggleYolo: 'Toggle YOLO mode (Shift+Tab/Ctrl+Y)',
 		// Rollback
 		rollbackConfirm: 'Confirm rollback',
 		rollbackFiles: 'Rollback files',
