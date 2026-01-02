@@ -13,7 +13,6 @@ import {
 } from '../../utils/ui/fileDialog.js';
 import {exportMessagesToFile} from '../../utils/session/chatExporter.js';
 import {clearReadFolders} from '../../utils/core/folderNotebookPreprocessor.js';
-import {getTodoService} from '../../utils/execution/mcpToolsManager.js';
 
 /**
  * 执行上下文压缩
