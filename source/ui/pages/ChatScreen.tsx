@@ -246,6 +246,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		// Use Promise.all to load all commands in parallel
 		Promise.all([
 			import('../../utils/commands/clear.js'),
+			import('../../utils/commands/profiles.js'),
 			import('../../utils/commands/resume.js'),
 			import('../../utils/commands/mcp.js'),
 			import('../../utils/commands/home.js'),
@@ -887,7 +888,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setShowCustomCommandConfig: panelState.setShowCustomCommandConfig,
 		setShowSkillsCreation: panelState.setShowSkillsCreation,
 		setShowWorkingDirPanel: panelState.setShowWorkingDirPanel,
-		setShowPermissionsPanel: panelState.setShowPermissionsPanel,
+		setShowPermissionsPanel,
+		onSwitchProfile: handleSwitchProfile,
 		setShowBackgroundPanel: backgroundProcesses.enablePanel,
 		setYoloMode,
 		setContextUsage: streamingState.setContextUsage,
@@ -1198,30 +1200,15 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		}
 	});
 
-	// Handle profile switching (Ctrl+P shortcut)
-	const handleSwitchProfile = () => {
-		// Don't switch if any panel is open or streaming
-		if (
-			showSessionPanel ||
-			showMcpPanel ||
-			showUsagePanel ||
-			showHelpPanel ||
-			showCustomCommandConfig ||
-			showPermissionsPanel ||
-			showSkillsCreation ||
-			showProfilePanel ||
-			snapshotState.pendingRollback ||
-			pendingToolConfirmation ||
-			pendingUserQuestion ||
-			streamingState.isStreaming
-		) {
-			return;
-		}
-
-		// Show profile selection panel
-		setShowProfilePanel(true);
-		setProfileSelectedIndex(0);
-	};
+	// Handle profile switching (Ctrl+P shortcut) - delegated to panelState
+	function handleSwitchProfile() {
+		panelState.handleSwitchProfile({
+			isStreaming: streamingState.isStreaming,
+			hasPendingRollback: !!snapshotState.pendingRollback,
+			hasPendingToolConfirmation: !!pendingToolConfirmation,
+			hasPendingUserQuestion: !!pendingUserQuestion,
+		});
+	}
 
 	// Handle profile selection
 	const handleProfileSelect = (profileName: string) => {
