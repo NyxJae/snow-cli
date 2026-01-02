@@ -260,7 +260,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			try {
 				const {switchMainAgent} = require('../../utils/MainAgentManager.js');
 				switchMainAgent(); // 切换主代理，不需要返回值
-
 				// 不改变 YOLO 状态
 			} catch (error) {
 				console.warn('主代理切换失败:', error);

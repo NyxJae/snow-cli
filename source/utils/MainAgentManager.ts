@@ -73,12 +73,19 @@ export class MainAgentManager {
 
 	/**
 	 * 切换到下一个主代理（循环列表）
-	 * 循环顺序：General → Team → Debugger → 自定义代理们... → General
+	 * 循环顺序：General → Leader → RequirementAnalyzer → Debugger → VulnerabilityHunter → General
 	 * @returns 新的主代理 ID
 	 */
 	switchToNextAgent(): string {
 		// 对于内置代理的快速切换，使用硬编码的顺序避免文件 I/O
-		const builtinOrder = ['general', 'team', 'debugger'];
+		// 注意：这里的顺序必须与 BUILTIN_MAIN_AGENTS 保持一致
+		const builtinOrder = [
+			'general',
+			'leader',
+			'requirement_analyzer',
+			'debugger',
+			'vulnerability_hunter',
+		];
 		const currentIndex = builtinOrder.indexOf(this.currentAgentId);
 
 		if (currentIndex !== -1) {

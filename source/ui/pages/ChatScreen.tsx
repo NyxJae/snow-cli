@@ -148,13 +148,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	});
 	const [isCompressing, setIsCompressing] = useState(false);
 	const [compressionError, setCompressionError] = useState<string | null>(null);
-	const [showSessionPanel, setShowSessionPanel] = useState(false);
-	const [showMcpPanel, setShowMcpPanel] = useState(false);
-	const [showUsagePanel, setShowUsagePanel] = useState(false);
-	const [showHelpPanel, setShowHelpPanel] = useState(false);
-	const [showCustomCommandConfig, setShowCustomCommandConfig] = useState(false);
-	const [showSkillsCreation, setShowSkillsCreation] = useState(false);
-	const [showPermissionsPanel, setShowPermissionsPanel] = useState(false);
+	// Profile panel state (kept local for now, used in profile selection UI)
 	const [showProfilePanel, setShowProfilePanel] = useState(false);
 	const [profileSelectedIndex, setProfileSelectedIndex] = useState(0);
 	const [profileSearchQuery, setProfileSearchQuery] = useState('');
@@ -888,7 +882,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setShowCustomCommandConfig: panelState.setShowCustomCommandConfig,
 		setShowSkillsCreation: panelState.setShowSkillsCreation,
 		setShowWorkingDirPanel: panelState.setShowWorkingDirPanel,
-		setShowPermissionsPanel,
+		setShowPermissionsPanel: panelState.setShowPermissionsPanel,
 		onSwitchProfile: handleSwitchProfile,
 		setShowBackgroundPanel: backgroundProcesses.enablePanel,
 		setYoloMode,
@@ -1115,51 +1109,10 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			return;
 		}
 
-		if (showSessionPanel) {
+		// Handle ESC for all panels using panelState
+		if (panelState.isAnyPanelOpen()) {
 			if (key.escape) {
-				setShowSessionPanel(false);
-			}
-			return;
-		}
-
-		if (showMcpPanel) {
-			if (key.escape) {
-				setShowMcpPanel(false);
-			}
-			return;
-		}
-
-		if (showUsagePanel) {
-			if (key.escape) {
-				setShowUsagePanel(false);
-			}
-			return;
-		}
-
-		if (showHelpPanel) {
-			if (key.escape) {
-				setShowHelpPanel(false);
-			}
-			return;
-		}
-
-		if (showCustomCommandConfig) {
-			if (key.escape) {
-				setShowCustomCommandConfig(false);
-			}
-			return;
-		}
-
-		if (showPermissionsPanel) {
-			if (key.escape) {
-				setShowPermissionsPanel(false);
-			}
-			return;
-		}
-
-		if (showSkillsCreation) {
-			if (key.escape) {
-				setShowSkillsCreation(false);
+				panelState.handleEscapeKey();
 			}
 			return;
 		}
@@ -1200,14 +1153,30 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		}
 	});
 
-	// Handle profile switching (Ctrl+P shortcut) - delegated to panelState
+	// Handle profile switching (Alt+P / Ctrl+P shortcut)
 	function handleSwitchProfile() {
-		panelState.handleSwitchProfile({
-			isStreaming: streamingState.isStreaming,
-			hasPendingRollback: !!snapshotState.pendingRollback,
-			hasPendingToolConfirmation: !!pendingToolConfirmation,
-			hasPendingUserQuestion: !!pendingUserQuestion,
-		});
+		// Don't switch if streaming or any blocking condition
+		if (
+			streamingState.isStreaming ||
+			snapshotState.pendingRollback ||
+			pendingToolConfirmation ||
+			pendingUserQuestion ||
+			panelState.showSessionPanel ||
+			panelState.showMcpPanel ||
+			panelState.showUsagePanel ||
+			panelState.showHelpPanel ||
+			panelState.showCustomCommandConfig ||
+			panelState.showSkillsCreation ||
+			panelState.showWorkingDirPanel ||
+			panelState.showPermissionsPanel ||
+			showProfilePanel
+		) {
+			return;
+		}
+
+		// Use local state to show profile panel
+		setShowProfilePanel(true);
+		setProfileSelectedIndex(0);
 	}
 
 	// Handle profile selection
@@ -1228,7 +1197,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setProfileSelectedIndex(0);
 	};
 	const handleSessionPanelSelect = async (sessionId: string) => {
-		setShowSessionPanel(false);
+		panelState.setShowSessionPanel(false);
 		try {
 			const session = await sessionManager.loadSession(sessionId);
 			if (session) {
@@ -1472,7 +1441,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						workingDirectory,
 					);
 					await registerCustomCommands(workingDirectory);
-					setShowCustomCommandConfig(false);
+					panelState.setShowCustomCommandConfig(false);
 					const typeDesc =
 						type === 'execute'
 							? t.customCommand.resultTypeExecute
