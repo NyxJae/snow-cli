@@ -17,8 +17,13 @@ export interface MainAgentBasicInfo {
 	name: string;
 	/** 主代理描述信息 */
 	description: string;
-	/** 主代理类型：'general' | 'team' | 'debugger' */
-	type: 'general' | 'team' | 'debugger';
+	/** 主代理类型 */
+	type:
+		| 'general'
+		| 'leader'
+		| 'requirement_analyzer'
+		| 'debugger'
+		| 'vulnerability_hunter';
 	/** 是否为内置主代理 */
 	builtin?: boolean;
 	/** 创建时间 */
@@ -94,8 +99,10 @@ export interface MainAgentConfigOptions {
  */
 export enum MainAgentType {
 	GENERAL = 'general',
-	TEAM = 'team',
+	LEADER = 'leader',
+	REQUIREMENT_ANALYZER = 'requirement_analyzer',
 	DEBUGGER = 'debugger',
+	VULNERABILITY_HUNTER = 'vulnerability_hunter',
 }
 
 /**
@@ -103,75 +110,8 @@ export enum MainAgentType {
  */
 export const BUILTIN_MAIN_AGENTS = {
 	GENERAL: 'general',
-	TEAM: 'team',
+	LEADER: 'leader',
+	REQUIREMENT_ANALYZER: 'requirement_analyzer',
 	DEBUGGER: 'debugger',
+	VULNERABILITY_HUNTER: 'vulnerability_hunter',
 } as const;
-
-/**
- * 默认General主代理的工具权限配置
- */
-export const DEFAULT_TOOL_PERMISSIONS_FOR_GENERAL: string[] = [
-	// 文件系统工具
-	'filesystem-read',
-	'filesystem-create',
-	'filesystem-edit_search',
-
-	// 终端工具
-	'terminal-execute',
-
-	// 搜索工具
-	'ace-find_definition',
-	'ace-find_references',
-	'ace-semantic_search',
-	'ace-file_outline',
-	'ace-text_search',
-
-	// 任务管理工具
-	'todo-get',
-	'todo-update',
-	'todo-add',
-	'todo-delete',
-
-	// 信息管理工具
-	'useful-info-add',
-	'useful-info-delete',
-	'useful-info-get',
-
-	// 笔记工具
-	'notebook-add',
-
-	// IDE工具
-	'ide-get_diagnostics',
-] as const;
-
-/**
- * 默认Team主代理的工具权限配置
- */
-export const DEFAULT_TOOL_PERMISSIONS_FOR_TEAM: string[] = [
-	// 文件系统工具
-	'filesystem-read',
-	// 任务管理工具
-	'todo-get',
-	'todo-update',
-	'todo-add',
-	'todo-delete',
-	// IDE工具
-	'ide-get_diagnostics',
-] as const;
-
-/**
- * 默认general主代理的子代理配置
- */
-export const DEFAULT_SUB_AGENTS_FOR_GENERAL: string[] = [
-	'subagent-agent_explore',
-	'subagent-agent_general',
-] as const;
-
-/**
- * 默认Team主代理的子代理配置
- */
-export const DEFAULT_SUB_AGENTS_FOR_TEAM: string[] = [
-	'subagent-agent_explore',
-	'subagent-agent_plan',
-	'subagent-agent_general',
-] as const;
