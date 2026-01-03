@@ -523,6 +523,8 @@ export const en: TranslationKeys = {
 		moreHidden: '{count} more hidden',
 		escHint: 'Press ESC to close',
 		activeLabel: '(active)',
+		searchLabel: 'Search:',
+		noResults: 'No matching profiles found',
 	},
 	hooks: {
 		pressCtrlCAgain: 'Press Ctrl+C again to exit',
@@ -688,7 +690,7 @@ export const en: TranslationKeys = {
 		toolRejected: '✗ Rejected',
 		// Parallel execution
 		parallelStart: '┌─ Parallel execution',
-		parallelEnd: '└─ End parallel execution',
+		parallelEnd: '└─ Execution completed',
 		// Messages
 		userMessage: 'You',
 		assistantMessage: 'Assistant',

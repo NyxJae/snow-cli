@@ -14,10 +14,11 @@ interface Props {
 	selectedIndex: number;
 	visible: boolean;
 	maxHeight?: number;
+	searchQuery?: string;
 }
 
 const ProfilePanel = memo(
-	({profiles, selectedIndex, visible, maxHeight}: Props) => {
+	({profiles, selectedIndex, visible, maxHeight, searchQuery}: Props) => {
 		const {t} = useI18n();
 		const {theme} = useTheme();
 
@@ -59,11 +60,6 @@ const ProfilePanel = memo(
 			return null;
 		}
 
-		// Don't show panel if no profiles found
-		if (profiles.length === 0) {
-			return null;
-		}
-
 		return (
 			<Box flexDirection="column">
 				<Box width="100%">
@@ -75,32 +71,50 @@ const ProfilePanel = memo(
 									`(${selectedIndex + 1}/${profiles.length})`}
 							</Text>
 						</Box>
-						{displayedProfiles.map((profile, index) => (
-							<Box key={profile.name} flexDirection="column" width="100%">
-								<Text
-									color={
-										index === displayedSelectedIndex
-											? theme.colors.menuSelected
-											: theme.colors.menuNormal
-									}
-									bold
-								>
-									{index === displayedSelectedIndex ? '> ' : '  '}
-									{profile.displayName}
-									{profile.isActive && ` ${t.profilePanel.activeLabel}`}
+						{searchQuery && (
+							<Box marginTop={1}>
+								<Text color={theme.colors.menuInfo}>
+									{t.profilePanel.searchLabel}{' '}
+									<Text color={theme.colors.menuSelected}>{searchQuery}</Text>
 								</Text>
 							</Box>
-						))}
-						{profiles.length > effectiveMaxItems && (
+						)}
+						{profiles.length === 0 ? (
 							<Box marginTop={1}>
 								<Text color={theme.colors.menuSecondary} dimColor>
-									{t.profilePanel.scrollHint} ·{' '}
-									{t.profilePanel.moreHidden.replace(
-										'{count}',
-										(profiles.length - effectiveMaxItems).toString(),
-									)}
+									{t.profilePanel.noResults}
 								</Text>
 							</Box>
+						) : (
+							<>
+								{displayedProfiles.map((profile, index) => (
+									<Box key={profile.name} flexDirection="column" width="100%">
+										<Text
+											color={
+												index === displayedSelectedIndex
+													? theme.colors.menuSelected
+													: theme.colors.menuNormal
+											}
+											bold
+										>
+											{index === displayedSelectedIndex ? '> ' : '  '}
+											{profile.displayName}
+											{profile.isActive && ` ${t.profilePanel.activeLabel}`}
+										</Text>
+									</Box>
+								))}
+								{profiles.length > effectiveMaxItems && (
+									<Box marginTop={1}>
+										<Text color={theme.colors.menuSecondary} dimColor>
+											{t.profilePanel.scrollHint} ·{' '}
+											{t.profilePanel.moreHidden.replace(
+												'{count}',
+												(profiles.length - effectiveMaxItems).toString(),
+											)}
+										</Text>
+									</Box>
+								)}
+							</>
 						)}
 						<Box marginTop={1}>
 							<Text color={theme.colors.menuSecondary} dimColor>

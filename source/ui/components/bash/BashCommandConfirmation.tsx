@@ -128,12 +128,24 @@ interface BashCommandExecutionStatusProps {
 	command: string;
 	timeout?: number;
 	terminalWidth: number;
+	output?: string[];
+}
+
+/**
+ * Truncate text to prevent overflow
+ */
+function truncateText(text: string, maxWidth: number = 80): string {
+	if (text.length <= maxWidth) {
+		return text;
+	}
+	return text.slice(0, maxWidth - 3) + '...';
 }
 
 export function BashCommandExecutionStatus({
 	command,
 	timeout = 30000,
 	terminalWidth,
+	output = [],
 }: BashCommandExecutionStatusProps) {
 	const {t} = useI18n();
 	const {theme} = useTheme();
@@ -143,15 +155,11 @@ export function BashCommandExecutionStatus({
 	const maxCommandWidth = Math.max(40, terminalWidth - 10);
 	const displayCommand = truncateCommand(command, maxCommandWidth);
 
+	// Process output: split by newlines and limit total lines
+	const processedOutput = output.flatMap(line => line.split(/\r?\n/)).slice(-5);
+
 	return (
-		<Box
-			flexDirection="column"
-			borderStyle="round"
-			borderColor={theme.colors.menuInfo}
-			paddingX={2}
-			paddingY={0}
-			width={terminalWidth - 2}
-		>
+		<Box flexDirection="column" paddingX={1}>
 			<Box>
 				<Text bold color={theme.colors.menuInfo}>
 					<Spinner type="dots" /> {t.bash.executingCommand}
@@ -159,6 +167,14 @@ export function BashCommandExecutionStatus({
 			</Box>
 			<Box paddingLeft={2}>
 				<Text dimColor>{displayCommand}</Text>
+			</Box>
+			{/* Real-time output lines - fixed height to prevent layout jitter */}
+			<Box flexDirection="column" paddingLeft={2} marginTop={1} height={5}>
+				{processedOutput.map((line, index) => (
+					<Text key={index} wrap="truncate" dimColor>
+						{truncateText(line, maxCommandWidth)}
+					</Text>
+				))}
 			</Box>
 			<Box flexDirection="column" gap={0}>
 				<Box>

@@ -488,6 +488,8 @@ export const zhTW: TranslationKeys = {
 		moreHidden: '隱藏 {count} 個',
 		escHint: '按 ESC 關閉',
 		activeLabel: '(目前)',
+		searchLabel: '搜尋:',
+		noResults: '未找到符合的設定檔',
 	},
 	hooks: {
 		pressCtrlCAgain: '再次按 Ctrl+C 退出',
@@ -649,7 +651,7 @@ export const zhTW: TranslationKeys = {
 		toolRejected: '✗ 已拒絕',
 		// Parallel execution
 		parallelStart: '┌─ 並行執行',
-		parallelEnd: '└─ 結束並行執行',
+		parallelEnd: '└─ 執行完成',
 		// Messages
 		userMessage: '你',
 		assistantMessage: '助手',

@@ -487,6 +487,8 @@ export const zh: TranslationKeys = {
 		moreHidden: '隐藏 {count} 个',
 		escHint: '按 ESC 关闭',
 		activeLabel: '(当前)',
+		searchLabel: '搜索:',
+		noResults: '未找到匹配的配置',
 	},
 	hooks: {
 		pressCtrlCAgain: '再次按 Ctrl+C 退出',
@@ -648,7 +650,7 @@ export const zh: TranslationKeys = {
 		toolRejected: '✗ 已拒绝',
 		// Parallel execution
 		parallelStart: '┌─ 并行执行',
-		parallelEnd: '└─ 结束并行执行',
+		parallelEnd: '└─ 执行完成',
 		// Messages
 		userMessage: '你',
 		assistantMessage: '助手',

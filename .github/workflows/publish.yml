@@ -58,9 +58,10 @@ jobs:
             
             ### What's New
 
-            - Optimize the display of TODO Tree
-            - Optimize the performance of Resume when retrieving the conversation list
-            
+            - The todo list automatically hides to reduce redundant content
+            - Ultra-long command output is displayed in a scrolling manner
+            - Fix the bug where the MCP Info panel is not displayed
+                      
             ### Installation
             ```bash
             npm install -g snow-ai

@@ -480,6 +480,8 @@ export type TranslationKeys = {
 		moreHidden: string;
 		escHint: string;
 		activeLabel: string;
+		searchLabel: string;
+		noResults: string;
 	};
 
 	// Permissions Panel
