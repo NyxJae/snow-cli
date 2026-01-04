@@ -157,7 +157,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	// Profile panel state (kept local for now, used in profile selection UI)
 	const [showProfilePanel, setShowProfilePanel] = useState(false);
 	const [profileSelectedIndex, setProfileSelectedIndex] = useState(0);
-	const [profileSearchQuery, setProfileSearchQuery] = useState('');
 	const [restoreInputContent, setRestoreInputContent] = useState<{
 		text: string;
 		images?: Array<{type: 'image'; data: string; mimeType: string}>;
@@ -1094,6 +1093,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		// Use local state to show profile panel
 		setShowProfilePanel(true);
 		setProfileSelectedIndex(0);
+		panelState.setProfileSearchQuery('');
 	}
 
 	// Handle profile selection
@@ -1460,9 +1460,18 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						setShowProfilePicker={setShowProfilePanel}
 						profileSelectedIndex={profileSelectedIndex}
 						setProfileSelectedIndex={setProfileSelectedIndex}
-						getFilteredProfiles={() => getAllProfiles()}
-						profileSearchQuery={profileSearchQuery}
-						setProfileSearchQuery={setProfileSearchQuery}
+						getFilteredProfiles={() => {
+							const allProfiles = getAllProfiles();
+							const query = panelState.profileSearchQuery.toLowerCase();
+							if (!query) return allProfiles;
+							return allProfiles.filter(
+								profile =>
+									profile.name.toLowerCase().includes(query) ||
+									profile.displayName.toLowerCase().includes(query),
+							);
+						}}
+						profileSearchQuery={panelState.profileSearchQuery}
+						setProfileSearchQuery={panelState.setProfileSearchQuery}
 						vscodeConnectionStatus={vscodeState.vscodeConnectionStatus}
 						editorContext={vscodeState.editorContext}
 						codebaseIndexing={codebaseIndexing}

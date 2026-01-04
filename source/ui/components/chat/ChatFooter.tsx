@@ -155,6 +155,8 @@ export default function ChatFooter(props: ChatFooterProps) {
 				getFilteredProfiles={props.getFilteredProfiles}
 				handleProfileSelect={props.handleProfileSelect}
 				onSwitchProfile={props.onSwitchProfile}
+				profileSearchQuery={props.profileSearchQuery}
+				setProfileSearchQuery={props.setProfileSearchQuery}
 			/>
 
 			{/* 显示 TODO Tree 在 ChatInput 下方 */}

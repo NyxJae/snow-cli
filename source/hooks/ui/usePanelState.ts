@@ -91,6 +91,7 @@ export function usePanelState(): PanelState & PanelActions {
 		// Show profile selection panel instead of cycling
 		setShowProfilePanel(true);
 		setProfileSelectedIndex(0);
+		setProfileSearchQuery('');
 	};
 
 	const handleProfileSelect = (profileName: string) => {

@@ -103,6 +103,8 @@ type Props = {
 	}>;
 	handleProfileSelect?: (profileName: string) => void;
 	onSwitchProfile?: () => void; // Callback when Ctrl+P is pressed to switch profile
+	profileSearchQuery?: string;
+	setProfileSearchQuery?: (query: string) => void;
 	disableKeyboardNavigation?: boolean; // Disable arrow keys and Ctrl+K when background panel is active
 };
 
@@ -128,6 +130,8 @@ export default function ChatInput({
 	getFilteredProfiles,
 	handleProfileSelect,
 	onSwitchProfile,
+	profileSearchQuery,
+	setProfileSearchQuery,
 	disableKeyboardNavigation = false,
 }: Props) {
 	// Use i18n hook for translations
@@ -313,6 +317,8 @@ export default function ChatInput({
 		setProfileSelectedIndex: setProfileSelectedIndex || (() => {}),
 		getFilteredProfiles: getFilteredProfiles || (() => []),
 		handleProfileSelect: handleProfileSelect || (() => {}),
+		profileSearchQuery: profileSearchQuery || '',
+		setProfileSearchQuery: setProfileSearchQuery || (() => {}),
 		onSwitchProfile,
 	});
 
@@ -701,6 +707,7 @@ export default function ChatInput({
 							selectedIndex={profileSelectedIndex}
 							visible={showProfilePicker}
 							maxHeight={5}
+							searchQuery={profileSearchQuery}
 						/>
 					</Suspense>
 				</>
