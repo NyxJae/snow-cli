@@ -120,24 +120,20 @@ type ChatFooterProps = {
 export default function ChatFooter(props: ChatFooterProps) {
 	const {t} = useI18n();
 	const [todos, setTodos] = useState<TodoItem[]>([]);
-	const [showTodos, setShowTodos] = useState(false);
 
 	// 使用事件监听 TODO 更新，替代轮询
 	useEffect(() => {
-		const currentSession = sessionManager.getCurrentSession();
-		if (!currentSession) {
-			setShowTodos(false);
-			setTodos([]);
-			return;
-		}
-
 		const handleTodoUpdate = (data: {sessionId: string; todos: TodoItem[]}) => {
+			// 动态获取当前会话，确保恢复会话后能正确处理
+			const currentSession = sessionManager.getCurrentSession();
+			// 如果没有当前会话，清空 TODO 显示（/clear 后的情况）
+			if (!currentSession) {
+				setTodos([]);
+				return;
+			}
 			// 只处理当前会话的 TODO 更新
 			if (data.sessionId === currentSession.id) {
 				setTodos(data.todos);
-				if (data.todos.length > 0 && props.isProcessing) {
-					setShowTodos(true);
-				}
 			}
 		};
 
@@ -148,22 +144,7 @@ export default function ChatFooter(props: ChatFooterProps) {
 		return () => {
 			todoEvents.offTodoUpdate(handleTodoUpdate);
 		};
-	}, [props.isProcessing]);
-
-	// 对话结束后自动隐藏
-	useEffect(() => {
-		if (!props.isProcessing && showTodos) {
-			const timeoutId = setTimeout(() => {
-				setShowTodos(false);
-			}, 1000);
-
-			return () => {
-				clearTimeout(timeoutId);
-			};
-		}
-
-		return;
-	}, [props.isProcessing, showTodos]);
+	}, []);
 
 	return (
 		<>
@@ -203,11 +184,9 @@ export default function ChatFooter(props: ChatFooterProps) {
 						onMainAgentSelect={props.onMainAgentSelect}
 					/>
 
-					{showTodos && todos.length > 0 && (
-						<Box marginTop={1}>
-							<TodoTree todos={todos} />
-						</Box>
-					)}
+					<Box marginTop={1}>
+						<TodoTree todos={todos} />
+					</Box>
 
 					<StatusLine
 						yoloMode={props.yoloMode}

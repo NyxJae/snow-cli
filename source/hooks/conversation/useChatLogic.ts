@@ -19,6 +19,9 @@ import {hashBasedSnapshotManager} from '../../utils/codebase/hashBasedSnapshot.j
 import {convertSessionMessagesToUI} from '../../utils/session/sessionConverter.js';
 import {vscodeConnection} from '../../utils/ui/vscodeConnection.js';
 import {reindexCodebase} from '../../utils/codebase/reindexCodebase.js';
+import {getTodoService} from '../../utils/execution/mcpToolsManager.js';
+import {todoEvents} from '../../utils/events/todoEvents.js';
+import {logger} from '../../utils/core/logger.js';
 
 interface UseChatLogicProps {
 	messages: Message[];
@@ -1108,6 +1111,20 @@ export function useChatLogic(props: UseChatLogicProps) {
 					counts.set(snapshot.messageIndex, snapshot.fileCount);
 				}
 				snapshotState.setSnapshotFileCount(counts);
+
+				// Load and emit TODO list for the restored session
+				try {
+					const todoService = getTodoService();
+					const todoList = await todoService.getTodoList(session.id);
+					todoEvents.emitTodoUpdate(session.id, todoList?.todos ?? []);
+				} catch (todoError) {
+					// TODO loading failure should not affect session restoration
+					logger.warn('Failed to load TODO list for session', {
+						error: todoError,
+					});
+					// Emit empty TODO list to ensure UI is in consistent state
+					todoEvents.emitTodoUpdate(session.id, []);
+				}
 
 				// Display warning AFTER loading session (if any)
 				if (sessionManager.lastLoadHookWarning) {

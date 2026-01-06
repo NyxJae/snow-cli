@@ -13,6 +13,7 @@ import {
 } from '../../utils/ui/fileDialog.js';
 import {exportMessagesToFile} from '../../utils/session/chatExporter.js';
 import {clearReadFolders} from '../../utils/core/folderNotebookPreprocessor.js';
+import {todoEvents} from '../../utils/events/todoEvents.js';
 
 /**
  * 执行上下文压缩
@@ -416,6 +417,42 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 			if (result.success && result.action === 'clear') {
 				// Execute onSessionStart hook BEFORE clearing session
 				(async () => {
+					// Helper function to perform session clear and reset UI state
+					const performSessionClear = (
+						warningMsg?: string | null,
+						cmdName?: string,
+					) => {
+						// Get current session ID before clearing
+						const currentSession = sessionManager.getCurrentSession();
+						const currentSessionId = currentSession?.id;
+
+						resetTerminal(stdout);
+						sessionManager.clearCurrentSession();
+						options.clearSavedMessages();
+						options.setMessages([]);
+						options.setRemountKey(prev => prev + 1);
+						options.setContextUsage(null);
+						options.setCurrentContextPercentage(0);
+
+						// Clear TODO list for the cleared session
+						if (currentSessionId) {
+							todoEvents.emitTodoUpdate(currentSessionId, []);
+						}
+
+						// Add command message
+						const commandMessage: Message = {
+							role: 'command',
+							content: '',
+							commandName: cmdName,
+						};
+						options.setMessages([commandMessage]);
+
+						// Display warning AFTER clearing screen (if any)
+						if (warningMsg) {
+							console.log(warningMsg);
+						}
+					};
+
 					try {
 						const {unifiedHooksExecutor} = await import(
 							'../../utils/execution/unifiedHooksExecutor.js'
@@ -470,43 +507,11 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						}
 
 						// Hook passed, now clear session
-						resetTerminal(stdout);
-						sessionManager.clearCurrentSession();
-						options.clearSavedMessages();
-						options.setMessages([]);
-						options.setRemountKey(prev => prev + 1);
-						options.setContextUsage(null);
-						options.setCurrentContextPercentage(0);
-
-						// Add command message
-						const commandMessage: Message = {
-							role: 'command',
-							content: '',
-							commandName: commandName,
-						};
-						options.setMessages([commandMessage]);
-
-						// Display warning AFTER clearing screen
-						if (warningMessage) {
-							console.log(warningMessage);
-						}
+						performSessionClear(warningMessage, commandName);
 					} catch (error) {
 						console.error('Failed to execute onSessionStart hook:', error);
 						// On exception, still clear session
-						resetTerminal(stdout);
-						sessionManager.clearCurrentSession();
-						options.clearSavedMessages();
-						options.setMessages([]);
-						options.setRemountKey(prev => prev + 1);
-						options.setContextUsage(null);
-						options.setCurrentContextPercentage(0);
-
-						const commandMessage: Message = {
-							role: 'command',
-							content: '',
-							commandName: commandName,
-						};
-						options.setMessages([commandMessage]);
+						performSessionClear(null, commandName);
 					}
 				})();
 			} else if (result.success && result.action === 'showReviewCommitPanel') {

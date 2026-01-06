@@ -20,9 +20,15 @@ interface TodoTreeProps {
  */
 export default function TodoTree({todos}: TodoTreeProps) {
 	const {theme} = useTheme();
-
 	if (todos.length === 0) {
-		return null;
+		return (
+			<Box flexDirection="column" paddingLeft={2}>
+				<Text>
+					<Text dimColor>TODO </Text>
+					<Text color={theme.colors.menuInfo}>(0/0)</Text>
+				</Text>
+			</Box>
+		);
 	}
 
 	const MAX_VISIBLE_TOTAL = 5;

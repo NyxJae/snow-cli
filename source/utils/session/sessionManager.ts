@@ -5,6 +5,7 @@ import {randomUUID} from 'crypto';
 import type {ChatMessage as APIChatMessage} from '../../api/chat.js';
 import {getTodoService} from '../execution/mcpToolsManager.js';
 import {logger} from '../core/logger.js';
+import {todoEvents} from '../events/todoEvents.js';
 import {summaryAgent} from '../../agents/summaryAgent.js';
 import {
 	getProjectId,
@@ -181,6 +182,9 @@ class SessionManager {
 		try {
 			const todoService = getTodoService();
 			await todoService.createEmptyTodo(sessionId);
+
+			// 触发空todo更新事件，确保UI显示空todo界面
+			todoEvents.emitTodoUpdate(sessionId, []);
 		} catch (error) {
 			// TODO创建失败不应该影响会话创建，记录日志即可
 			logger.warn('Failed to create empty TODO for session:', {

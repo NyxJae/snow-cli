@@ -469,7 +469,7 @@ Proactively delete obsolete, redundant, or overly detailed completed subtasks to
 					}
 
 					// 触发 TODO 更新事件，确保 UI 显示 TodoTree
-					if (result && result.todos.length > 0) {
+					if (result) {
 						todoEvents.emitTodoUpdate(sessionId, result.todos);
 					}
 
