@@ -251,7 +251,7 @@ export async function* withRetryGenerator<T>(
 			// 如果已经产生过数据，需要特殊处理流中断
 			// 对于流中断错误，即使已经产生数据，也可以尝试重试
 			const isStreamInterruption =
-				/Stream terminated unexpectedly|incomplete data|reader error/i.test(
+				/Stream terminated unexpectedly|incomplete data|reader error|^terminated$/i.test(
 					lastError.message,
 				);
 
