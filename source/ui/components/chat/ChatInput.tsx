@@ -106,6 +106,24 @@ type Props = {
 	profileSearchQuery?: string;
 	setProfileSearchQuery?: (query: string) => void;
 	disableKeyboardNavigation?: boolean; // Disable arrow keys and Ctrl+K when background panel is active
+	// Main agent picker
+	showMainAgentPicker?: boolean;
+	setShowMainAgentPicker?: (show: boolean) => void;
+	mainAgentSelectedIndex?: number;
+	setMainAgentSelectedIndex?: (
+		index: number | ((prev: number) => number),
+	) => void;
+	mainAgentSearchQuery?: string;
+	setMainAgentSearchQuery?: (query: string) => void;
+	getFilteredMainAgents?: () => Array<{
+		id: string;
+		name: string;
+		description: string;
+		isActive: boolean;
+		isBuiltin: boolean;
+	}>;
+	onSwitchMainAgent?: () => void;
+	onMainAgentSelect?: (agentId: string) => void;
 };
 
 export default function ChatInput({
@@ -133,6 +151,16 @@ export default function ChatInput({
 	profileSearchQuery,
 	setProfileSearchQuery,
 	disableKeyboardNavigation = false,
+	// Main agent picker
+	showMainAgentPicker = false,
+	setShowMainAgentPicker,
+	mainAgentSelectedIndex = 0,
+	setMainAgentSelectedIndex,
+	mainAgentSearchQuery = '',
+	setMainAgentSearchQuery,
+	getFilteredMainAgents,
+	onSwitchMainAgent,
+	onMainAgentSelect,
 }: Props) {
 	// Use i18n hook for translations
 	const {t} = useI18n();
@@ -320,6 +348,15 @@ export default function ChatInput({
 		profileSearchQuery: profileSearchQuery || '',
 		setProfileSearchQuery: setProfileSearchQuery || (() => {}),
 		onSwitchProfile,
+		showMainAgentPicker,
+		setShowMainAgentPicker: setShowMainAgentPicker || (() => {}),
+		mainAgentSelectedIndex,
+		setMainAgentSelectedIndex: setMainAgentSelectedIndex || (() => {}),
+		mainAgentSearchQuery: mainAgentSearchQuery || '',
+		setMainAgentSearchQuery: setMainAgentSearchQuery || (() => {}),
+		getFilteredMainAgents: getFilteredMainAgents || (() => []),
+		onSwitchMainAgent,
+		onMainAgentSelect,
 	});
 
 	// Set initial content when provided (e.g., when rolling back to first message)

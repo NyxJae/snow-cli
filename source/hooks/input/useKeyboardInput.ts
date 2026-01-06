@@ -100,6 +100,24 @@ type KeyboardInputOptions = {
 	setProfileSearchQuery: (query: string) => void;
 	// Profile switching
 	onSwitchProfile?: () => void;
+	// Main agent picker
+	showMainAgentPicker?: boolean;
+	setShowMainAgentPicker?: (show: boolean) => void;
+	mainAgentSelectedIndex?: number;
+	setMainAgentSelectedIndex?: (
+		index: number | ((prev: number) => number),
+	) => void;
+	mainAgentSearchQuery?: string;
+	setMainAgentSearchQuery?: (query: string) => void;
+	getFilteredMainAgents?: () => Array<{
+		id: string;
+		name: string;
+		description: string;
+		isActive: boolean;
+		isBuiltin: boolean;
+	}>;
+	onSwitchMainAgent?: () => void;
+	onMainAgentSelect?: (agentId: string) => void;
 };
 
 export function useKeyboardInput(options: KeyboardInputOptions) {
@@ -173,6 +191,16 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 		profileSearchQuery,
 		setProfileSearchQuery,
 		onSwitchProfile,
+		// Main agent picker
+		showMainAgentPicker,
+		setShowMainAgentPicker,
+		mainAgentSelectedIndex,
+		setMainAgentSelectedIndex,
+		mainAgentSearchQuery,
+		setMainAgentSearchQuery,
+		getFilteredMainAgents,
+		onSwitchMainAgent,
+		onMainAgentSelect,
 	} = options;
 
 	// Mark variables as used (they are used in useInput closure below)
@@ -259,14 +287,10 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			return;
 		}
 
-		// Alt+M - 循环切换主代理
+		// Alt+M - 打开主代理选择面板
 		if (key.meta && input === 'm') {
-			try {
-				const {switchMainAgent} = require('../../utils/MainAgentManager.js');
-				switchMainAgent(); // 切换主代理，不需要返回值
-				// 不改变 YOLO 状态
-			} catch (error) {
-				console.warn('主代理切换失败:', error);
+			if (onSwitchMainAgent) {
+				onSwitchMainAgent();
 			}
 			return;
 		}
@@ -285,6 +309,19 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 
 		// Handle escape key for double-ESC history navigation
 		if (key.escape) {
+			// Close main agent picker if open
+			if (
+				showMainAgentPicker &&
+				setShowMainAgentPicker &&
+				setMainAgentSelectedIndex &&
+				setMainAgentSearchQuery
+			) {
+				setShowMainAgentPicker(false);
+				setMainAgentSelectedIndex(0);
+				setMainAgentSearchQuery(''); // Reset search query
+				return;
+			}
+
 			// Close profile picker if open
 			if (showProfilePicker) {
 				setShowProfilePicker(false);
@@ -421,6 +458,86 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			}
 
 			// For any other key in profile picker, just return to prevent interference
+			return;
+		}
+
+		// Handle main agent picker navigation
+		if (showMainAgentPicker) {
+			const filteredMainAgents = getFilteredMainAgents
+				? getFilteredMainAgents()
+				: [];
+
+			// Up arrow in main agent picker - 循环导航:第一项 → 最后一项
+			if (key.upArrow) {
+				if (setMainAgentSelectedIndex) {
+					setMainAgentSelectedIndex(prev =>
+						prev > 0 ? prev - 1 : Math.max(0, filteredMainAgents.length - 1),
+					);
+				}
+				return;
+			}
+
+			// Down arrow in main agent picker - 循环导航:最后一项 → 第一项
+			if (key.downArrow) {
+				if (setMainAgentSelectedIndex) {
+					const maxIndex = Math.max(0, filteredMainAgents.length - 1);
+					setMainAgentSelectedIndex(prev => (prev < maxIndex ? prev + 1 : 0));
+				}
+				return;
+			}
+
+			// Enter - select main agent
+			if (key.return) {
+				if (
+					filteredMainAgents.length > 0 &&
+					mainAgentSelectedIndex !== undefined &&
+					mainAgentSelectedIndex < filteredMainAgents.length &&
+					onMainAgentSelect
+				) {
+					const selectedAgent = filteredMainAgents[mainAgentSelectedIndex];
+					if (selectedAgent) {
+						onMainAgentSelect(selectedAgent.id);
+					}
+				}
+				return;
+			}
+
+			// Backspace - remove last character from search
+			if (key.backspace || key.delete) {
+				if (
+					mainAgentSearchQuery &&
+					mainAgentSearchQuery.length > 0 &&
+					setMainAgentSearchQuery &&
+					setMainAgentSelectedIndex
+				) {
+					setMainAgentSearchQuery(mainAgentSearchQuery.slice(0, -1));
+					setMainAgentSelectedIndex(0); // Reset to first item
+					triggerUpdate();
+				}
+				return;
+			}
+
+			// Type to search - alphanumeric and common characters
+			// Accept complete characters (including multi-byte like Chinese)
+			// but filter out control sequences and incomplete input
+			if (
+				input &&
+				!key.ctrl &&
+				!key.meta &&
+				!key.escape &&
+				input !== '\x1b' && // Ignore escape sequences
+				input !== '\u001b' && // Additional escape check
+				!/[\x00-\x1F]/.test(input) // Ignore other control characters
+			) {
+				if (setMainAgentSearchQuery && setMainAgentSelectedIndex) {
+					setMainAgentSearchQuery(mainAgentSearchQuery + input);
+					setMainAgentSelectedIndex(0); // Reset to first item
+					triggerUpdate();
+				}
+				return;
+			}
+
+			// For any other key in main agent picker, just return to prevent interference
 			return;
 		}
 

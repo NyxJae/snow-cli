@@ -5,6 +5,7 @@ import {
 	getActiveProfileName,
 	switchProfile,
 } from '../../utils/config/configManager.js';
+import {mainAgentManager} from '../../utils/MainAgentManager.js';
 
 export type PanelState = {
 	showSessionPanel: boolean;
@@ -20,6 +21,9 @@ export type PanelState = {
 	profileSelectedIndex: number;
 	profileSearchQuery: string;
 	currentProfileName: string;
+	showMainAgentPanel: boolean;
+	mainAgentSelectedIndex: number;
+	mainAgentSearchQuery: string;
 };
 
 export type PanelActions = {
@@ -35,6 +39,9 @@ export type PanelActions = {
 	setShowProfilePanel: Dispatch<SetStateAction<boolean>>;
 	setProfileSelectedIndex: Dispatch<SetStateAction<number>>;
 	setProfileSearchQuery: Dispatch<SetStateAction<string>>;
+	setShowMainAgentPanel: Dispatch<SetStateAction<boolean>>;
+	setMainAgentSelectedIndex: Dispatch<SetStateAction<number>>;
+	setMainAgentSearchQuery: Dispatch<SetStateAction<string>>;
 	handleSwitchProfile: (options: {
 		isStreaming: boolean;
 		hasPendingRollback: boolean;
@@ -42,6 +49,13 @@ export type PanelActions = {
 		hasPendingUserQuestion: boolean;
 	}) => void;
 	handleProfileSelect: (profileName: string) => void;
+	handleSwitchMainAgent: (options: {
+		isStreaming: boolean;
+		hasPendingRollback: boolean;
+		hasPendingToolConfirmation: boolean;
+		hasPendingUserQuestion: boolean;
+	}) => void;
+	handleMainAgentSelect: (agentId: string) => void;
 	handleEscapeKey: () => boolean; // Returns true if ESC was handled
 	isAnyPanelOpen: () => boolean;
 };
@@ -59,6 +73,9 @@ export function usePanelState(): PanelState & PanelActions {
 	const [showProfilePanel, setShowProfilePanel] = useState(false);
 	const [profileSelectedIndex, setProfileSelectedIndex] = useState(0);
 	const [profileSearchQuery, setProfileSearchQuery] = useState('');
+	const [showMainAgentPanel, setShowMainAgentPanel] = useState(false);
+	const [mainAgentSelectedIndex, setMainAgentSelectedIndex] = useState(0);
+	const [mainAgentSearchQuery, setMainAgentSearchQuery] = useState('');
 	const [currentProfileName, setCurrentProfileName] = useState(() => {
 		const profiles = getAllProfiles();
 		const activeName = getActiveProfileName();
@@ -116,6 +133,52 @@ export function usePanelState(): PanelState & PanelActions {
 		setProfileSearchQuery('');
 	};
 
+	const handleSwitchMainAgent = (options: {
+		isStreaming: boolean;
+		hasPendingRollback: boolean;
+		hasPendingToolConfirmation: boolean;
+		hasPendingUserQuestion: boolean;
+	}) => {
+		// Don't switch if any panel is open or streaming
+		if (
+			showSessionPanel ||
+			showMcpPanel ||
+			showUsagePanel ||
+			showHelpPanel ||
+			showCustomCommandConfig ||
+			showSkillsCreation ||
+			showWorkingDirPanel ||
+			showPermissionsPanel ||
+			showReviewCommitPanel ||
+			showProfilePanel ||
+			showMainAgentPanel ||
+			options.hasPendingRollback ||
+			options.hasPendingToolConfirmation ||
+			options.hasPendingUserQuestion ||
+			options.isStreaming
+		) {
+			return;
+		}
+
+		// Show main agent selection panel
+		setShowMainAgentPanel(true);
+		setMainAgentSelectedIndex(0);
+		setMainAgentSearchQuery('');
+	};
+
+	const handleMainAgentSelect = (agentId: string) => {
+		// Switch to selected main agent
+		mainAgentManager.setCurrentAgent(agentId);
+
+		// Reload config to pick up new agent's configuration
+		reloadConfig();
+
+		// Close panel and reset search
+		setShowMainAgentPanel(false);
+		setMainAgentSelectedIndex(0);
+		setMainAgentSearchQuery('');
+	};
+
 	const handleEscapeKey = (): boolean => {
 		// Check each panel in priority order and close if open
 		if (showSessionPanel) {
@@ -167,6 +230,10 @@ export function usePanelState(): PanelState & PanelActions {
 			setShowProfilePanel(false);
 			return true;
 		}
+		if (showMainAgentPanel) {
+			setShowMainAgentPanel(false);
+			return true;
+		}
 
 		return false; // ESC not handled
 	};
@@ -182,7 +249,8 @@ export function usePanelState(): PanelState & PanelActions {
 			showWorkingDirPanel ||
 			showPermissionsPanel ||
 			showReviewCommitPanel ||
-			showProfilePanel
+			showProfilePanel ||
+			showMainAgentPanel
 		);
 	};
 
@@ -201,6 +269,9 @@ export function usePanelState(): PanelState & PanelActions {
 		profileSelectedIndex,
 		profileSearchQuery,
 		currentProfileName,
+		showMainAgentPanel,
+		mainAgentSelectedIndex,
+		mainAgentSearchQuery,
 		// Actions
 		setShowSessionPanel,
 		setShowMcpPanel,
@@ -214,8 +285,13 @@ export function usePanelState(): PanelState & PanelActions {
 		setShowProfilePanel,
 		setProfileSelectedIndex,
 		setProfileSearchQuery,
+		setShowMainAgentPanel,
+		setMainAgentSelectedIndex,
+		setMainAgentSearchQuery,
 		handleSwitchProfile,
 		handleProfileSelect,
+		handleSwitchMainAgent,
+		handleMainAgentSelect,
 		handleEscapeKey,
 		isAnyPanelOpen,
 	};

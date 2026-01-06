@@ -483,6 +483,17 @@ export type TranslationKeys = {
 		searchLabel: string;
 		noResults: string;
 	};
+	// Main Agent Panel
+	mainAgentPanel: {
+		title: string;
+		scrollHint: string;
+		moreHidden: string;
+		escHint: string;
+		activeLabel: string;
+		searchLabel: string;
+		noResults: string;
+		builtinLabel: string;
+	};
 
 	reviewCommitPanel: {
 		title: string;
@@ -1018,7 +1029,7 @@ export type TranslationKeys = {
 		error: string;
 		tabToSwitch: string;
 		noDataForPeriod: string;
-	},
+	};
 	// Main Agent Management
 	mainAgent: {
 		title: string;

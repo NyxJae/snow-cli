@@ -7,6 +7,8 @@ import {CustomCommandConfigPanel} from './CustomCommandConfigPanel.js';
 import {SkillsCreationPanel} from './SkillsCreationPanel.js';
 import WorkingDirectoryPanel from './WorkingDirectoryPanel.js';
 import PermissionsPanel from './PermissionsPanel.js';
+import MainAgentPanel from './MainAgentPanel.js';
+import {mainAgentManager} from '../../../utils/MainAgentManager.js';
 import type {CommandLocation} from '../../../utils/commands/custom.js';
 import type {
 	GeneratedSkillContent,
@@ -52,6 +54,10 @@ type PanelsManagerProps = {
 	alwaysApprovedTools: Set<string>;
 	onRemoveTool: (toolName: string) => void;
 	onClearAllTools: () => void;
+	// Main agent panel props
+	showMainAgentPanel?: boolean;
+	mainAgentSelectedIndex?: number;
+	mainAgentSearchQuery?: string;
 };
 
 export default function PanelsManager({
@@ -76,9 +82,22 @@ export default function PanelsManager({
 	alwaysApprovedTools,
 	onRemoveTool,
 	onClearAllTools,
+	showMainAgentPanel,
+	mainAgentSelectedIndex,
+	mainAgentSearchQuery,
 }: PanelsManagerProps) {
 	const {theme} = useTheme();
 	const {t} = useI18n();
+
+	// Calculate main agent items on every render to ensure isActive is up-to-date
+	const mainAgentItems =
+		mainAgentManager.getOrderedAgentList().map(config => ({
+			id: config.basicInfo.id,
+			name: config.basicInfo.name,
+			description: config.basicInfo.description || '',
+			isActive: config.basicInfo.id === mainAgentManager.getCurrentAgentId(),
+			isBuiltin: config.basicInfo.builtin ?? false,
+		})) || [];
 
 	const loadingFallback = (
 		<Box>
@@ -178,6 +197,18 @@ export default function PanelsManager({
 						onRemoveTool={onRemoveTool}
 						onClearAll={onClearAllTools}
 						onClose={() => setShowPermissionsPanel(false)}
+					/>
+				</Box>
+			)}
+
+			{/* Show main agent panel if active */}
+			{showMainAgentPanel && (
+				<Box paddingX={1} width={terminalWidth}>
+					<MainAgentPanel
+						agents={mainAgentItems}
+						selectedIndex={mainAgentSelectedIndex ?? 0}
+						visible={true}
+						searchQuery={mainAgentSearchQuery}
 					/>
 				</Box>
 			)}

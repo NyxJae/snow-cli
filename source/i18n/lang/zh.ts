@@ -490,6 +490,16 @@ export const zh: TranslationKeys = {
 		searchLabel: '搜索:',
 		noResults: '未找到匹配的配置',
 	},
+	mainAgentPanel: {
+		title: '选择主代理',
+		scrollHint: '↑↓ 滚动',
+		moreHidden: '隐藏 {count} 个',
+		escHint: '按 ESC 关闭',
+		activeLabel: '(当前)',
+		searchLabel: '搜索:',
+		noResults: '未找到匹配的主代理',
+		builtinLabel: '内置',
+	},
 	reviewCommitPanel: {
 		title: '代码审查：选择变更',
 		loadingCommits: '正在加载提交记录...',

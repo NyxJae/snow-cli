@@ -490,6 +490,16 @@ export const zhTW: TranslationKeys = {
 		searchLabel: '搜尋:',
 		noResults: '未找到符合的設定檔',
 	},
+	mainAgentPanel: {
+		title: '選擇主代理',
+		scrollHint: '↑↓ 捲動',
+		moreHidden: '隱藏 {count} 個',
+		escHint: '按 ESC 關閉',
+		activeLabel: '(當前)',
+		searchLabel: '搜尋:',
+		noResults: '未找到符合的主代理',
+		builtinLabel: '內建',
+	},
 	reviewCommitPanel: {
 		title: '程式碼審查：選擇變更',
 		loadingCommits: '正在載入提交記錄...',

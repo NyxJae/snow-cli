@@ -486,7 +486,8 @@ export const en: TranslationKeys = {
 			ide: 'Connect to VSCode editor and sync context',
 			compact: 'Compress conversation history using compact model',
 			home: 'Return to welcome screen to modify settings',
-			review:'Review changes in the working tree and selected commits. Opens a picker panel where you can select items and add notes.',
+			review:
+				'Review changes in the working tree and selected commits. Opens a picker panel where you can select items and add notes.',
 			usage: 'View token usage statistics with interactive charts',
 			export: 'Export chat conversation to text file with save dialog',
 			custom: 'Add custom command and save to ~/.snow/commands',
@@ -523,6 +524,16 @@ export const en: TranslationKeys = {
 		activeLabel: '(active)',
 		searchLabel: 'Search:',
 		noResults: 'No matching profiles found',
+	},
+	mainAgentPanel: {
+		title: 'Select Main Agent',
+		scrollHint: '↑↓ to scroll',
+		moreHidden: '{count} more hidden',
+		escHint: 'Press ESC to close',
+		activeLabel: '(Current)',
+		searchLabel: 'Search:',
+		noResults: 'No matching main agents found',
+		builtinLabel: 'Built-in',
 	},
 	reviewCommitPanel: {
 		title: 'Review: Select Changes',

@@ -68,6 +68,26 @@ type ChatFooterProps = {
 	getFilteredProfiles: () => any[];
 	profileSearchQuery: string;
 	setProfileSearchQuery: (query: string) => void;
+	// Main agent picker props
+	showMainAgentPicker?: boolean;
+	setShowMainAgentPicker?: (
+		value: boolean | ((prev: boolean) => boolean),
+	) => void;
+	mainAgentSelectedIndex?: number;
+	setMainAgentSelectedIndex?: (
+		index: number | ((prev: number) => number),
+	) => void;
+	mainAgentSearchQuery?: string;
+	setMainAgentSearchQuery?: (query: string) => void;
+	getFilteredMainAgents?: () => Array<{
+		id: string;
+		name: string;
+		description: string;
+		isActive: boolean;
+		isBuiltin: boolean;
+	}>;
+	onSwitchMainAgent?: () => void;
+	onMainAgentSelect?: (agentId: string) => void;
 	vscodeConnectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
 	editorContext?: {
 		activeFile?: string;
@@ -172,6 +192,15 @@ export default function ChatFooter(props: ChatFooterProps) {
 						onSwitchProfile={props.onSwitchProfile}
 						profileSearchQuery={props.profileSearchQuery}
 						setProfileSearchQuery={props.setProfileSearchQuery}
+						showMainAgentPicker={props.showMainAgentPicker}
+						setShowMainAgentPicker={props.setShowMainAgentPicker}
+						mainAgentSelectedIndex={props.mainAgentSelectedIndex}
+						setMainAgentSelectedIndex={props.setMainAgentSelectedIndex}
+						mainAgentSearchQuery={props.mainAgentSearchQuery}
+						setMainAgentSearchQuery={props.setMainAgentSearchQuery}
+						getFilteredMainAgents={props.getFilteredMainAgents}
+						onSwitchMainAgent={props.onSwitchMainAgent}
+						onMainAgentSelect={props.onMainAgentSelect}
 					/>
 
 					{showTodos && todos.length > 0 && (

@@ -23,6 +23,8 @@ import {HookErrorDisplay} from '../components/special/HookErrorDisplay.js';
 import type {HookErrorDetails} from '../../utils/execution/hookResultHandler.js';
 
 import PanelsManager from '../components/panels/PanelsManager.js';
+import {mainAgentManager} from '../../utils/MainAgentManager.js';
+import type {MainAgentItem} from '../components/panels/MainAgentPanel.js';
 import {
 	saveCustomCommand,
 	registerCustomCommands,
@@ -152,6 +154,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	// Profile panel state (kept local for now, used in profile selection UI)
 	const [showProfilePanel, setShowProfilePanel] = useState(false);
 	const [profileSelectedIndex, setProfileSelectedIndex] = useState(0);
+	// Main agent panel state (kept local for now, used in main agent selection UI)
+	const [showMainAgentPanel, setShowMainAgentPanel] = useState(false);
+	const [mainAgentSelectedIndex, setMainAgentSelectedIndex] = useState(0);
 	const [restoreInputContent, setRestoreInputContent] = useState<{
 		text: string;
 		images?: Array<{type: 'image'; data: string; mimeType: string}>;
@@ -1094,6 +1099,63 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setProfileSelectedIndex(0);
 	};
 
+	// Handle main agent switching (Alt+M / Ctrl+M shortcut)
+	const handleSwitchMainAgent = () => {
+		// Don't switch if streaming or any blocking condition
+		if (
+			streamingState.isStreaming ||
+			snapshotState.pendingRollback ||
+			pendingToolConfirmation ||
+			pendingUserQuestion ||
+			panelState.showSessionPanel ||
+			panelState.showMcpPanel ||
+			panelState.showUsagePanel ||
+			panelState.showHelpPanel ||
+			panelState.showCustomCommandConfig ||
+			panelState.showSkillsCreation ||
+			panelState.showWorkingDirPanel ||
+			panelState.showPermissionsPanel ||
+			showProfilePanel
+		) {
+			return;
+		}
+
+		// Use local state to show main agent panel
+		setShowMainAgentPanel(true);
+		setMainAgentSelectedIndex(0);
+		panelState.setMainAgentSearchQuery('');
+	};
+
+	// Handle main agent selection - wrap panelState.handleMainAgentSelect to also close local showMainAgentPanel
+	const handleMainAgentSelect = (agentId: string) => {
+		panelState.handleMainAgentSelect(agentId);
+		// Also close the local showMainAgentPanel state (fixes state sync issue)
+		setShowMainAgentPanel(false);
+		setMainAgentSelectedIndex(0);
+	};
+
+	// Get filtered main agents based on search query
+	const getFilteredMainAgents = (): MainAgentItem[] => {
+		const allConfigs = mainAgentManager.getOrderedAgentList();
+		const currentAgentId = mainAgentManager.getCurrentAgentId();
+		const query = panelState.mainAgentSearchQuery.toLowerCase();
+
+		return allConfigs
+			.map(config => ({
+				id: config.basicInfo.id,
+				name: config.basicInfo.name,
+				description: config.basicInfo.description || '',
+				isActive: config.basicInfo.id === currentAgentId,
+				isBuiltin: config.basicInfo.builtin ?? false,
+			}))
+			.filter(
+				agent =>
+					agent.id.toLowerCase().includes(query) ||
+					agent.name.toLowerCase().includes(query) ||
+					agent.description.toLowerCase().includes(query),
+			);
+	};
+
 	// Show warning if terminal is too small
 	if (terminalHeight < MIN_TERMINAL_HEIGHT) {
 		return (
@@ -1288,6 +1350,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				alwaysApprovedTools={alwaysApprovedTools}
 				onRemoveTool={removeFromAlwaysApproved}
 				onClearAllTools={clearAllAlwaysApproved}
+				showMainAgentPanel={showMainAgentPanel}
+				mainAgentSelectedIndex={mainAgentSelectedIndex}
+				mainAgentSearchQuery={panelState.mainAgentSearchQuery}
 				onCustomCommandSave={async (
 					name: string,
 					command: string,
@@ -1455,6 +1520,15 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						}}
 						profileSearchQuery={panelState.profileSearchQuery}
 						setProfileSearchQuery={panelState.setProfileSearchQuery}
+						showMainAgentPicker={showMainAgentPanel}
+						setShowMainAgentPicker={setShowMainAgentPanel}
+						mainAgentSelectedIndex={mainAgentSelectedIndex}
+						setMainAgentSelectedIndex={setMainAgentSelectedIndex}
+						mainAgentSearchQuery={panelState.mainAgentSearchQuery}
+						setMainAgentSearchQuery={panelState.setMainAgentSearchQuery}
+						getFilteredMainAgents={getFilteredMainAgents}
+						onSwitchMainAgent={handleSwitchMainAgent}
+						onMainAgentSelect={handleMainAgentSelect}
 						vscodeConnectionStatus={vscodeState.vscodeConnectionStatus}
 						editorContext={vscodeState.editorContext}
 						codebaseIndexing={codebaseIndexing}
