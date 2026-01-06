@@ -1356,22 +1356,24 @@ export async function executeMCPTool(
 					}
 					if (
 						!Array.isArray(args.filePath) &&
-						(args.line === undefined || args.newContent === undefined)
+						(args.startLine === undefined ||
+							args.endLine === undefined ||
+							args.newContent === undefined)
 					) {
 						throw new Error(
 							`Missing required parameters for filesystem-edit tool.
 ` +
-								`For single file mode, 'line' and 'newContent' are required.
+								`For single file mode, 'startLine', 'endLine', and 'newContent' are required.
 ` +
 								`Received args: ${JSON.stringify(args, null, 2)}
 ` +
-								`AI Tip: Provide line (number) and newContent (string).`,
+								`AI Tip: Provide startLine (number), endLine (number), and newContent (string).`,
 						);
 					}
 					result = await filesystemService.editFile(
 						args.filePath,
-						args.line,
-
+						args.startLine,
+						args.endLine,
 						args.newContent,
 						args.contextLines,
 					);

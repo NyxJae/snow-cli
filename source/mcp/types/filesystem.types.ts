@@ -44,9 +44,7 @@ export interface DocumentContent {
 /**
  * Multimodal content - array of text, image, and document blocks
  */
-export type MultimodalContent = Array<
-	TextContent | ImageContent | DocumentContent
->;
+export type MultimodalContent = Array<TextContent | ImageContent | DocumentContent>;
 
 /**
  * Supported image MIME types
@@ -64,10 +62,7 @@ export const IMAGE_MIME_TYPES: Record<string, string> = {
 /**
  * Supported Office document types
  */
-export const OFFICE_FILE_TYPES: Record<
-	string,
-	'pdf' | 'word' | 'excel' | 'powerpoint'
-> = {
+export const OFFICE_FILE_TYPES: Record<string, 'pdf' | 'word' | 'excel' | 'powerpoint'> = {
 	'.pdf': 'pdf',
 	'.docx': 'word',
 	'.doc': 'word',
@@ -86,15 +81,11 @@ export interface StructureAnalysis {
 		round: {open: number; close: number; balanced: boolean};
 		square: {open: number; close: number; balanced: boolean};
 	};
-	quoteBalance?: {
-		single: {open: number; close: number; balanced: boolean};
-		double: {open: number; close: number; balanced: boolean};
-		backtick: {open: number; close: number; balanced: boolean};
+	htmlTags?: {
+		unclosedTags: string[];
+		unopenedTags: string[];
+		balanced: boolean;
 	};
-	commentBalance?: {
-		block: {open: number; close: number; balanced: boolean};
-	};
-
 	indentationWarnings: string[];
 	codeBlockBoundary?: {
 		isInCompleteBlock: boolean;

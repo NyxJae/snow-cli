@@ -14,11 +14,13 @@ import {
 // Type definitions
 import type {
 	EditBySearchConfig,
+	EditByLineConfig,
 	EditBySearchResult,
 	EditByLineResult,
 	EditBySearchSingleResult,
 	EditByLineSingleResult,
 	EditBySearchBatchResultItem,
+	EditByLineBatchResultItem,
 	SingleFileReadResult,
 	MultipleFilesReadResult,
 	MultimodalContent,
@@ -35,13 +37,13 @@ import {
 	analyzeCodeStructure,
 	findSmartContextBoundaries,
 } from './utils/filesystem/code-analysis.utils.js';
-import {runPrecheck} from './utils/filesystem/precheck/index.js';
 import {
 	findClosestMatches,
 	generateDiffMessage,
 } from './utils/filesystem/match-finder.utils.js';
 import {
 	parseEditBySearchParams,
+	parseEditByLineParams,
 	executeBatchOperation,
 } from './utils/filesystem/batch-operations.utils.js';
 import {tryFixPath} from './utils/filesystem/path-fixer.utils.js';
@@ -53,8 +55,6 @@ import {logger} from '../utils/core/logger.js';
 import type {CodeSymbol} from './types/aceCodeSearch.types.js';
 // Notebook utilities for automatic note retrieval
 import {queryNotebook} from '../utils/core/notebookManager.js';
-// Folder notebook preprocessor for tracking read folders
-import {updateReadFolders} from '../utils/core/folderNotebookPreprocessor.js';
 
 const {resolve, dirname, isAbsolute, extname} = path;
 
@@ -508,9 +508,6 @@ export class FilesystemMCPService {
 							fileContent += notebookInfo;
 						}
 
-						// Update read folders for folder notebook feature (only for file reads, not directories)
-						updateReadFolders(file);
-
 						multimodalContent.push({
 							type: 'text',
 							text: fileContent,
@@ -675,9 +672,6 @@ export class FilesystemMCPService {
 			if (notebookInfo) {
 				partialContent += notebookInfo;
 			}
-
-			// Update read folders for folder notebook feature (only for file reads, not directories)
-			updateReadFolders(filePath as string);
 
 			return {
 				content: partialContent,
@@ -1035,13 +1029,6 @@ export class FilesystemMCPService {
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
 
-			// If original file is already bracket-unbalanced (common during conflict resolution),
-			// allow filesystem-edit_search to proceed by skipping bracket precheck on payloads.
-			const originalBracketsUnbalanced = runPrecheck(normalizedContent, {
-				filePath,
-				contentKind: 'search',
-			}).some(i => i.code === 'brackets_unbalanced');
-
 			// Split into lines for matching
 			let searchLines = normalizedSearch.split('\n');
 			const contentLines = normalizedContent.split('\n');
@@ -1293,33 +1280,6 @@ export class FilesystemMCPService {
 			const modifiedLines = [...beforeLines, ...replaceLines, ...afterLines];
 			const modifiedContent = modifiedLines.join('\n');
 
-			// Pre-check: refuse edits that look structurally unsafe
-			{
-				const ctxBase = {
-					filePath,
-					skipBracketsCheck: originalBracketsUnbalanced,
-				} as const;
-				const searchIssues = runPrecheck(normalizedSearch, {
-					...ctxBase,
-					contentKind: 'search',
-				});
-				const replaceIssues = runPrecheck(normalizedReplace, {
-					...ctxBase,
-					contentKind: 'replace',
-				});
-				const issues = [...searchIssues, ...replaceIssues];
-
-				if (issues.length > 0) {
-					throw new Error(
-						`❌ 拒绝执行 filesystem-edit_search:检测到潜在结构风险:\n` +
-							issues.map(i => `  • ${i.message}`).join('\n') +
-							`\n\n` +
-							`这通常意味着你复制/构造的是“半个代码块”,非常容易导致丢括号/丢引号/丢注释闭合并破坏文件结构.\n` +
-							`💡 请改为从 filesystem-read 复制“完整代码块”(不要包含行号),再执行替换.`,
-					);
-				}
-			}
-
 			// Calculate replaced content for display (compress whitespace for readability)
 
 			const replacedLines = lines.slice(startLine - 1, endLine);
@@ -1519,7 +1479,22 @@ export class FilesystemMCPService {
 				);
 			}
 
-			// HTML tag warnings removed (precheck simplified; future rule can re-add if needed)
+			if (structureAnalysis.htmlTags && !structureAnalysis.htmlTags.balanced) {
+				if (structureAnalysis.htmlTags.unclosedTags.length > 0) {
+					structureWarnings.push(
+						`Unclosed HTML tags: ${structureAnalysis.htmlTags.unclosedTags.join(
+							', ',
+						)}`,
+					);
+				}
+				if (structureAnalysis.htmlTags.unopenedTags.length > 0) {
+					structureWarnings.push(
+						`Unopened closing tags: ${structureAnalysis.htmlTags.unopenedTags.join(
+							', ',
+						)}`,
+					);
+				}
+			}
 
 			if (structureAnalysis.indentationWarnings.length > 0) {
 				structureWarnings.push(
@@ -1579,32 +1554,58 @@ export class FilesystemMCPService {
 	 * @throws Error if file editing fails
 	 */
 	async editFile(
-		filePath: string,
-		line: number,
-		newContent: string,
+		filePath: string | string[] | EditByLineConfig[],
+		startLine?: number,
+		endLine?: number,
+		newContent?: string,
 		contextLines: number = 8,
 	): Promise<EditByLineResult> {
-		// Validate parameters
-		if (typeof filePath !== 'string') {
-			throw new Error(
-				'⚠️ Batch editing is not supported. filePath must be a single file path (string), not an array. For batch operations, use filesystem-edit_search instead.',
+		// Handle array of files
+		if (Array.isArray(filePath)) {
+			return await executeBatchOperation<
+				EditByLineConfig,
+				EditByLineSingleResult,
+				EditByLineBatchResultItem
+			>(
+				filePath,
+				fileItem =>
+					parseEditByLineParams(fileItem, startLine, endLine, newContent),
+				(path, start, end, content) =>
+					this.editFileSingle(path, start, end, content, contextLines),
+				(path, result) => {
+					return {path, ...result};
+				},
 			);
 		}
 
-		if (line === undefined || newContent === undefined) {
-			throw new Error('line and newContent are required');
+		// Single file mode
+		if (
+			startLine === undefined ||
+			endLine === undefined ||
+			newContent === undefined
+		) {
+			throw new Error(
+				'startLine, endLine, and newContent are required for single file mode',
+			);
 		}
 
-		return await this.editFileSingle(filePath, line, newContent, contextLines);
+		return await this.editFileSingle(
+			filePath,
+			startLine,
+			endLine,
+			newContent,
+			contextLines,
+		);
 	}
 
 	/**
-	 * Internal method: Edit a single file by line number
+	 * Internal method: Edit a single file by line range
 	 * @private
 	 */
 	private async editFileSingle(
 		filePath: string,
-		line: number,
+		startLine: number,
+		endLine: number,
 		newContent: string,
 		contextLines: number,
 	): Promise<EditByLineSingleResult> {
@@ -1644,27 +1645,35 @@ export class FilesystemMCPService {
 				// Don't fail the operation if backup fails
 			}
 
-			// Validate line number - ONLY single line editing is supported
-			if (line < 1) {
-				throw new Error('Line number must be greater than 0');
+			// Validate line numbers
+			if (startLine < 1 || endLine < 1) {
+				throw new Error('Line numbers must be greater than 0');
+			}
+			if (startLine > endLine) {
+				throw new Error('Start line must be less than or equal to end line');
 			}
 
-			// Adjust line if it exceeds file length
-			const adjustedLine = Math.min(line, totalLines);
+			// Adjust startLine and endLine if they exceed file length
+			const adjustedStartLine = Math.min(startLine, totalLines);
+			const adjustedEndLine = Math.min(endLine, totalLines);
+			const linesToModify = adjustedEndLine - adjustedStartLine + 1;
 
-			// Extract the line that will be replaced (for comparison)
+			// Extract the lines that will be replaced (for comparison)
 			// Compress whitespace for display readability
 
-			const replacedLine = lines[adjustedLine - 1] ?? '';
-			const replacedContent = `${adjustedLine}→${normalizeForDisplay(
-				replacedLine,
-			)}`;
+			const replacedLines = lines.slice(adjustedStartLine - 1, adjustedEndLine);
+			const replacedContent = replacedLines
+				.map((line, idx) => {
+					const lineNum = adjustedStartLine + idx;
+					return `${lineNum}→${normalizeForDisplay(line)}`;
+				})
+				.join('\n');
 
 			// Calculate context range using smart boundary detection
 			const smartBoundaries = findSmartContextBoundaries(
 				lines,
-				adjustedLine,
-				adjustedLine,
+				adjustedStartLine,
+				adjustedEndLine,
 				contextLines,
 			);
 			const contextStart = smartBoundaries.start;
@@ -1679,23 +1688,20 @@ export class FilesystemMCPService {
 				})
 				.join('\n');
 
-			// Check for newline characters - single line editing only
-			if (newContent.includes('\n')) {
-				throw new Error(
-					'⚠️ filesystem-edit 不支持多行编辑. newContent 中不能包含换行符 (\\n). ' +
-						'这会导致文件行号变化,影响后续编辑操作. ' +
-						'如需多行编辑,请使用 filesystem-edit_search 工具.',
-				);
-			}
+			// Replace the specified lines
+			const newContentLines = newContent.split('\n');
+			const beforeLines = lines.slice(0, adjustedStartLine - 1);
+			const afterLines = lines.slice(adjustedEndLine);
+			const modifiedLines = [...beforeLines, ...newContentLines, ...afterLines];
 
-			// Replace the specified line (single line only, no newlines allowed)
-			const beforeLines = lines.slice(0, adjustedLine - 1);
-			const afterLines = lines.slice(adjustedLine);
-			const modifiedLines = [...beforeLines, newContent, ...afterLines];
-
-			// Total lines unchanged since we're replacing exactly one line
+			// Calculate new context range
 			const newTotalLines = modifiedLines.length;
-			const newContextEnd = Math.min(newTotalLines, contextEnd);
+			const lineDifference =
+				newContentLines.length - (adjustedEndLine - adjustedStartLine + 1);
+			const newContextEnd = Math.min(
+				newTotalLines,
+				contextEnd + lineDifference,
+			);
 
 			// Extract new content for context with line numbers (compress whitespace)
 			const newContextLines = modifiedLines.slice(
@@ -1727,8 +1733,8 @@ export class FilesystemMCPService {
 				try {
 					// Use Prettier API for better performance (avoids npx overhead)
 					const prettierConfig = await prettier.resolveConfig(fullPath);
-					const contentToFormat = modifiedLines.join('\n');
-					const formattedContent = await prettier.format(contentToFormat, {
+					const newContent = modifiedLines.join('\n');
+					const formattedContent = await prettier.format(newContent, {
 						filepath: fullPath,
 						...prettierConfig,
 					});
@@ -1739,7 +1745,10 @@ export class FilesystemMCPService {
 					finalTotalLines = finalLines.length;
 
 					// Recalculate the context end line based on formatted content
-					finalContextEnd = Math.min(finalTotalLines, contextEnd);
+					finalContextEnd = Math.min(
+						finalTotalLines,
+						contextStart + (newContextEnd - contextStart),
+					);
 
 					// Extract formatted content for context (compress whitespace)
 					const formattedContextLines = finalLines.slice(
@@ -1759,7 +1768,10 @@ export class FilesystemMCPService {
 			}
 
 			// Analyze code structure of the edited content (using formatted content if available)
-			const editedContentLines = [finalLines[adjustedLine - 1] ?? ''];
+			const editedContentLines = finalLines.slice(
+				adjustedStartLine - 1,
+				adjustedStartLine - 1 + newContentLines.length,
+			);
 			const structureAnalysis = analyzeCodeStructure(
 				finalLines.join('\n'),
 				filePath,
@@ -1784,19 +1796,18 @@ export class FilesystemMCPService {
 			const result: EditByLineSingleResult = {
 				message:
 					`✅ File edited successfully,Please check the edit results and pay attention to code boundary issues to avoid syntax errors caused by missing closed parts: ${filePath}\n` +
-					`   Replaced: line ${adjustedLine} (1 line)\n` +
-					`   Result: 1 new lines` +
+					`   Replaced: lines ${adjustedStartLine}-${adjustedEndLine} (${linesToModify} lines)\n` +
+					`   Result: ${newContentLines.length} new lines` +
 					(smartBoundaries.extended
 						? `\n   📍 Context auto-extended to show complete code block (lines ${contextStart}-${finalContextEnd})`
-						: '') +
-					`\n\n⚠️ 注意:此单行编辑工具仅适用于特殊单符号或单行替换修改场景.对于接下来的编辑,请优先使用 filesystem-edit_search 工具.`,
+						: ''),
 				oldContent,
 				newContent: finalContextContent,
 				replacedLines: replacedContent,
 				contextStartLine: contextStart,
 				contextEndLine: finalContextEnd,
 				totalLines: finalTotalLines,
-				linesModified: 1,
+				linesModified: linesToModify,
 				structureAnalysis,
 			};
 
@@ -1874,7 +1885,23 @@ export class FilesystemMCPService {
 				);
 			}
 
-			// HTML tag warnings removed (precheck simplified; future rule can re-add if needed)
+			// Check HTML tags
+			if (structureAnalysis.htmlTags && !structureAnalysis.htmlTags.balanced) {
+				if (structureAnalysis.htmlTags.unclosedTags.length > 0) {
+					structureWarnings.push(
+						`Unclosed HTML tags: ${structureAnalysis.htmlTags.unclosedTags.join(
+							', ',
+						)}`,
+					);
+				}
+				if (structureAnalysis.htmlTags.unopenedTags.length > 0) {
+					structureWarnings.push(
+						`Unopened closing tags: ${structureAnalysis.htmlTags.unopenedTags.join(
+							', ',
+						)}`,
+					);
+				}
+			}
 
 			// Check indentation
 			if (structureAnalysis.indentationWarnings.length > 0) {
@@ -2072,7 +2099,7 @@ export const mcpTools = [
 	{
 		name: 'filesystem-edit_search',
 		description:
-			'最优先的文件编辑工具 - MUST用于大多数编辑操作:使用智能模糊匹配进行搜索和替换.**关键路径要求**:(1) filePath 参数是必需的 - 必须是有效的非空字符串或数组,切勿使用 undefined/null/空字符串,(2) 使用搜索结果或用户输入中的确切文件路径 - 切勿使用像 "path/to/file" 这样的占位符,(3) 如果不确定路径,请先使用搜索工具找到正确的文件.(3)replaceContent中别漏写空白符**支持批量编辑**:传入 (1) 带有搜索/替换单个文件,(2) 带有统一搜索/替换的文件路径数组,或 (3) 针对每个文件编辑的包含 {path, searchContent, replaceContent, occurrence?} 的数组.**代码安全的关键工作流程**:(1) 使用搜索工具 (codebase-search 或 ACE 工具) 定位代码,(2) 必须使用 filesystem-read 来识别完整的代码块边界(函数/类/if 等必须从开头到闭合大括号;Python/YAML 必须包含完整的缩进块等),(3) 复制完整的代码块(不带行号),(4) 验证边界是否完整(括号/标签/缩进匹配),(5) **预检查**:在执行替换前,会对 searchContent/replaceContent 进行结构预检查(括号平衡;对.py等文件做缩进边界一致性检查).若不通过会直接拒绝.若必须特殊编辑某一行的单个符号,可改用 filesystem-edit.**批量编辑示例**:filePath=[{path:"a.ts", searchContent:"old1", replaceContent:"new1"}, {path:"b.ts", searchContent:"old2", replaceContent:"new2"}]',
+			'RECOMMENDED for most edits: Search-and-replace with SMART FUZZY MATCHING. **CRITICAL PATH REQUIREMENTS**: (1) filePath parameter is REQUIRED - MUST be a valid non-empty string or array, never use undefined/null/empty string, (2) Use EXACT file paths from search results or user input - never use placeholders like "path/to/file", (3) If uncertain about path, use search tools first to find the correct file. **SUPPORTS BATCH EDITING**: Pass (1) single file with search/replace, (2) array of file paths with unified search/replace, or (3) array of {path, searchContent, replaceContent, occurrence?} for per-file edits. **CRITICAL WORKFLOW FOR CODE SAFETY - COMPLETE BOUNDARIES REQUIRED**: (1) Use search tools (codebase-search or ACE tools) to locate code, (2) MUST use filesystem-read to identify COMPLETE code boundaries with ALL closing pairs: entire function from declaration to final closing brace `}`, complete HTML/XML/JSX tags from opening `<tag>` to closing `</tag>`, full code blocks with ALL matching brackets/braces/parentheses, (3) Copy the COMPLETE code block (without line numbers) - verify you have captured ALL opening and closing symbols, (4) MANDATORY verification: Count and match ALL pairs - every `{` must have `}`, every `(` must have `)`, every `[` must have `]`, every `<tag>` must have `</tag>`, (5) Use THIS tool only after verification passes. **ABSOLUTE PROHIBITIONS**: NEVER edit partial functions (missing closing brace), NEVER edit incomplete markup (missing closing tag), NEVER edit partial code blocks (unmatched brackets), NEVER copy line numbers from filesystem-read output. **WHY USE THIS**: No line tracking needed, auto-handles spacing/tabs differences, finds best fuzzy match even with whitespace changes, safer than line-based editing. **SMART MATCHING**: Uses similarity algorithm to find code even if indentation/spacing differs from your search string. Automatically corrects over-escaped content. If multiple matches found, selects best match first (highest similarity score). **COMMON FATAL ERRORS TO AVOID**: Using invalid/empty file paths, modifying only part of a function (missing closing brace `}`), incomplete markup tags (HTML/Vue/JSX missing `</tag>`), partial code blocks (unmatched `{`, `}`, `(`, `)`, `[`, `]`), copying line numbers from filesystem-read output. You MUST include complete syntactic units with ALL opening/closing pairs verified and matched. **BATCH EXAMPLE**: filePath=[{path:"a.ts", searchContent:"old1", replaceContent:"new1"}, {path:"b.ts", searchContent:"old2", replaceContent:"new2"}]',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -2105,7 +2132,7 @@ export const mcpTools = [
 									},
 									replaceContent: {
 										type: 'string',
-										description: 'New content to replace with,注意空白符别漏写',
+										description: 'New content to replace with',
 									},
 									occurrence: {
 										type: 'number',
@@ -2129,7 +2156,7 @@ export const mcpTools = [
 				replaceContent: {
 					type: 'string',
 					description:
-						'New content to replace with (for single file or unified mode),注意空白符别漏写',
+						'New content to replace with (for single file or unified mode)',
 				},
 				occurrence: {
 					type: 'number',
@@ -2143,30 +2170,75 @@ export const mcpTools = [
 					default: 8,
 				},
 			},
-			required: ['filePath', 'searchContent', 'replaceContent'],
+			required: ['filePath'],
 		},
 	},
 	{
 		name: 'filesystem-edit',
 		description:
-			'单行替换工具 - ⚠️ 警告:此工具受到严格限制,应仅在绝对必要时使用.使用限制:(1) 仅用于单个符号的单行替换编辑(删除单边大括号、添加单边分号等),(2) 不适用于多行编辑或代码块,(3) 不适用于批量编辑多个文件.何时使用:仅当搜索-替换工具无法处理特定情况时(例如:单个符号修改).对于所有其他情况:请使用 filesystem-edit_search - 更加安全且推荐使用.关键路径要求:(1) filePath 参数必须是有效的非空字符串,切勿使用 undefined/null/空字符串,(2) 使用搜索结果或用户输入中的确切文件路径 - 切勿使用像 "path/to/file" 这样的占位符,(3) 如果不确定路径,请先使用搜索工具找到正确的文件.参数:1.filePath-字符串,仅限单个文件2.line-数字,仅限单行3.newContent-字符串,新行内容-注意空白符别漏写-可用空字符串替换某行,取得清空该行的效果-不支持`\\n`换行符!需避免的常见错误:多行编辑(不支持),批量编辑(不支持),无效/空的文件路径.请务必先使用 filesystem-read 进行验证.**⚠️ 不可并行调用**:此工具不支持并行多次调用,必须每次单独调用.每次编辑完成后,必须立即使用 filesystem-read 重读文件内容,以获取最新的行号,确保后续编辑操作使用正确的行号.',
+			'Line-based editing for precise control. **CRITICAL PATH REQUIREMENTS**: (1) filePath parameter is REQUIRED - MUST be a valid non-empty string or array, never use undefined/null/empty string, (2) Use EXACT file paths from search results or user input - never use placeholders like "path/to/file", (3) If uncertain about path, use search tools first to find the correct file. **SUPPORTS BATCH EDITING**: Pass (1) single file with line range, (2) array of file paths with unified line range, or (3) array of {path, startLine, endLine, newContent} for per-file edits. **WHEN TO USE**: (1) Adding new code sections, (2) Deleting specific line ranges, (3) When search-replace not suitable. **CRITICAL WORKFLOW FOR CODE SAFETY - COMPLETE BOUNDARIES REQUIRED**: (1) Use search tools (codebase-search or ACE tools) to locate area, (2) MUST use filesystem-read to identify COMPLETE code boundaries with ALL closing pairs: for functions - include opening declaration to final closing brace `}`; for HTML/XML/JSX markup tags - include opening `<tag>` to closing `</tag>`; for code blocks - include ALL matching braces/brackets/parentheses, (3) MANDATORY verification before editing: count opening and closing symbols in your target range - every `{` must have matching `}`, every `(` must have `)`, every `[` must have `]`, every `<tag>` must have `</tag>`, verify indentation levels are consistent, (4) Use THIS tool with exact startLine/endLine ONLY after verification passes. **ABSOLUTE PROHIBITIONS**: NEVER edit line range that stops mid-function (missing closing brace `}`), NEVER edit partial markup tags (missing `</tag>`), NEVER edit incomplete code blocks (unmatched brackets), NEVER edit without verifying boundaries first. **BEST PRACTICE**: Keep edits small (under 15 lines recommended) for better accuracy. For larger changes, make multiple parallel edits to non-overlapping sections instead of one large edit. **RECOMMENDATION**: For modifying existing code, use filesystem-edit_search - safer and no line tracking needed. **WHY LINE-BASED IS RISKIER**: Line numbers can shift during editing, making it easy to target wrong lines. Search-replace avoids this by matching actual content. **COMMON FATAL ERRORS TO AVOID**: Using invalid/empty file paths, line range stops mid-function (missing closing brace `}`), partial markup tags (missing `</tag>`), incomplete code blocks (unmatched `{`, `}`, `(`, `)`, `[`, `]`), targeting wrong lines after file changes, not verifying boundaries with filesystem-read first. You MUST verify complete syntactic units with ALL opening/closing pairs matched. **BATCH EXAMPLE**: filePath=[{path:"a.ts", startLine:10, endLine:20, newContent:"..."}, {path:"b.ts", startLine:50, endLine:60, newContent:"..."}]',
 		inputSchema: {
 			type: 'object',
 			properties: {
 				filePath: {
-					type: 'string',
-					description:
-						'Path to a single file to edit (MUST be string, not array)',
+					oneOf: [
+						{
+							type: 'string',
+							description: 'Path to a single file to edit',
+						},
+						{
+							type: 'array',
+							items: {
+								type: 'string',
+							},
+							description:
+								'Array of file paths (uses unified startLine/endLine/newContent from top-level)',
+						},
+						{
+							type: 'array',
+							items: {
+								type: 'object',
+								properties: {
+									path: {
+										type: 'string',
+										description: 'File path',
+									},
+									startLine: {
+										type: 'number',
+										description: 'Starting line number (1-indexed, inclusive)',
+									},
+									endLine: {
+										type: 'number',
+										description: 'Ending line number (1-indexed, inclusive)',
+									},
+									newContent: {
+										type: 'string',
+										description:
+											'New content to replace lines (without line numbers)',
+									},
+								},
+								required: ['path', 'startLine', 'endLine', 'newContent'],
+							},
+							description:
+								'Array of edit config objects for per-file line-based edits',
+						},
+					],
+					description: 'File path(s) to edit',
 				},
-				line: {
+				startLine: {
 					type: 'number',
 					description:
-						'CRITICAL: Line number to edit (1-indexed, single line only). MUST match filesystem-read output.',
+						'CRITICAL: Starting line number (1-indexed, inclusive) for single file or unified mode. MUST match filesystem-read output.',
+				},
+				endLine: {
+					type: 'number',
+					description:
+						'CRITICAL: Ending line number (1-indexed, inclusive) for single file or unified mode. Keep edits small (under 15 lines recommended).',
 				},
 				newContent: {
 					type: 'string',
 					description:
-						'New content for the line (CRITICAL: Do NOT include line numbers. Ensure proper indentation),注意空白符别漏写',
+						'New content to replace specified lines (for single file or unified mode). CRITICAL: Do NOT include line numbers. Ensure proper indentation.',
 				},
 				contextLines: {
 					type: 'number',
@@ -2175,7 +2247,7 @@ export const mcpTools = [
 					default: 8,
 				},
 			},
-			required: ['filePath', 'line', 'newContent'],
+			required: ['filePath'],
 		},
 	},
 	{

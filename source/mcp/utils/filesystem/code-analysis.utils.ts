@@ -4,130 +4,14 @@
 
 import type {StructureAnalysis} from '../../types/filesystem.types.js';
 
-function stripStringsAndCommentsForBalance(content: string): string {
-	return content
-		.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g, '""')
-		.replace(/\/\/.*$/gm, '')
-		.replace(/\/\*[\s\S]*?\*\//g, '');
-}
-
-function countPairs(
-	cleanContent: string,
-	openToken: string,
-	closeToken: string,
-): {open: number; close: number; balanced: boolean} {
-	const open = (cleanContent.match(new RegExp(`\\${openToken}`, 'g')) || [])
-		.length;
-	const close = (cleanContent.match(new RegExp(`\\${closeToken}`, 'g')) || [])
-		.length;
-	return {open, close, balanced: open === close};
-}
-
-type PairCount = {open: number; close: number; balanced: boolean};
-
-type QuoteBalance = {
-	single: PairCount;
-	double: PairCount;
-	backtick: PairCount;
-};
-
-type CommentBalance = {
-	block: PairCount;
-};
-
-function analyzeQuoteBalance(content: string): QuoteBalance {
-	let singleCount = 0;
-	let doubleCount = 0;
-	let backtickCount = 0;
-
-	let inSingle = false;
-	let inDouble = false;
-	let inBacktick = false;
-	let inLineComment = false;
-	let inBlockComment = false;
-
-	for (let i = 0; i < content.length; i++) {
-		const ch = content[i];
-		const next = i + 1 < content.length ? content[i + 1] : '';
-
-		if (inLineComment) {
-			if (ch === '\n') inLineComment = false;
-			continue;
-		}
-		if (inBlockComment) {
-			if (ch === '*' && next === '/') {
-				inBlockComment = false;
-				i++;
-			}
-			continue;
-		}
-
-		if (!inSingle && !inDouble && !inBacktick) {
-			if (ch === '/' && next === '/') {
-				inLineComment = true;
-				i++;
-				continue;
-			}
-			if (ch === '/' && next === '*') {
-				inBlockComment = true;
-				i++;
-				continue;
-			}
-		}
-
-		if (ch === '\\' && (inSingle || inDouble || inBacktick)) {
-			i++;
-			continue;
-		}
-
-		if (ch === "'" && !inDouble && !inBacktick) {
-			singleCount++;
-			inSingle = !inSingle;
-			continue;
-		}
-		if (ch === '"' && !inSingle && !inBacktick) {
-			doubleCount++;
-			inDouble = !inDouble;
-			continue;
-		}
-		if (ch === '`' && !inSingle && !inDouble) {
-			backtickCount++;
-			inBacktick = !inBacktick;
-			continue;
-		}
-	}
-
-	return {
-		single: {
-			open: singleCount,
-			close: singleCount,
-			balanced: singleCount % 2 === 0,
-		},
-		double: {
-			open: doubleCount,
-			close: doubleCount,
-			balanced: doubleCount % 2 === 0,
-		},
-		backtick: {
-			open: backtickCount,
-			close: backtickCount,
-			balanced: backtickCount % 2 === 0,
-		},
-	};
-}
-
-function analyzeCommentBalance(content: string): CommentBalance {
-	const noStrings = content.replace(
-		/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g,
-		'""',
-	);
-	const open = (noStrings.match(/\/\*/g) || []).length;
-	const close = (noStrings.match(/\*\//g) || []).length;
-	return {block: {open, close, balanced: open === close}};
-}
-export function analyzeContentBalance(
-	content: string,
+/**
+ * Analyze code structure for balance and completeness
+ * Helps AI identify bracket mismatches, unclosed tags, and boundary issues
+ */
+export function analyzeCodeStructure(
+	_content: string,
 	filePath: string,
+	editedLines: string[],
 ): StructureAnalysis {
 	const analysis: StructureAnalysis = {
 		bracketBalance: {
@@ -138,32 +22,82 @@ export function analyzeContentBalance(
 		indentationWarnings: [],
 	};
 
-	const cleanContent = stripStringsAndCommentsForBalance(content);
-
-	analysis.bracketBalance.curly = countPairs(cleanContent, '{', '}');
-	analysis.bracketBalance.round = countPairs(cleanContent, '(', ')');
-	analysis.bracketBalance.square = countPairs(cleanContent, '[', ']');
-
-	// Quote / block comment pair analysis (only for code-like files to avoid false positives)
-	const isCodeLikeFile =
-		/\.(c|cc|cpp|cs|go|java|js|jsx|mjs|cjs|ts|tsx|php|rs|swift|kt|kts|py|rb|lua|html|vue|svelte|css|scss|less|json|jsonc)$/i.test(
-			filePath,
-		);
-	if (isCodeLikeFile) {
-		analysis.quoteBalance = analyzeQuoteBalance(content);
-		analysis.commentBalance = analyzeCommentBalance(content);
-	}
-
-	return analysis;
-}
-
-export function analyzeCodeStructure(
-	_content: string,
-	filePath: string,
-	editedLines: string[],
-): StructureAnalysis {
+	// Count brackets in the edited content
 	const editedContent = editedLines.join('\n');
-	const analysis = analyzeContentBalance(editedContent, filePath);
+
+	// Remove string literals and comments to avoid false positives
+	const cleanContent = editedContent
+		.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g, '""') // Remove strings
+		.replace(/\/\/.*$/gm, '') // Remove single-line comments
+		.replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
+
+	// Count brackets
+	analysis.bracketBalance.curly.open = (cleanContent.match(/\{/g) || []).length;
+	analysis.bracketBalance.curly.close = (
+		cleanContent.match(/\}/g) || []
+	).length;
+	analysis.bracketBalance.curly.balanced =
+		analysis.bracketBalance.curly.open === analysis.bracketBalance.curly.close;
+
+	analysis.bracketBalance.round.open = (cleanContent.match(/\(/g) || []).length;
+	analysis.bracketBalance.round.close = (
+		cleanContent.match(/\)/g) || []
+	).length;
+	analysis.bracketBalance.round.balanced =
+		analysis.bracketBalance.round.open === analysis.bracketBalance.round.close;
+
+	analysis.bracketBalance.square.open = (
+		cleanContent.match(/\[/g) || []
+	).length;
+	analysis.bracketBalance.square.close = (
+		cleanContent.match(/\]/g) || []
+	).length;
+	analysis.bracketBalance.square.balanced =
+		analysis.bracketBalance.square.open ===
+		analysis.bracketBalance.square.close;
+
+	// HTML/JSX tag analysis (for .html, .jsx, .tsx, .vue files)
+	const isMarkupFile = /\.(html|jsx|tsx|vue)$/i.test(filePath);
+	if (isMarkupFile) {
+		const tagPattern = /<\/?([a-zA-Z][a-zA-Z0-9-]*)[^>]*>/g;
+		const selfClosingPattern = /<[a-zA-Z][a-zA-Z0-9-]*[^>]*\/>/g;
+
+		// Remove self-closing tags
+		const contentWithoutSelfClosing = cleanContent.replace(
+			selfClosingPattern,
+			'',
+		);
+
+		const tags: string[] = [];
+		const unclosedTags: string[] = [];
+		const unopenedTags: string[] = [];
+
+		let match;
+		while ((match = tagPattern.exec(contentWithoutSelfClosing)) !== null) {
+			const isClosing = match[0]?.startsWith('</');
+			const tagName = match[1]?.toLowerCase();
+
+			if (!tagName) continue;
+
+			if (isClosing) {
+				const lastOpenTag = tags.pop();
+				if (!lastOpenTag || lastOpenTag !== tagName) {
+					unopenedTags.push(tagName);
+					if (lastOpenTag) tags.push(lastOpenTag); // Put it back
+				}
+			} else {
+				tags.push(tagName);
+			}
+		}
+
+		unclosedTags.push(...tags);
+
+		analysis.htmlTags = {
+			unclosedTags,
+			unopenedTags,
+			balanced: unclosedTags.length === 0 && unopenedTags.length === 0,
+		};
+	}
 
 	// Check indentation consistency
 	const lines = editedContent.split('\n');
@@ -209,48 +143,10 @@ export function analyzeCodeStructure(
 		}
 	}
 
+	// Note: Boundary checking removed - AI should be free to edit partial code blocks
+	// The bracket balance check above is sufficient for detecting real issues
+
 	return analysis;
-}
-
-function getFirstNonEmptyLine(lines: string[]): string | undefined {
-	return lines.find(line => line.trim().length > 0);
-}
-
-function getLastNonEmptyLine(lines: string[]): string | undefined {
-	for (let i = lines.length - 1; i >= 0; i--) {
-		const line = lines[i];
-		if (line && line.trim().length > 0) return line;
-	}
-	return undefined;
-}
-
-export function checkEdgeIndentationConsistency(
-	filePath: string,
-	content: string,
-): {ok: boolean; message?: string} {
-	if (!/\.(py|yml|yaml)$/i.test(filePath)) return {ok: true};
-
-	const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-	const first = getFirstNonEmptyLine(lines);
-	const last = getLastNonEmptyLine(lines);
-	if (!first || !last) return {ok: true};
-
-	const firstIndent = first.match(/^(\s*)/)?.[1] || '';
-	const lastIndent = last.match(/^(\s*)/)?.[1] || '';
-
-	// only enforce for multi-line blocks
-	if (lines.length >= 2 && firstIndent !== lastIndent) {
-		return {
-			ok: false,
-			message: `缩进边界不一致：首行缩进(${JSON.stringify(
-				firstIndent,
-			)}) != 末行缩进(${JSON.stringify(
-				lastIndent,
-			)}). 对于 ${filePath} 这类缩进敏感文件，请以“完整代码块/完整 YAML 片段”为最小单位进行替换。`,
-		};
-	}
-
-	return {ok: true};
 }
 
 /**
