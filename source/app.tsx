@@ -30,7 +30,7 @@ import {onNavigate} from './hooks/integration/useGlobalNavigation.js';
 import {useTerminalSize} from './hooks/ui/useTerminalSize.js';
 import {I18nProvider} from './i18n/index.js';
 import {ThemeProvider} from './ui/contexts/ThemeContext.js';
-import {TerminalSizeProvider} from './ui/contexts/TerminalSizeContext.js';
+
 import {gracefulExit} from './utils/core/processManager.js';
 import {loadConfig} from './utils/config/apiConfig.js';
 
@@ -302,15 +302,13 @@ export default function App({
 		return (
 			<I18nProvider>
 				<ThemeProvider>
-					<TerminalSizeProvider>
-						<Suspense fallback={loadingFallback}>
-							<HeadlessModeScreen
-								prompt={headlessPrompt}
-								sessionId={headlessSessionId}
-								onComplete={() => gracefulExit()}
-							/>
-						</Suspense>
-					</TerminalSizeProvider>
+					<Suspense fallback={loadingFallback}>
+						<HeadlessModeScreen
+							prompt={headlessPrompt}
+							sessionId={headlessSessionId}
+							onComplete={() => gracefulExit()}
+						/>
+					</Suspense>
 				</ThemeProvider>
 			</I18nProvider>
 		);
@@ -321,9 +319,7 @@ export default function App({
 		return (
 			<I18nProvider>
 				<ThemeProvider>
-					<TerminalSizeProvider>
-						<ShowTaskListWrapper />
-					</TerminalSizeProvider>
+					<ShowTaskListWrapper />
 				</ThemeProvider>
 			</I18nProvider>
 		);
@@ -332,14 +328,12 @@ export default function App({
 	return (
 		<I18nProvider>
 			<ThemeProvider>
-				<TerminalSizeProvider>
-					<AppContent
-						version={version}
-						skipWelcome={skipWelcome}
-						autoResume={autoResume}
-						enableYolo={enableYolo}
-					/>
-				</TerminalSizeProvider>
+				<AppContent
+					version={version}
+					skipWelcome={skipWelcome}
+					autoResume={autoResume}
+					enableYolo={enableYolo}
+				/>
 			</ThemeProvider>
 		</I18nProvider>
 	);

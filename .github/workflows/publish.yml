@@ -58,9 +58,8 @@ jobs:
             
             ### What's New
 
-            - Fix the BUG where the TODO List display is missing
-            - Add a new /review mode
-            - Add two Diffviewer display modes
+            - Fix some bugs
+            - Make minor adjustments to the UI
                       
             ### Installation
             ```bash

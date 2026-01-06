@@ -315,6 +315,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 
 				// Check if indexing is needed
 				const progress = await agent.getProgress();
+
+				// If indexing is already completed, just start watcher for real-time updates
+				// Don't run incremental index on mount as it blocks input
 				if (progress.status === 'completed' && progress.totalChunks > 0) {
 					agent.startWatching(progressData => {
 						setCodebaseProgress({
@@ -340,7 +343,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						}
 					});
 					setWatcherEnabled(true);
-					setCodebaseIndexing(false); // Ensure loading UI is hidden
 					return;
 				}
 
