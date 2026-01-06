@@ -15,6 +15,7 @@ export type PanelState = {
 	showSkillsCreation: boolean;
 	showWorkingDirPanel: boolean;
 	showPermissionsPanel: boolean;
+	showReviewCommitPanel: boolean;
 	showProfilePanel: boolean;
 	profileSelectedIndex: number;
 	profileSearchQuery: string;
@@ -30,6 +31,7 @@ export type PanelActions = {
 	setShowSkillsCreation: Dispatch<SetStateAction<boolean>>;
 	setShowWorkingDirPanel: Dispatch<SetStateAction<boolean>>;
 	setShowPermissionsPanel: Dispatch<SetStateAction<boolean>>;
+	setShowReviewCommitPanel: Dispatch<SetStateAction<boolean>>;
 	setShowProfilePanel: Dispatch<SetStateAction<boolean>>;
 	setProfileSelectedIndex: Dispatch<SetStateAction<number>>;
 	setProfileSearchQuery: Dispatch<SetStateAction<string>>;
@@ -53,6 +55,7 @@ export function usePanelState(): PanelState & PanelActions {
 	const [showSkillsCreation, setShowSkillsCreation] = useState(false);
 	const [showWorkingDirPanel, setShowWorkingDirPanel] = useState(false);
 	const [showPermissionsPanel, setShowPermissionsPanel] = useState(false);
+	const [showReviewCommitPanel, setShowReviewCommitPanel] = useState(false);
 	const [showProfilePanel, setShowProfilePanel] = useState(false);
 	const [profileSelectedIndex, setProfileSelectedIndex] = useState(0);
 	const [profileSearchQuery, setProfileSearchQuery] = useState('');
@@ -79,6 +82,7 @@ export function usePanelState(): PanelState & PanelActions {
 			showSkillsCreation ||
 			showWorkingDirPanel ||
 			showPermissionsPanel ||
+			showReviewCommitPanel ||
 			showProfilePanel ||
 			options.hasPendingRollback ||
 			options.hasPendingToolConfirmation ||
@@ -154,6 +158,11 @@ export function usePanelState(): PanelState & PanelActions {
 			return true;
 		}
 
+		if (showReviewCommitPanel) {
+			setShowReviewCommitPanel(false);
+			return true;
+		}
+
 		if (showProfilePanel) {
 			setShowProfilePanel(false);
 			return true;
@@ -172,6 +181,7 @@ export function usePanelState(): PanelState & PanelActions {
 			showSkillsCreation ||
 			showWorkingDirPanel ||
 			showPermissionsPanel ||
+			showReviewCommitPanel ||
 			showProfilePanel
 		);
 	};
@@ -186,6 +196,7 @@ export function usePanelState(): PanelState & PanelActions {
 		showSkillsCreation,
 		showWorkingDirPanel,
 		showPermissionsPanel,
+		showReviewCommitPanel,
 		showProfilePanel,
 		profileSelectedIndex,
 		profileSearchQuery,
@@ -199,6 +210,7 @@ export function usePanelState(): PanelState & PanelActions {
 		setShowSkillsCreation,
 		setShowWorkingDirPanel,
 		setShowPermissionsPanel,
+		setShowReviewCommitPanel,
 		setShowProfilePanel,
 		setProfileSelectedIndex,
 		setProfileSearchQuery,

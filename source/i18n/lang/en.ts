@@ -486,9 +486,7 @@ export const en: TranslationKeys = {
 			ide: 'Connect to VSCode editor and sync context',
 			compact: 'Compress conversation history using compact model',
 			home: 'Return to welcome screen to modify settings',
-			review:
-				'Review git changes and identify potential issues. Support: /review [optional note]',
-
+			review:'Review changes in the working tree and selected commits. Opens a picker panel where you can select items and add notes.',
 			usage: 'View token usage statistics with interactive charts',
 			export: 'Export chat conversation to text file with save dialog',
 			custom: 'Add custom command and save to ~/.snow/commands',
@@ -525,6 +523,21 @@ export const en: TranslationKeys = {
 		activeLabel: '(active)',
 		searchLabel: 'Search:',
 		noResults: 'No matching profiles found',
+	},
+	reviewCommitPanel: {
+		title: 'Review: Select Changes',
+		loadingCommits: 'Loading commits...',
+		stagedLabel: 'Staged changes',
+		unstagedLabel: 'Unstaged changes',
+		filesLabel: 'files',
+		hintEscClose: 'Press ESC to close',
+		hintNavigation:
+			'↑/↓ navigate · Space toggle · Enter confirm · Type to add notes',
+		loadingMoreSuffix: '(loading more...)',
+		notesLabel: 'Notes',
+		notesOptional: '(optional)',
+		selectedLabel: 'Selected',
+		errorSelectAtLeastOne: 'Please select at least one item to review.',
 	},
 	hooks: {
 		pressCtrlCAgain: 'Press Ctrl+C again to exit',
@@ -738,6 +751,16 @@ export const en: TranslationKeys = {
 		compressionInProgress: 'Compressing conversation history...',
 		compressionSuccess: 'Compression complete',
 		compressionFailed: '✗ Compression failed: {error}',
+		// Review
+		reviewStartTitle: 'Preparing to start code review',
+		reviewSelectedSummary:
+			'Selected: {workingTreePrefix}{commitCount} commit(s)',
+		reviewSelectedWorkingTreePrefix: 'Working Tree + ',
+		reviewCommitsLine: 'Commits: {commitList}{moreSuffix}',
+		reviewCommitsMoreSuffix: ' and {commitCount} total',
+		reviewNotesLine: 'Notes: {notes}',
+		reviewGenerating: 'Generating diff/patch and requesting model review...',
+		reviewInterruptHint: 'Tip: press ESC to interrupt',
 		// Retry
 		retryAttempt: 'Retry {current}/{max}',
 		retryIn: 'in {seconds}s...',

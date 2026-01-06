@@ -21,7 +21,6 @@ import ChatHeader from '../components/special/ChatHeader.js';
 
 import {HookErrorDisplay} from '../components/special/HookErrorDisplay.js';
 import type {HookErrorDetails} from '../../utils/execution/hookResultHandler.js';
-import {reloadConfig} from '../../utils/config/apiConfig.js';
 
 import PanelsManager from '../components/panels/PanelsManager.js';
 import {
@@ -37,7 +36,6 @@ import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
 import {getSimpleMode} from '../../utils/config/themeConfig.js';
 import {
 	getActiveProfileName,
-	switchProfile,
 	getAllProfiles,
 } from '../../utils/config/configManager.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
@@ -191,7 +189,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const codebaseAgentRef = useRef<CodebaseIndexAgent | null>(null);
 
 	// Profile state for quick switch
-	const [currentProfileName, setCurrentProfileName] = useState(() => {
+	const [currentProfileName] = useState(() => {
 		const profiles = getAllProfiles();
 		const activeName = getActiveProfileName();
 		const profile = profiles.find(p => p.name === activeName);
@@ -731,6 +729,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		handleSessionPanelSelect,
 		handleQuit,
 		handleReindexCodebase,
+		handleReviewCommitConfirm,
 	} = useChatLogic({
 		messages,
 		setMessages,
@@ -759,6 +758,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setPendingUserQuestion,
 		initializeFromSession,
 		setShowSessionPanel: panelState.setShowSessionPanel,
+		setShowReviewCommitPanel: panelState.setShowReviewCommitPanel,
 		exitApp: exit,
 		codebaseAgentRef,
 		setCodebaseIndexing,
@@ -782,6 +782,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setShowCustomCommandConfig: panelState.setShowCustomCommandConfig,
 		setShowSkillsCreation: panelState.setShowSkillsCreation,
 		setShowWorkingDirPanel: panelState.setShowWorkingDirPanel,
+		setShowReviewCommitPanel: panelState.setShowReviewCommitPanel,
 		setShowPermissionsPanel: panelState.setShowPermissionsPanel,
 		onSwitchProfile: handleSwitchProfile,
 		setShowBackgroundPanel: backgroundProcesses.enablePanel,
@@ -1096,23 +1097,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		panelState.setProfileSearchQuery('');
 	}
 
-	// Handle profile selection
-	const handleProfileSelect = (profileName: string) => {
-		// Switch to selected profile
-		switchProfile(profileName);
-
-		// Reload config to pick up new profile's configuration
-		reloadConfig();
-
-		// Update display name
-		const profiles = getAllProfiles();
-		const profile = profiles.find(p => p.name === profileName);
-		setCurrentProfileName(profile?.displayName || profileName);
-
-		// Close panel
-		setShowProfilePanel(false);
-		setProfileSelectedIndex(0);
-	};
+	// Handle profile selection - delegated to panelState
+	const handleProfileSelect = panelState.handleProfileSelect;
 
 	// Show warning if terminal is too small
 	if (terminalHeight < MIN_TERMINAL_HEIGHT) {
@@ -1426,6 +1412,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						onSwitchProfile={handleSwitchProfile}
 						handleProfileSelect={handleProfileSelect}
 						handleHistorySelect={handleHistorySelect}
+						showReviewCommitPanel={panelState.showReviewCommitPanel}
+						setShowReviewCommitPanel={panelState.setShowReviewCommitPanel}
+						onReviewCommitConfirm={handleReviewCommitConfirm}
 						disabled={
 							!!pendingToolConfirmation ||
 							!!bashSensitiveCommand ||

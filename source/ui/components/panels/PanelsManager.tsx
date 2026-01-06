@@ -36,6 +36,7 @@ type PanelsManagerProps = {
 	setShowWorkingDirPanel: (show: boolean) => void;
 	setShowPermissionsPanel: (show: boolean) => void;
 	handleSessionPanelSelect: (sessionId: string) => Promise<void>;
+
 	onCustomCommandSave: (
 		name: string,
 		command: string,
