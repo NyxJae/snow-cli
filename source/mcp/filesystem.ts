@@ -1609,19 +1609,23 @@ export class FilesystemMCPService {
 				})
 				.join('\n');
 
-			// Replace the specified line
-			const newContentLines = newContent.split('\n');
+			// Check for newline characters - single line editing only
+			if (newContent.includes('\n')) {
+				throw new Error(
+					'⚠️ filesystem-edit 不支持多行编辑. newContent 中不能包含换行符 (\\n). ' +
+						'这会导致文件行号变化,影响后续编辑操作. ' +
+						'如需多行编辑,请使用 filesystem-edit_search 工具.',
+				);
+			}
+
+			// Replace the specified line (single line only, no newlines allowed)
 			const beforeLines = lines.slice(0, adjustedLine - 1);
 			const afterLines = lines.slice(adjustedLine);
-			const modifiedLines = [...beforeLines, ...newContentLines, ...afterLines];
+			const modifiedLines = [...beforeLines, newContent, ...afterLines];
 
-			// Calculate new context range
+			// Total lines unchanged since we're replacing exactly one line
 			const newTotalLines = modifiedLines.length;
-			const lineDifference = newContentLines.length - 1;
-			const newContextEnd = Math.min(
-				newTotalLines,
-				contextEnd + lineDifference,
-			);
+			const newContextEnd = Math.min(newTotalLines, contextEnd);
 
 			// Extract new content for context with line numbers (compress whitespace)
 			const newContextLines = modifiedLines.slice(
@@ -1653,8 +1657,8 @@ export class FilesystemMCPService {
 				try {
 					// Use Prettier API for better performance (avoids npx overhead)
 					const prettierConfig = await prettier.resolveConfig(fullPath);
-					const newContent = modifiedLines.join('\n');
-					const formattedContent = await prettier.format(newContent, {
+					const contentToFormat = modifiedLines.join('\n');
+					const formattedContent = await prettier.format(contentToFormat, {
 						filepath: fullPath,
 						...prettierConfig,
 					});
@@ -1665,10 +1669,7 @@ export class FilesystemMCPService {
 					finalTotalLines = finalLines.length;
 
 					// Recalculate the context end line based on formatted content
-					finalContextEnd = Math.min(
-						finalTotalLines,
-						contextStart + (newContextEnd - contextStart),
-					);
+					finalContextEnd = Math.min(finalTotalLines, contextEnd);
 
 					// Extract formatted content for context (compress whitespace)
 					const formattedContextLines = finalLines.slice(
@@ -1688,10 +1689,7 @@ export class FilesystemMCPService {
 			}
 
 			// Analyze code structure of the edited content (using formatted content if available)
-			const editedContentLines = finalLines.slice(
-				adjustedLine - 1,
-				adjustedLine - 1 + newContentLines.length,
-			);
+			const editedContentLines = [finalLines[adjustedLine - 1] ?? ''];
 			const structureAnalysis = analyzeCodeStructure(
 				finalLines.join('\n'),
 				filePath,
@@ -1717,11 +1715,11 @@ export class FilesystemMCPService {
 				message:
 					`✅ File edited successfully,Please check the edit results and pay attention to code boundary issues to avoid syntax errors caused by missing closed parts: ${filePath}\n` +
 					`   Replaced: line ${adjustedLine} (1 line)\n` +
-					`   Result: ${newContentLines.length} new lines` +
+					`   Result: 1 new lines` +
 					(smartBoundaries.extended
 						? `\n   📍 Context auto-extended to show complete code block (lines ${contextStart}-${finalContextEnd})`
 						: '') +
-					`\n\n⚠️ 注意:此单行编辑工具仅适用于特殊单符号或单行修改场景.对于接下来的编辑,请优先使用 filesystem-edit_search 工具.`,
+					`\n\n⚠️ 注意:此单行编辑工具仅适用于特殊单符号或单行替换修改场景.对于接下来的编辑,请优先使用 filesystem-edit_search 工具.`,
 				oldContent,
 				newContent: finalContextContent,
 				replacedLines: replacedContent,
@@ -2055,7 +2053,7 @@ export const mcpTools = [
 	{
 		name: 'filesystem-edit',
 		description:
-			'⚠️ 警告:此工具受到严格限制,应仅在绝对必要时使用.使用限制:(1) 仅用于单个符号的单行编辑(例如:删除单个大括号、添加分号),(2) 不适用于多行编辑或代码块,(3) 不适用于批量编辑多个文件.何时使用:仅当搜索-替换工具无法处理特定情况时(例如:单个符号修改).对于所有其他情况:请使用 filesystem-edit_search - 更加安全且推荐使用.关键路径要求:(1) filePath 参数必须是有效的非空字符串,切勿使用 undefined/null/空字符串,(2) 使用搜索结果或用户输入中的确切文件路径 - 切勿使用像 "path/to/file" 这样的占位符,(3) 如果不确定路径,请先使用搜索工具找到正确的文件.参数:filePath(字符串,仅限单个文件),line(数字,仅限单行),newContent(字符串,新行内容,注意空白符别漏写).需避免的常见错误:多行编辑(不支持),批量编辑(不支持),无效/空的文件路径.请务必先使用 filesystem-read 进行验证.**⚠️ 不可并行调用**:此工具不支持并行多次调用,必须每次单独调用.每次编辑完成后,必须立即使用 filesystem-read 重读文件内容,以获取最新的行号,确保后续编辑操作使用正确的行号.',
+			'单行替换工具 - ⚠️ 警告:此工具受到严格限制,应仅在绝对必要时使用.使用限制:(1) 仅用于单个符号的单行替换编辑(删除单边大括号、添加单边分号等),(2) 不适用于多行编辑或代码块,(3) 不适用于批量编辑多个文件.何时使用:仅当搜索-替换工具无法处理特定情况时(例如:单个符号修改).对于所有其他情况:请使用 filesystem-edit_search - 更加安全且推荐使用.关键路径要求:(1) filePath 参数必须是有效的非空字符串,切勿使用 undefined/null/空字符串,(2) 使用搜索结果或用户输入中的确切文件路径 - 切勿使用像 "path/to/file" 这样的占位符,(3) 如果不确定路径,请先使用搜索工具找到正确的文件.参数:1.filePath-字符串,仅限单个文件2.line-数字,仅限单行3.newContent-字符串,新行内容-注意空白符别漏写-可用空字符串替换某行,取得清空该行的效果-不支持`\\n`换行符!需避免的常见错误:多行编辑(不支持),批量编辑(不支持),无效/空的文件路径.请务必先使用 filesystem-read 进行验证.**⚠️ 不可并行调用**:此工具不支持并行多次调用,必须每次单独调用.每次编辑完成后,必须立即使用 filesystem-read 重读文件内容,以获取最新的行号,确保后续编辑操作使用正确的行号.',
 		inputSchema: {
 			type: 'object',
 			properties: {
