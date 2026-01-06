@@ -34,10 +34,7 @@ import {
 } from '../../utils/commands/skills.js';
 import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
 import {getSimpleMode} from '../../utils/config/themeConfig.js';
-import {
-	getActiveProfileName,
-	getAllProfiles,
-} from '../../utils/config/configManager.js';
+import {getAllProfiles} from '../../utils/config/configManager.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
 import {useSessionSave} from '../../hooks/session/useSessionSave.js';
 import {useToolConfirmation} from '../../hooks/conversation/useToolConfirmation.js';
@@ -187,14 +184,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		timestamp: number;
 	} | null>(null);
 	const codebaseAgentRef = useRef<CodebaseIndexAgent | null>(null);
-
-	// Profile state for quick switch
-	const [currentProfileName] = useState(() => {
-		const profiles = getAllProfiles();
-		const activeName = getActiveProfileName();
-		const profile = profiles.find(p => p.name === activeName);
-		return profile?.displayName || activeName;
-	});
 
 	// Use custom hooks
 	const streamingState = useStreamingState();
@@ -1097,8 +1086,13 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		panelState.setProfileSearchQuery('');
 	}
 
-	// Handle profile selection - delegated to panelState
-	const handleProfileSelect = panelState.handleProfileSelect;
+	// Handle profile selection - wrap panelState.handleProfileSelect to also close local showProfilePanel
+	const handleProfileSelect = (profileName: string) => {
+		panelState.handleProfileSelect(profileName);
+		// Also close the local showProfilePanel state (fixes state sync issue)
+		setShowProfilePanel(false);
+		setProfileSelectedIndex(0);
+	};
 
 	// Show warning if terminal is too small
 	if (terminalHeight < MIN_TERMINAL_HEIGHT) {
@@ -1467,7 +1461,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						codebaseProgress={codebaseProgress}
 						watcherEnabled={watcherEnabled}
 						fileUpdateNotification={fileUpdateNotification}
-						currentProfileName={currentProfileName}
+						currentProfileName={panelState.currentProfileName}
 						currentAgentName={currentAgentName}
 						isCompressing={isCompressing}
 						compressionError={compressionError}
