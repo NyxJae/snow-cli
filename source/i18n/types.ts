@@ -1162,6 +1162,14 @@ export type TranslationKeys = {
 		invalidPidsStopped: string;
 		autoCleanupHint: string;
 	};
+	// Undo Manager
+	undoManager: {
+		undoFailedEmpty: string;
+		undoSuccess: string;
+		undoFailed: string;
+		unknownError: string;
+		invalidStepsParameter: string;
+	};
 };
 
 import type {Language as Lang} from '../utils/config/languageConfig.js';

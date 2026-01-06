@@ -30,6 +30,8 @@ import {logger} from '../core/logger.js';
 import {resourceMonitor} from '../core/resourceMonitor.js';
 import os from 'os';
 import path from 'path';
+import {getCurrentLanguage} from '../config/languageConfig.js';
+import {translations} from '../../i18n/index.js';
 
 /**
  * Extended Error interface with optional isHookFailure flag
@@ -1407,6 +1409,26 @@ export async function executeMCPTool(
 						args.occurrence,
 						args.contextLines,
 					);
+					break;
+
+				case 'undo':
+					// Validate steps parameter
+					const steps = typeof args.steps === 'number' ? args.steps : 1;
+					if (
+						typeof steps !== 'number' ||
+						steps < 1 ||
+						!Number.isInteger(steps)
+					) {
+						const currentLanguage = getCurrentLanguage();
+						const t = translations[currentLanguage];
+						throw new Error(
+							t.undoManager.invalidStepsParameter.replace(
+								'{value}',
+								String(steps),
+							),
+						);
+					}
+					result = await filesystemService.undo(steps);
 					break;
 
 				default:

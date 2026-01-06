@@ -36,6 +36,7 @@ const GENERAL_TOOLS: string[] = [
 	'notebook-delete',
 	'notebook-list',
 	'filesystem-edit',
+	'filesystem-undo',
 ];
 
 /**

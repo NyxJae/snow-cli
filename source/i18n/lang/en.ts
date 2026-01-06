@@ -1225,4 +1225,12 @@ export const en: TranslationKeys = {
 		autoCleanupHint:
 			'These files will be automatically cleaned on next stop operation',
 	},
+	undoManager: {
+		undoFailedEmpty: '❌ Undo failed. No edits available to undo.',
+		undoSuccess: '✅ Undo successful. Reverted {steps} edit(s).',
+		undoFailed: '❌ Undo failed. {error}',
+		unknownError: 'Unknown error',
+		invalidStepsParameter:
+			"Invalid parameter 'steps' for filesystem-undo tool. Must be a positive integer. Received: {value}",
+	},
 };

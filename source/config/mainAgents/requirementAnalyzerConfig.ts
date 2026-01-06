@@ -21,6 +21,7 @@ const REQUIREMENT_ANALYZER_TOOLS: string[] = [
 	'filesystem-create',
 	'filesystem-edit_search',
 	'filesystem-edit',
+	'filesystem-undo',
 	'terminal-execute',
 	'ace-semantic_search',
 	'ace-text_search',

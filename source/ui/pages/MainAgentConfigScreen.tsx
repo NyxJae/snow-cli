@@ -113,6 +113,7 @@ export default function MainAgentConfigScreen({
 				'filesystem-create',
 				'filesystem-edit',
 				'filesystem-edit_search',
+				'filesystem-undo',
 			],
 		},
 		{
@@ -299,6 +300,7 @@ export default function MainAgentConfigScreen({
 						'filesystem-create',
 						'filesystem-edit',
 						'filesystem-edit_search',
+						'filesystem-undo',
 						'ace-find_definition',
 						'ace-find_references',
 						'ace-semantic_search',

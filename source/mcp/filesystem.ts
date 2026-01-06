@@ -48,6 +48,8 @@ import {tryFixPath} from './utils/filesystem/path-fixer.utils.js';
 import {readOfficeDocument} from './utils/filesystem/office-parser.utils.js';
 // ACE Code Search utilities for symbol parsing
 import {parseFileSymbols} from './utils/aceCodeSearch/symbol.utils.js';
+import {undoManager, type UndoResult} from '../utils/codebase/undoManager.js';
+import {logger} from '../utils/core/logger.js';
 import type {CodeSymbol} from './types/aceCodeSearch.types.js';
 // Notebook utilities for automatic note retrieval
 import {queryNotebook} from '../utils/core/notebookManager.js';
@@ -885,7 +887,27 @@ export class FilesystemMCPService {
 	): Promise<EditBySearchResult> {
 		// Handle array of files
 		if (Array.isArray(filePath)) {
-			return await executeBatchOperation<
+			// 收集所有文件的原始内容(用于批量撤销记录)
+			const originalContentsMap = new Map<string, string>();
+			const filePaths: string[] = [];
+
+			// 预读取所有文件的原始内容
+			for (const fileItem of filePath) {
+				const itemPath =
+					typeof fileItem === 'string' ? fileItem : fileItem.path;
+				try {
+					const fullPath = this.resolvePath(itemPath);
+					const originalContent = await fs.readFile(fullPath, 'utf-8');
+					originalContentsMap.set(itemPath, originalContent);
+					filePaths.push(itemPath);
+				} catch (error) {
+					// 如果读取失败,跳过该文件
+					logger.warn(`Failed to read file ${itemPath}:`, error);
+				}
+			}
+
+			// 执行批量编辑
+			const batchResult = await executeBatchOperation<
 				EditBySearchConfig,
 				EditBySearchSingleResult,
 				EditBySearchBatchResultItem
@@ -904,6 +926,38 @@ export class FilesystemMCPService {
 					return {path, ...result};
 				},
 			);
+
+			// 记录批量编辑操作到撤销栈(编辑成功后)
+			try {
+				// 只记录成功编辑的文件
+				// 统一使用相对路径存储，确保路径一致性
+				const successfulFilesMap = new Map<string, string>();
+				batchResult.results.forEach(result => {
+					if (result.success && originalContentsMap.has(result.path)) {
+						// 将路径转换为相对路径
+						const relativePath = path.isAbsolute(result.path)
+							? path.relative(this.basePath, result.path)
+							: result.path;
+						successfulFilesMap.set(
+							relativePath,
+							originalContentsMap.get(result.path)!,
+						);
+					}
+				});
+
+				if (successfulFilesMap.size > 0) {
+					await undoManager.recordEditOperation(
+						'filesystem-edit_search',
+						Array.from(successfulFilesMap.keys()),
+						successfulFilesMap,
+					);
+				}
+			} catch (recordError) {
+				// 记录失败不影响编辑操作
+				logger.warn('Failed to record batch edit operation:', recordError);
+			}
+
+			return batchResult;
 		}
 
 		// Single file mode
@@ -1485,6 +1539,22 @@ export class FilesystemMCPService {
 				result.message += `\n   💡 TIP: These warnings help identify potential issues. If intentional (e.g., opening a block), you can ignore them.`;
 			}
 
+			// 记录编辑操作到撤销栈(编辑成功后)
+			try {
+				// 统一使用相对路径存储，确保路径一致性
+				const relativePath = path.isAbsolute(filePath)
+					? path.relative(this.basePath, filePath)
+					: filePath;
+				await undoManager.recordEditOperation(
+					'filesystem-edit_search',
+					[relativePath],
+					new Map([[relativePath, content]]),
+				);
+			} catch (recordError) {
+				// 记录失败不影响编辑操作
+				logger.warn('Failed to record edit operation:', recordError);
+			}
+
 			return result;
 		} catch (error) {
 			throw new Error(
@@ -1826,6 +1896,22 @@ export class FilesystemMCPService {
 				result.message += `\n   💡 TIP: These warnings help identify potential issues. If intentional (e.g., opening a block), you can ignore them.`;
 			}
 
+			// 记录编辑操作到撤销栈(编辑成功后)
+			try {
+				// 统一使用相对路径存储，确保路径一致性
+				const relativePath = path.isAbsolute(filePath)
+					? path.relative(this.basePath, filePath)
+					: filePath;
+				await undoManager.recordEditOperation(
+					'filesystem-edit',
+					[relativePath],
+					new Map([[relativePath, content]]), // 原始内容
+				);
+			} catch (recordError) {
+				// 记录失败不影响编辑操作
+				logger.warn('Failed to record edit operation:', recordError);
+			}
+
 			return result;
 		} catch (error) {
 			throw new Error(
@@ -1877,6 +1963,16 @@ export class FilesystemMCPService {
 		if (!normalizedPath.startsWith(normalizedBase)) {
 			throw new Error('Access denied: Path is outside of allowed directory');
 		}
+	}
+
+	/**
+	 * 撤销编辑操作
+	 * @param steps 撤销步数
+	 * @returns 撤销结果
+	 */
+	async undo(steps: number = 1): Promise<UndoResult> {
+		// 传入 this.basePath 作为工作区根目录
+		return undoManager.undo(steps, this.basePath);
 	}
 }
 
@@ -2080,6 +2176,21 @@ export const mcpTools = [
 				},
 			},
 			required: ['filePath', 'line', 'newContent'],
+		},
+	},
+	{
+		name: 'filesystem-undo',
+		description:
+			'撤销上一个编辑工具(filesystem-edit 或 filesystem-edit_search)的修改.每次撤销恢复整个文件到编辑前的状态.可以多次撤销,类似栈结构(后进先出).\n\n⚠️ 重要提示:\n1. 撤销成功后,必须使用 filesystem-read 重读文件,确认文件现状后才能继续编辑.\n2. 批量编辑多个文件被视为一个原子操作,撤销时会恢复所有被编辑的文件.3. MUST NOT 使用命令还原文件,而是使用此工具进行撤销你的编辑.\n\n适用范围:\n- 仅适用于 filesystem-edit 和 filesystem-edit_search 的撤销\n- 不适用于 filesystem-create 或用户手动编辑等其他情况\n\n参数:\n- steps: 撤销步数(可选,默认 1).表示撤销最近的多少次编辑操作.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				steps: {
+					type: 'number',
+					description: '撤销步数.撤销最近的多少次编辑操作(默认: 1)',
+					default: 1,
+				},
+			},
 		},
 	},
 ];

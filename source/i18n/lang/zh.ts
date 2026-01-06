@@ -1160,4 +1160,12 @@ export const zh: TranslationKeys = {
 		invalidPidsStopped: '发现 {count} 个无效的PID文件（进程已停止）',
 		autoCleanupHint: '这些文件会在下次停止操作时自动清理',
 	},
+	undoManager: {
+		undoFailedEmpty: '❌ 撤销失败。没有可撤销的编辑操作。',
+		undoSuccess: '✅ 撤销成功。已撤销 {steps} 次编辑操作。',
+		undoFailed: '❌ 撤销失败。{error}',
+		unknownError: '未知错误',
+		invalidStepsParameter:
+			'filesystem-undo 工具的参数 "steps" 无效。必须是正整数。收到: {value}',
+	},
 };

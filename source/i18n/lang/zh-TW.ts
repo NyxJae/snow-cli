@@ -1155,4 +1155,12 @@ export const zhTW: TranslationKeys = {
 		invalidPidsStopped: '發現 {count} 個無效的PID檔案（行程已停止）',
 		autoCleanupHint: '這些檔案會在下次停止操作時自動清理',
 	},
+	undoManager: {
+		undoFailedEmpty: '❌ 撤銷失敗。沒有可撤銷的編輯操作。',
+		undoSuccess: '✅ 撤銷成功。已撤銷 {steps} 次編輯操作。',
+		undoFailed: '❌ 撤銷失敗。{error}',
+		unknownError: '未知錯誤',
+		invalidStepsParameter:
+			'filesystem-undo 工具的參數 "steps" 無效。必須是正整數。收到: {value}',
+	},
 };

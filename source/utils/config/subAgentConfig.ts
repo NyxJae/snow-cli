@@ -496,6 +496,7 @@ You are a versatile task execution agent with full tool access, capable of handl
 			'filesystem-create',
 			'filesystem-edit',
 			'filesystem-edit_search',
+			'filesystem-undo',
 			'terminal-execute',
 			'ace-find_definition',
 			'ace-find_references',
