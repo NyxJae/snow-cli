@@ -93,6 +93,53 @@ export interface HookContext {
  * - 严格按照配置顺序执行
  * - 支持 matcher 匹配
  */
+
+// Cache for Git Bash availability check
+let gitBashAvailable: boolean | null = null;
+
+/**
+ * Check if Git Bash is available on the system
+ * @returns true if Git Bash is available, false otherwise
+ */
+function isGitBashAvailable(): boolean {
+	// Return cached result if available
+	if (gitBashAvailable !== null) {
+		return gitBashAvailable;
+	}
+
+	// Only check on Windows
+	if (process.platform !== 'win32') {
+		gitBashAvailable = false;
+		return false;
+	}
+
+	// Try to detect Git Bash by checking common installation paths
+	const commonPaths = [
+		'C:\\Program Files\\Git\\bin\\bash.exe',
+		'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
+		'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+	];
+
+	const {existsSync} = require('fs');
+	for (const path of commonPaths) {
+		if (existsSync(path)) {
+			gitBashAvailable = true;
+			return true;
+		}
+	}
+
+	// If not found in common paths, try to use 'where' command
+	try {
+		const {execSync} = require('child_process');
+		const result = execSync('where bash', {encoding: 'utf8', timeout: 2000});
+		gitBashAvailable = result.trim().length > 0;
+		return gitBashAvailable;
+	} catch {
+		gitBashAvailable = false;
+		return false;
+	}
+}
+
 export class UnifiedHooksExecutor {
 	// Command 执行器配置
 	private maxOutputLength: number;
@@ -399,24 +446,33 @@ export class UnifiedHooksExecutor {
 		const stdinData = context ? JSON.stringify(context) : '';
 
 		try {
+			// 智能选择 shell: Windows 下优先使用 Git Bash，不可用时回退到 cmd
+			const shell =
+				process.platform === 'win32' && isGitBashAvailable()
+					? 'bash.exe'
+					: undefined;
+
 			const childProcess = exec(command, {
 				cwd: process.cwd(),
 				timeout,
 				maxBuffer: this.maxOutputLength,
+				shell,
+				encoding: 'utf8',
 				env: {
 					...process.env,
-					// Windows 下设置 UTF-8 编码
+					// 指定 UTF-8 编码环境变量
 					...(process.platform === 'win32' && {
+						LANG: 'zh_CN.UTF-8',
+						LC_ALL: 'zh_CN.UTF-8',
 						PYTHONIOENCODING: 'utf-8',
 					}),
-					// Windows 下不需要设置 LANG
+					// Unix/Linux/macOS 设置 UTF-8 编码
 					...(process.platform !== 'win32' && {
 						LANG: 'en_US.UTF-8',
 						LC_ALL: 'en_US.UTF-8',
 					}),
 				},
 			});
-
 			// 处理 stdin
 			if (childProcess.stdin) {
 				// 注册错误监听器防止未捕获的 EPIPE 异常

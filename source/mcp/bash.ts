@@ -12,6 +12,51 @@ import {appendTerminalOutput} from '../hooks/execution/useTerminalExecutionState
 // Global flag to track if command should be moved to background
 let shouldMoveToBackground = false;
 
+// Cache for Git Bash availability check
+let gitBashAvailable: boolean | null = null;
+
+/**
+ * Check if Git Bash is available on the system
+ * @returns true if Git Bash is available, false otherwise
+ */
+function isGitBashAvailable(): boolean {
+	// Return cached result if available
+	if (gitBashAvailable !== null) {
+		return gitBashAvailable;
+	}
+
+	// Only check on Windows
+	if (process.platform !== 'win32') {
+		gitBashAvailable = false;
+		return false;
+	}
+
+	// Try to detect Git Bash by checking common installation paths
+	const commonPaths = [
+		'C:\\Program Files\\Git\\bin\\bash.exe',
+		'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
+		'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+	];
+
+	const {existsSync} = require('fs');
+	for (const path of commonPaths) {
+		if (existsSync(path)) {
+			gitBashAvailable = true;
+			return true;
+		}
+	}
+
+	// If not found in common paths, try to use 'where' command
+	try {
+		const {execSync} = require('child_process');
+		const result = execSync('where bash', {encoding: 'utf8', timeout: 2000});
+		gitBashAvailable = result.trim().length > 0;
+		return gitBashAvailable;
+	} catch {
+		gitBashAvailable = false;
+		return false;
+	}
+}
 /**
  * Mark command to be moved to background
  * Called from UI when Ctrl+B is pressed
@@ -65,14 +110,28 @@ export class TerminalCommandService {
 					`Dangerous command detected and blocked: ${command.slice(0, 50)}`,
 				);
 			}
-
 			// Execute command using system default shell and register the process
+			// 智能选择 shell: Windows 下优先使用 Git Bash，不可用时回退到 cmd
+			const shell =
+				process.platform === 'win32' && isGitBashAvailable()
+					? 'bash.exe'
+					: undefined;
+
 			const childProcess = exec(command, {
 				cwd: this.workingDirectory,
 				timeout,
 				maxBuffer: this.maxOutputLength,
+				shell,
+				encoding: 'utf8',
 				env: {
 					...process.env,
+					// 指定 UTF-8 编码环境变量
+					...(process.platform === 'win32' && {
+						LANG: 'zh_CN.UTF-8',
+						LC_ALL: 'zh_CN.UTF-8',
+						PYTHONIOENCODING: 'utf-8',
+					}),
+					// Unix/Linux/macOS 设置 UTF-8 编码
 					...(process.platform !== 'win32' && {
 						LANG: 'en_US.UTF-8',
 						LC_ALL: 'en_US.UTF-8',
