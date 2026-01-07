@@ -356,9 +356,17 @@ export class CodebaseIndexAgent {
 			// Reuse existing ignoreFilter to keep consistency with scanFiles
 			this.fileWatcher = chokidar.watch(this.projectRoot, {
 				ignored: (filePath: string) => {
-					const relativePath = path.relative(this.projectRoot, filePath);
-					// Skip empty paths (the root directory itself) and check ignore filter
+					const relativePath = path
+						.relative(this.projectRoot, filePath)
+						.replace(/\\/g, '/'); // 统一使用 / 作为路径分隔符
+					// Skip empty paths (the root directory itself)
 					if (!relativePath || relativePath === '.') {
+						return false;
+					}
+					// 强制包含 .snow 目录和 .snow/notebook 路径，绕过 ignoreFilter
+					const isSnowDir = relativePath === '.snow';
+					const isNotebookPath = relativePath.startsWith('.snow/notebook');
+					if (isSnowDir || isNotebookPath) {
 						return false;
 					}
 					return this.ignoreFilter.ignores(relativePath);
@@ -558,13 +566,20 @@ export class CodebaseIndexAgent {
 				if (this.shouldStop) break;
 
 				const fullPath = path.join(dir, entry.name);
-				const relativePath = path.relative(this.projectRoot, fullPath);
+				const relativePath = path
+					.relative(this.projectRoot, fullPath)
+					.replace(/\\/g, '/'); // 统一使用 / 作为路径分隔符
 
 				// Check if should be ignored
 				// Skip empty paths (should not happen, but defensive check)
+				// 强制包含 .snow 目录（为了扫描其子目录）和 .snow/notebook 路径
+				const isSnowDir = relativePath === '.snow';
+				const isNotebookPath = relativePath.startsWith('.snow/notebook');
 				if (
 					relativePath &&
 					relativePath !== '.' &&
+					!isSnowDir &&
+					!isNotebookPath &&
 					this.ignoreFilter.ignores(relativePath)
 				) {
 					continue;
@@ -768,6 +783,16 @@ export class CodebaseIndexAgent {
 	 * Split file content into chunks
 	 */
 	private splitIntoChunks(content: string, filePath: string): CodeChunk[] {
+		// 特殊处理 notebook 文件：按每条 note 单独分 chunk
+		// 使用 path 标准化路径以支持 Windows 和 Unix
+		const normalizedPath = filePath.replace(/\\/g, '/');
+		if (
+			normalizedPath.startsWith('.snow/notebook/') &&
+			normalizedPath.endsWith('.json')
+		) {
+			return this.splitNotebookIntoChunks(content, filePath);
+		}
+
 		const lines = content.split('\n');
 		const chunks: CodeChunk[] = [];
 		const {maxLinesPerChunk, minLinesPerChunk, minCharsPerChunk, overlapLines} =
@@ -812,6 +837,67 @@ export class CodebaseIndexAgent {
 				createdAt: 0,
 				updatedAt: 0,
 			});
+		}
+
+		return chunks;
+	}
+
+	/**
+	 * Split notebook JSON file into chunks - one chunk per note
+	 * This ensures each note has good semantic representation for vector search
+	 */
+	private splitNotebookIntoChunks(
+		content: string,
+		filePath: string,
+	): CodeChunk[] {
+		const chunks: CodeChunk[] = [];
+
+		try {
+			const notebookData = JSON.parse(content) as Record<
+				string,
+				Array<{
+					id: string;
+					filePath: string;
+					note: string;
+					createdAt: string;
+					updatedAt: string;
+				}>
+			>;
+
+			let chunkIndex = 0;
+			for (const [targetFilePath, notes] of Object.entries(notebookData)) {
+				if (!Array.isArray(notes)) continue;
+
+				for (const noteEntry of notes) {
+					if (!noteEntry.note || typeof noteEntry.note !== 'string') continue;
+
+					// 构建有意义的 chunk 内容，包含上下文信息
+					const chunkContent = `[Notebook Entry]
+File: ${noteEntry.filePath || targetFilePath}
+Note: ${noteEntry.note}`;
+
+					chunks.push({
+						filePath,
+						content: chunkContent,
+						startLine: chunkIndex + 1, // 使用 index 作为虚拟行号
+						endLine: chunkIndex + 1,
+						embedding: [],
+						fileHash: '',
+						createdAt: 0,
+						updatedAt: 0,
+					});
+
+					chunkIndex++;
+				}
+			}
+
+			logger.debug(
+				`Split notebook ${filePath} into ${chunks.length} note chunks`,
+			);
+		} catch (error) {
+			logger.warn(`Failed to parse notebook JSON: ${filePath}`, error);
+			// 解析失败时回退到默认分 chunk 逻辑
+			return [];
 		}
 
 		return chunks;
