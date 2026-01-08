@@ -1,8 +1,9 @@
 import {createHash, randomUUID} from 'crypto';
 import {
 	getOpenAiConfig,
+	getCustomSystemPromptForConfig,
+	getCustomHeadersForConfig,
 	getCustomSystemPrompt,
-	getCustomHeaders,
 	type ThinkingConfig,
 } from '../utils/config/apiConfig.js';
 import {mainAgentManager} from '../utils/MainAgentManager.js';
@@ -172,11 +173,11 @@ function convertToAnthropicMessages(
 	system?: any;
 	messages: AnthropicMessageParam[];
 } {
-	// 子代理调用：使用传递的 customSystemPrompt（可能是子代理自己配置的，也可能是继承主代理的）
+	// 子代理调用：使用传递的 customSystemPrompt（由全局配置决定）
 	// 如果没有 customSystemPrompt，则使用子代理自己组装的提示词
 	// 子代理不会使用主代理自己组装的系统提示词
 	const customSystemPrompt = isSubAgentCall
-		? customSystemPromptOverride // 子代理使用传递的 customSystemPrompt（已包含继承逻辑）
+		? customSystemPromptOverride // 子代理使用传递的 customSystemPrompt（遵循全局配置）
 		: customSystemPromptOverride || getCustomSystemPrompt(); // 主代理可以回退到默认的customSystemPrompt
 
 	// 对于子代理调用，完全忽略includeBuiltinSystemPrompt参数
@@ -565,6 +566,9 @@ export async function* createStreamingAnthropicCompletion(
 				}
 			}
 
+			// 如果没有显式的 customSystemPromptId，则按当前配置（含 profile 覆盖）解析
+			customSystemPromptContent ||= getCustomSystemPromptForConfig(config);
+
 			const {system, messages} = convertToAnthropicMessages(
 				options.messages,
 				options.includeBuiltinSystemPrompt !== false, // 默认为 true
@@ -607,8 +611,9 @@ export async function* createStreamingAnthropicCompletion(
 				requestBody.temperature = 1;
 			}
 
-			// Use custom headers from options if provided, otherwise get from main config
-			const customHeaders = options.customHeaders || getCustomHeaders();
+			// Use custom headers from options if provided, otherwise get from current config (supports profile override)
+			const customHeaders =
+				options.customHeaders || getCustomHeadersForConfig(config);
 
 			// Prepare headers
 			const headers: Record<string, string> = {

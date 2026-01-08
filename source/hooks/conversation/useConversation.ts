@@ -950,7 +950,10 @@ async function executeWithInternalRetry(
 													arguments: {
 														oldContent: resultData.oldContent,
 														newContent: resultData.newContent,
-														filename: resultData.path || resultData.filename,
+														filename:
+															resultData.filePath ||
+															resultData.path ||
+															resultData.filename,
 														completeOldContent: resultData.completeOldContent,
 														completeNewContent: resultData.completeNewContent,
 														contextStartLine: resultData.contextStartLine,

@@ -49,30 +49,28 @@ export function getSystemPromptWithRole(
 }
 
 /**
- * Get PowerShell version
+ * Detect if running in PowerShell environment on Windows
+ * Returns: 'pwsh' for PowerShell 7+, 'powershell' for Windows PowerShell 5.x, null if not PowerShell
  */
-function getPowerShellVersion(): string | null {
-	try {
-		const platformType = os.platform();
-		if (platformType !== 'win32') return null;
+export function detectWindowsPowerShell(): 'pwsh' | 'powershell' | null {
+	const psModulePath = process.env['PSModulePath'] || '';
+	if (!psModulePath) return null;
 
-		// Detect PowerShell version from shell path
-		const shellPath = process.env['SHELL'] || process.env['ComSpec'] || '';
-		const shellName = path.basename(shellPath).toLowerCase();
-
-		// pwsh typically indicates PowerShell 7+
-		if (shellName.includes('pwsh')) {
-			return '7.x';
-		}
-		// powershell.exe is typically PowerShell 5.x
-		if (shellName.includes('powershell')) {
-			return '5.x';
-		}
-
-		return null;
-	} catch (error) {
-		return null;
+	// PowerShell Core (pwsh) typically has paths containing "PowerShell\7" or similar
+	if (
+		psModulePath.includes('PowerShell\\7') ||
+		psModulePath.includes('powershell\\7')
+	) {
+		return 'pwsh';
 	}
+
+	// Windows PowerShell 5.x has WindowsPowerShell in path
+	if (psModulePath.toLowerCase().includes('windowspowershell')) {
+		return 'powershell';
+	}
+
+	// Has PSModulePath but can't determine version, assume PowerShell
+	return 'powershell';
 }
 
 /**
@@ -97,20 +95,25 @@ export function getSystemEnvironmentInfo(
 	})();
 
 	const shell = (() => {
-		const shellPath = process.env['SHELL'] || process.env['ComSpec'] || '';
-		const shellName = path.basename(shellPath).toLowerCase();
-		if (shellName.includes('cmd')) return 'cmd.exe';
-		if (shellName.includes('powershell') || shellName.includes('pwsh')) {
-			// Detect PowerShell version if requested
-			if (includePowerShellVersion) {
-				const psVersion = getPowerShellVersion();
-				return psVersion ? `PowerShell ${psVersion}` : 'PowerShell';
+		const platformType = os.platform();
+		if (platformType === 'win32') {
+			const psType = detectWindowsPowerShell();
+			if (psType) {
+				if (includePowerShellVersion) {
+					return psType === 'pwsh' ? 'PowerShell 7.x' : 'PowerShell 5.x';
+				}
+				return 'PowerShell';
 			}
-			return 'PowerShell';
+			return 'cmd.exe';
 		}
+
+		// On Unix-like systems, use SHELL environment variable
+		const shellPath = process.env['SHELL'] || '';
+		const shellName = path.basename(shellPath).toLowerCase();
 		if (shellName.includes('zsh')) return 'zsh';
 		if (shellName.includes('bash')) return 'bash';
 		if (shellName.includes('fish')) return 'fish';
+		if (shellName.includes('pwsh')) return 'PowerShell';
 		if (shellName.includes('sh')) return 'sh';
 		return shellName || 'shell';
 	})();

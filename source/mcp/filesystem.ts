@@ -1395,6 +1395,7 @@ export class FilesystemMCPService {
 					(smartBoundaries.extended
 						? `\n   📍 Context auto-extended to show complete code block (lines ${contextStart}-${finalContextEnd})`
 						: ''),
+				filePath, // Include file path for DiffViewer display on Resume/re-render
 				oldContent,
 				newContent: newContextContent,
 				replacedContent,
@@ -1801,6 +1802,7 @@ export class FilesystemMCPService {
 					(smartBoundaries.extended
 						? `\n   📍 Context auto-extended to show complete code block (lines ${contextStart}-${finalContextEnd})`
 						: ''),
+				filePath, // Include file path for DiffViewer display on Resume/re-render
 				oldContent,
 				newContent: finalContextContent,
 				replacedLines: replacedContent,

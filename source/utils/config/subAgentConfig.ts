@@ -22,8 +22,6 @@ export interface SubAgent {
 	builtin?: boolean;
 	// 可选配置项
 	configProfile?: string; // 配置文件名称
-	customSystemPrompt?: string; // 自定义系统提示词
-	customHeaders?: Record<string, string>; // 自定义请求头
 }
 export interface SubAgentsConfig {
 	agents: SubAgent[];
@@ -705,8 +703,6 @@ export function createSubAgent(
 	tools: string[],
 	role?: string,
 	configProfile?: string,
-	customSystemPrompt?: string,
-	customHeaders?: Record<string, string>,
 ): SubAgent {
 	const userAgents = getUserSubAgents();
 	const now = new Date().toISOString();
@@ -721,8 +717,6 @@ export function createSubAgent(
 		updatedAt: now,
 		builtin: false,
 		configProfile,
-		customSystemPrompt,
-		customHeaders,
 	};
 
 	userAgents.push(newAgent);
@@ -780,12 +774,6 @@ export function updateSubAgent(
 		if ('configProfile' in updates) {
 			userCopy.configProfile = updates.configProfile;
 		}
-		if ('customSystemPrompt' in updates) {
-			userCopy.customSystemPrompt = updates.customSystemPrompt;
-		}
-		if ('customHeaders' in updates) {
-			userCopy.customHeaders = updates.customHeaders;
-		}
 
 		if (existingUserIndex >= 0) {
 			userAgents[existingUserIndex] = userCopy;
@@ -821,12 +809,6 @@ export function updateSubAgent(
 	// 只有在 updates 中明确包含这些字段时才添加到 updatedAgent
 	if ('configProfile' in updates) {
 		updatedAgent.configProfile = updates.configProfile;
-	}
-	if ('customSystemPrompt' in updates) {
-		updatedAgent.customSystemPrompt = updates.customSystemPrompt;
-	}
-	if ('customHeaders' in updates) {
-		updatedAgent.customHeaders = updates.customHeaders;
 	}
 	userAgents[existingUserIndex] = updatedAgent;
 	saveSubAgents(userAgents);

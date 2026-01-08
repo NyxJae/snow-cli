@@ -14,10 +14,7 @@ import {
 	getAllProfiles,
 	getActiveProfileName,
 } from '../../utils/config/configManager.js';
-import {
-	getCustomHeadersConfig,
-	getSystemPromptConfig,
-} from '../../utils/config/apiConfig.js';
+
 import {useI18n} from '../../i18n/index.js';
 import {useTheme} from '../contexts/ThemeContext.js';
 
@@ -76,14 +73,7 @@ type ToolCategory = {
 	tools: string[];
 };
 
-type FormField =
-	| 'name'
-	| 'description'
-	| 'role'
-	| 'configProfile'
-	| 'customSystemPrompt'
-	| 'customHeaders'
-	| 'tools';
+type FormField = 'name' | 'description' | 'role' | 'configProfile' | 'tools';
 
 export default function SubAgentConfigScreen({
 	onBack,
@@ -110,18 +100,11 @@ export default function SubAgentConfigScreen({
 	const [, setIsBuiltinAgent] = useState(false);
 
 	// 选择器状态（索引）- 用于键盘导航
-	const [selectedSystemPromptIndex, setSelectedSystemPromptIndex] = useState(0);
 	const [selectedConfigProfileIndex, setSelectedConfigProfileIndex] =
-		useState(0);
-	const [selectedCustomHeadersIndex, setSelectedCustomHeadersIndex] =
 		useState(0);
 
 	// 已确认选中的索引（用于显示勾选标记）
-	const [confirmedSystemPromptIndex, setConfirmedSystemPromptIndex] =
-		useState(-1);
 	const [confirmedConfigProfileIndex, setConfirmedConfigProfileIndex] =
-		useState(-1);
-	const [confirmedCustomHeadersIndex, setConfirmedCustomHeadersIndex] =
 		useState(-1);
 
 	// Tool categories with translations
@@ -190,33 +173,16 @@ export default function SubAgentConfigScreen({
 		},
 	];
 
-	// Get available system prompts (must be defined before useEffect)
-	const availableSystemPrompts = useMemo(() => {
-		const config = getSystemPromptConfig();
-		if (!config || !config.prompts) return [];
-		return config.prompts.map(p => ({name: p.name, id: p.id}));
-	}, []);
-
 	// 获取可用的配置文件列表
 	const availableProfiles = useMemo(() => {
 		const profiles = getAllProfiles();
 		return profiles.map(p => p.name);
 	}, []);
 
-	// 获取可用的自定义请求头方案列表
-	const availableCustomHeaders = useMemo(() => {
-		const config = getCustomHeadersConfig();
-		if (!config || !config.schemes) return [];
-		return config.schemes.map(s => s.name);
-	}, []);
-
 	// Initialize with current active configurations (non-edit mode)
 	useEffect(() => {
 		if (!agentId) {
-			// 初始化为当前激活的配置
 			const activeProfile = getActiveProfileName();
-			const systemPromptConfig = getSystemPromptConfig();
-			const customHeadersConfig = getCustomHeadersConfig();
 
 			// 设置配置文件索引（同时设置光标和确认索引）
 			if (activeProfile && availableProfiles.length > 0) {
@@ -228,159 +194,54 @@ export default function SubAgentConfigScreen({
 					setConfirmedConfigProfileIndex(profileIndex);
 				}
 			}
-
-			// 设置系统提示词索引（同时设置光标和确认索引）
-			if (systemPromptConfig?.active && availableSystemPrompts.length > 0) {
-				const promptIndex = availableSystemPrompts.findIndex(
-					p => p.id === systemPromptConfig.active,
-				);
-				if (promptIndex >= 0) {
-					setSelectedSystemPromptIndex(promptIndex);
-					setConfirmedSystemPromptIndex(promptIndex);
-				}
-			}
-
-			// 设置自定义请求头索引（同时设置光标和确认索引）
-			if (customHeadersConfig?.active && availableCustomHeaders.length > 0) {
-				const activeScheme = customHeadersConfig.schemes.find(
-					s => s.id === customHeadersConfig.active,
-				);
-				if (activeScheme) {
-					const headerIndex = availableCustomHeaders.findIndex(
-						h => h === activeScheme.name,
-					);
-					if (headerIndex >= 0) {
-						setSelectedCustomHeadersIndex(headerIndex);
-						setConfirmedCustomHeadersIndex(headerIndex);
-					}
-				}
-			}
 		}
-	}, [
-		availableSystemPrompts,
-		availableProfiles,
-		availableCustomHeaders,
-		agentId,
-	]);
-	// Load agent data when in edit mode
+	}, [availableProfiles, agentId]);
+
 	useEffect(() => {
-		if (agentId) {
-			const agent = getSubAgent(agentId);
-			if (agent) {
-				// Check if this is a built-in agent (based on ID)
-				const isBuiltin = [
-					'agent_explore',
-					'agent_plan',
-					'agent_general',
-				].includes(agentId);
-				setIsBuiltinAgent(isBuiltin);
+		if (!agentId) {
+			return;
+		}
 
-				// 检查是否已有用户副本(用于判断是否第一次编辑内置代理)
-				// 现在 TOML 中保存的用户副本也是 builtin: true
-				// 所以通过 getUserSubAgents() 来判断是否真的有用户副本
-				const {
-					getUserSubAgents,
-				} = require('../../utils/config/subAgentConfig.js');
-				const userAgents = getUserSubAgents();
-				const hasUserCopy = userAgents.some((a: any) => a.id === agentId);
+		const agent = getSubAgent(agentId);
+		if (!agent) {
+			return;
+		}
 
-				setAgentName(agent.name);
-				setDescription(agent.description);
-				setRole(agent.role || '');
-				setSelectedTools(new Set(agent.tools || []));
+		const isBuiltin = ['agent_explore', 'agent_plan', 'agent_general'].includes(
+			agentId,
+		);
+		setIsBuiltinAgent(isBuiltin);
 
-				// 加载配置文件索引
-				if (agent.configProfile) {
-					const profileIndex = availableProfiles.findIndex(
-						p => p === agent.configProfile,
-					);
-					if (profileIndex >= 0) {
-						setSelectedConfigProfileIndex(profileIndex);
-						setConfirmedConfigProfileIndex(profileIndex);
-					}
-				} else if (agent.builtin && !hasUserCopy) {
-					// 第一次编辑内置代理（创建副本），使用全局配置作为默认值
-					const activeProfile = getActiveProfileName();
-					if (activeProfile && availableProfiles.length > 0) {
-						const profileIndex = availableProfiles.findIndex(
-							p => p === activeProfile,
-						);
-						if (profileIndex >= 0) {
-							setSelectedConfigProfileIndex(profileIndex);
-							setConfirmedConfigProfileIndex(profileIndex);
-						}
-					}
+		setAgentName(agent.name);
+		setDescription(agent.description);
+		setRole(agent.role || '');
+		setSelectedTools(new Set(agent.tools || []));
+
+		// 加载配置文件索引
+		if (agent.configProfile) {
+			const profileIndex = availableProfiles.findIndex(
+				p => p === agent.configProfile,
+			);
+			if (profileIndex >= 0) {
+				setSelectedConfigProfileIndex(profileIndex);
+				setConfirmedConfigProfileIndex(profileIndex);
+			}
+		} else if (agent.builtin) {
+			// 第一次编辑内置代理（创建副本），使用全局配置作为默认值
+			const activeProfile = getActiveProfileName();
+			if (activeProfile && availableProfiles.length > 0) {
+				const profileIndex = availableProfiles.findIndex(
+					p => p === activeProfile,
+				);
+				if (profileIndex >= 0) {
+					setSelectedConfigProfileIndex(profileIndex);
+					setConfirmedConfigProfileIndex(profileIndex);
 				}
-				// 编辑已有副本时，如果副本没有设置配置，不自动使用全局配置
-				// 保持 confirmedConfigProfileIndex 为 -1
-
-				// 加载系统提示词索引
-				if (agent.customSystemPrompt) {
-					const promptIndex = availableSystemPrompts.findIndex(
-						p => p.id === agent.customSystemPrompt,
-					);
-					if (promptIndex >= 0) {
-						setSelectedSystemPromptIndex(promptIndex);
-						setConfirmedSystemPromptIndex(promptIndex);
-					}
-				} else if (agent.builtin && !hasUserCopy) {
-					// 第一次编辑内置代理（创建副本），使用全局配置作为默认值
-					const systemPromptConfig = getSystemPromptConfig();
-					if (systemPromptConfig?.active && availableSystemPrompts.length > 0) {
-						const promptIndex = availableSystemPrompts.findIndex(
-							p => p.id === systemPromptConfig.active,
-						);
-						if (promptIndex >= 0) {
-							setSelectedSystemPromptIndex(promptIndex);
-							setConfirmedSystemPromptIndex(promptIndex);
-						}
-					}
-				}
-				// 编辑已有副本时，如果副本没有设置系统提示词，不自动使用全局配置
-				// 保持 confirmedSystemPromptIndex 为 -1
-
-				// 加载自定义请求头索引
-				if (agent.customHeaders) {
-					const headersConfig = getCustomHeadersConfig();
-					const headerName = headersConfig?.schemes.find(
-						s =>
-							JSON.stringify(s.headers) === JSON.stringify(agent.customHeaders),
-					)?.name;
-					if (headerName) {
-						const headerIndex = availableCustomHeaders.findIndex(
-							h => h === headerName,
-						);
-						if (headerIndex >= 0) {
-							setSelectedCustomHeadersIndex(headerIndex);
-							setConfirmedCustomHeadersIndex(headerIndex);
-						}
-					}
-				} else if (agent.builtin && !hasUserCopy) {
-					// 第一次编辑内置代理（创建副本），使用全局配置作为默认值
-					const customHeadersConfig = getCustomHeadersConfig();
-					if (
-						customHeadersConfig?.active &&
-						availableCustomHeaders.length > 0
-					) {
-						const activeScheme = customHeadersConfig.schemes.find(
-							s => s.id === customHeadersConfig.active,
-						);
-						if (activeScheme) {
-							const headerIndex = availableCustomHeaders.findIndex(
-								h => h === activeScheme.name,
-							);
-							if (headerIndex >= 0) {
-								setSelectedCustomHeadersIndex(headerIndex);
-								setConfirmedCustomHeadersIndex(headerIndex);
-							}
-						}
-					}
-				}
-				// 编辑已有副本时，如果副本没有设置自定义请求头，不自动使用全局配置
-				// 保持 confirmedCustomHeadersIndex 为 -1
 			}
 		}
-	}, [agentId]);
+		// 编辑已有副本时，如果副本没有设置配置，不自动使用全局配置
+		// 保持 confirmedConfigProfileIndex 为 -1
+	}, [agentId, availableProfiles]);
 
 	// Load MCP services on mount
 	useEffect(() => {
@@ -563,62 +424,6 @@ export default function SubAgentConfigScreen({
 					? availableProfiles[confirmedConfigProfileIndex]
 					: undefined;
 
-			// 处理自定义请求头（使用 confirmedIndex）
-			let customHeadersObj: Record<string, string> | undefined;
-			if (confirmedCustomHeadersIndex >= 0) {
-				const selectedHeader =
-					availableCustomHeaders[confirmedCustomHeadersIndex];
-				if (selectedHeader) {
-					// 如果选择的是方案名称，从配置中查找
-					const headersConfig = getCustomHeadersConfig();
-					const scheme = headersConfig?.schemes.find(
-						s => s.name === selectedHeader,
-					);
-					customHeadersObj = scheme?.headers;
-				}
-			}
-
-			// 获取系统提示词ID（使用 confirmedIndex）
-			const systemPromptId =
-				confirmedSystemPromptIndex >= 0
-					? availableSystemPrompts[confirmedSystemPromptIndex]?.id
-					: undefined;
-
-			// 创建工具名映射，将用户选择的纯工具名转换为完整格式
-			const toolNameMapping = new Map<string, string>();
-
-			// 为每个MCP服务创建工具名映射
-			for (const service of mcpServices) {
-				if (
-					!service.isBuiltIn &&
-					service.connected &&
-					service.tools.length > 0
-				) {
-					for (const tool of service.tools) {
-						const fullName = `${service.serviceName}-${tool.name}`;
-						toolNameMapping.set(tool.name, fullName);
-					}
-				}
-			}
-
-			// 获取所有内置工具名列表（用于精确匹配）
-			const builtInToolNames = new Set<string>();
-			for (const category of toolCategories) {
-				for (const tool of category.tools) {
-					builtInToolNames.add(tool);
-				}
-			}
-
-			// 映射选中的工具名
-			const mappedSelectedTools = Array.from(selectedTools).map(toolId => {
-				// 如果是内置工具，直接返回
-				if (builtInToolNames.has(toolId)) {
-					return toolId;
-				}
-				// 尝试映射用户选择的纯工具名
-				return toolNameMapping.get(toolId) || toolId;
-			});
-
 			if (isEditMode && agentId) {
 				// Update existing agent
 				// 构建更新对象，只包含实际需要更新的字段
@@ -626,14 +431,9 @@ export default function SubAgentConfigScreen({
 					name: agentName,
 					description: description,
 					role: role || undefined,
-					tools: mappedSelectedTools,
+					tools: Array.from(selectedTools),
+					configProfile: selectedProfile || undefined,
 				};
-
-				// 只有在用户明确选择或取消选择时才包含这些字段
-				// 使用 'in' 操作符确保 undefined 值也能被正确传递
-				updateData.configProfile = selectedProfile;
-				updateData.customSystemPrompt = systemPromptId;
-				updateData.customHeaders = customHeadersObj;
 
 				updateSubAgent(agentId, updateData);
 			} else {
@@ -641,11 +441,9 @@ export default function SubAgentConfigScreen({
 				createSubAgent(
 					agentName,
 					description,
-					mappedSelectedTools,
+					Array.from(selectedTools),
 					role || undefined,
-					selectedProfile,
-					systemPromptId,
-					customHeadersObj,
+					selectedProfile || undefined,
 				);
 			}
 
@@ -664,13 +462,9 @@ export default function SubAgentConfigScreen({
 		description,
 		role,
 		selectedTools,
-		confirmedSystemPromptIndex,
 		confirmedConfigProfileIndex,
-		confirmedCustomHeadersIndex,
-		availableSystemPrompts,
 		availableProfiles,
-		availableCustomHeaders,
-		onSave,
+
 		isEditMode,
 		agentId,
 		t,
@@ -692,10 +486,10 @@ export default function SubAgentConfigScreen({
 			onBack();
 			return;
 		}
-
 		// ========================================
 		// 导航逻辑说明:
-		// ↑↓键: 在主字段间导航 (name → description → role → configProfile → customSystemPrompt → customHeaders → tools)
+		// ↑↓键: 在主字段间导航 (name → description → role → configProfile → tools)
+
 		//       在配置列表字段内导航，到达边界时跳到相邻主字段
 		//       在 tools 字段内导航工具列表，到达边界时跳到相邻主字段
 		// ←→键: 在所有主字段之间切换 (除了 tools 字段中用于切换工具分类)
@@ -708,8 +502,6 @@ export default function SubAgentConfigScreen({
 			'description',
 			'role',
 			'configProfile',
-			'customSystemPrompt',
-			'customHeaders',
 			'tools',
 		];
 		const currentFieldIndex = mainFields.indexOf(currentField);
@@ -727,30 +519,7 @@ export default function SubAgentConfigScreen({
 					setSelectedConfigProfileIndex(prev => prev - 1);
 				}
 				return;
-			} else if (currentField === 'customSystemPrompt') {
-				if (
-					availableSystemPrompts.length === 0 ||
-					selectedSystemPromptIndex === 0
-				) {
-					// 跳到上一个主字段
-					setCurrentField('configProfile');
-				} else {
-					setSelectedSystemPromptIndex(prev => prev - 1);
-				}
-				return;
-			} else if (currentField === 'customHeaders') {
-				if (
-					availableCustomHeaders.length === 0 ||
-					selectedCustomHeadersIndex === 0
-				) {
-					// 跳到上一个主字段
-					setCurrentField('customSystemPrompt');
-				} else {
-					setSelectedCustomHeadersIndex(prev => prev - 1);
-				}
-				return;
 			} else if (currentField === 'tools') {
-				// 在工具列表内导航
 				if (selectedToolIndex > 0) {
 					setSelectedToolIndex(prev => prev - 1);
 				} else if (selectedCategoryIndex > 0) {
@@ -761,11 +530,10 @@ export default function SubAgentConfigScreen({
 					);
 				} else {
 					// 在 tools 顶部时跳到上一个主字段
-					setCurrentField('customHeaders');
+					setCurrentField('configProfile');
 				}
 				return;
 			} else {
-				// 普通字段：跳到上一个主字段
 				const prevIndex =
 					currentFieldIndex > 0 ? currentFieldIndex - 1 : mainFields.length - 1;
 				setCurrentField(mainFields[prevIndex]!);
@@ -781,37 +549,16 @@ export default function SubAgentConfigScreen({
 					selectedConfigProfileIndex >= availableProfiles.length - 1
 				) {
 					// 跳到下一个主字段
-					setCurrentField('customSystemPrompt');
-				} else {
-					setSelectedConfigProfileIndex(prev => prev + 1);
-				}
-				return;
-			} else if (currentField === 'customSystemPrompt') {
-				if (
-					availableSystemPrompts.length === 0 ||
-					selectedSystemPromptIndex >= availableSystemPrompts.length - 1
-				) {
-					// 跳到下一个主字段
-					setCurrentField('customHeaders');
-				} else {
-					setSelectedSystemPromptIndex(prev => prev + 1);
-				}
-				return;
-			} else if (currentField === 'customHeaders') {
-				if (
-					availableCustomHeaders.length === 0 ||
-					selectedCustomHeadersIndex >= availableCustomHeaders.length - 1
-				) {
-					// 跳到下一个主字段
 					setCurrentField('tools');
 					setSelectedCategoryIndex(0);
 					setSelectedToolIndex(0);
 				} else {
-					setSelectedCustomHeadersIndex(prev => prev + 1);
+					setSelectedConfigProfileIndex(prev => prev + 1);
 				}
 				return;
-			} else if (currentField === 'tools') {
-				// 在工具列表内导航
+			}
+
+			if (currentField === 'tools') {
 				const currentCategory = allToolCategories[selectedCategoryIndex];
 				if (!currentCategory) return;
 
@@ -825,13 +572,13 @@ export default function SubAgentConfigScreen({
 					setCurrentField('name');
 				}
 				return;
-			} else {
-				// 普通字段：跳到下一个主字段
-				const nextIndex =
-					currentFieldIndex < mainFields.length - 1 ? currentFieldIndex + 1 : 0;
-				setCurrentField(mainFields[nextIndex]!);
-				return;
 			}
+
+			// 普通字段：跳到下一个主字段
+			const nextIndex =
+				currentFieldIndex < mainFields.length - 1 ? currentFieldIndex + 1 : 0;
+			setCurrentField(mainFields[nextIndex]!);
+			return;
 		}
 
 		// Role field controls - Space to toggle expansion
@@ -841,30 +588,11 @@ export default function SubAgentConfigScreen({
 		}
 
 		// Config field controls - Space to toggle selection
-		if (
-			currentField === 'configProfile' ||
-			currentField === 'customSystemPrompt' ||
-			currentField === 'customHeaders'
-		) {
-			// Space to toggle selection
+		if (currentField === 'configProfile') {
 			if (input === ' ') {
-				if (currentField === 'configProfile') {
-					setConfirmedConfigProfileIndex(prev =>
-						prev === selectedConfigProfileIndex
-							? -1
-							: selectedConfigProfileIndex,
-					);
-				} else if (currentField === 'customSystemPrompt') {
-					setConfirmedSystemPromptIndex(prev =>
-						prev === selectedSystemPromptIndex ? -1 : selectedSystemPromptIndex,
-					);
-				} else if (currentField === 'customHeaders') {
-					setConfirmedCustomHeadersIndex(prev =>
-						prev === selectedCustomHeadersIndex
-							? -1
-							: selectedCustomHeadersIndex,
-					);
-				}
+				setConfirmedConfigProfileIndex(prev =>
+					prev === selectedConfigProfileIndex ? -1 : selectedConfigProfileIndex,
+				);
 				return;
 			}
 		}
@@ -1281,40 +1009,6 @@ export default function SubAgentConfigScreen({
 							currentField === 'configProfile',
 							5,
 							'profile',
-						)}
-					</Box>
-				</Box>
-
-				{/* Custom System Prompt (Optional) */}
-				<Box flexDirection="column">
-					<Text bold color={theme.colors.menuInfo}>
-						{t.subAgentConfig.customSystemPrompt}
-					</Text>
-					<Box marginLeft={2}>
-						{renderScrollableList(
-							availableSystemPrompts,
-							selectedSystemPromptIndex,
-							confirmedSystemPromptIndex, // 确认选中的项
-							currentField === 'customSystemPrompt',
-							5,
-							'prompt',
-						)}
-					</Box>
-				</Box>
-
-				{/* Custom Headers (Optional) */}
-				<Box flexDirection="column">
-					<Text bold color={theme.colors.menuInfo}>
-						{t.subAgentConfig.customHeaders}
-					</Text>
-					<Box marginLeft={2}>
-						{renderScrollableList(
-							availableCustomHeaders,
-							selectedCustomHeadersIndex,
-							confirmedCustomHeadersIndex, // 确认选中的项
-							currentField === 'customHeaders',
-							5,
-							'header',
 						)}
 					</Box>
 				</Box>

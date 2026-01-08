@@ -946,16 +946,8 @@ OPEN QUESTIONS:
 
 			// Call API with sub-agent's tools - choose API based on config
 			// Apply sub-agent configuration overrides (model already loaded from configProfile above)
-			// 子代理继承主代理的 customSystemPromptId（如果子代理自己没配置的话）
-			// 如果主代理也没配置，则不使用自定义系统提示词，改用子代理自己组装的
-			let subAgentCustomSystemPromptId = agent.customSystemPrompt || undefined;
-			if (!subAgentCustomSystemPromptId) {
-				// 子代理没配置，尝试继承主代理的 customSystemPromptId
-				const {getCustomSystemPromptId} = await import(
-					'../config/apiConfig.js'
-				);
-				subAgentCustomSystemPromptId = getCustomSystemPromptId();
-			}
+			// 子代理遵循全局配置（通过 configProfile 继承或覆盖）
+			// API 层会根据 configProfile 自动获取自定义系统提示词和请求头
 
 			const stream =
 				config.requestMethod === 'anthropic'
@@ -969,8 +961,6 @@ OPEN QUESTIONS:
 								sessionId: currentSession?.id,
 								//disableThinking: true, // Sub-agents 不使用 Extended Thinking
 								configProfile: agent.configProfile,
-								customSystemPromptId: subAgentCustomSystemPromptId,
-								customHeaders: agent.customHeaders,
 								subAgentSystemPrompt: finalPrompt,
 							},
 							abortSignal,
@@ -984,8 +974,6 @@ OPEN QUESTIONS:
 								temperature: 0,
 								tools: allowedTools,
 								configProfile: agent.configProfile,
-								customSystemPromptId: subAgentCustomSystemPromptId,
-								customHeaders: agent.customHeaders,
 								subAgentSystemPrompt: finalPrompt,
 							},
 							abortSignal,
@@ -1000,8 +988,6 @@ OPEN QUESTIONS:
 								tools: allowedTools,
 								prompt_cache_key: currentSession?.id,
 								configProfile: agent.configProfile,
-								customSystemPromptId: subAgentCustomSystemPromptId,
-								customHeaders: agent.customHeaders,
 								subAgentSystemPrompt: finalPrompt,
 							},
 							abortSignal,
@@ -1014,8 +1000,6 @@ OPEN QUESTIONS:
 								temperature: 0,
 								tools: allowedTools,
 								configProfile: agent.configProfile,
-								customSystemPromptId: subAgentCustomSystemPromptId,
-								customHeaders: agent.customHeaders,
 								subAgentSystemPrompt: finalPrompt,
 							},
 							abortSignal,
