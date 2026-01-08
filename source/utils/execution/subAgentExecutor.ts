@@ -19,6 +19,7 @@ import {sessionManager} from '../session/sessionManager.js';
 import {unifiedHooksExecutor} from './unifiedHooksExecutor.js';
 import {checkYoloPermission} from './yoloPermissionChecker.js';
 import type {ConfirmationResult} from '../../ui/components/tools/ToolConfirmation.js';
+import type {PendingMessage} from '../../mcp/subagent.js';
 import type {MCPTool} from './mcpToolsManager.js';
 import type {ChatMessage} from '../../api/types.js';
 import {formatUsefulInfoContext} from '../core/usefulInfoPreprocessor.js';
@@ -88,6 +89,8 @@ export interface UserQuestionCallback {
  * @param yoloMode - 是否启用 YOLO 模式（自动批准所有工具）
  * @param addToAlwaysApproved - 添加工具到始终批准列表的回调
  * @param requestUserQuestion - 用户问题回调，用于子智能体调用 askuser 工具时显示主会话的蓝色边框 UI
+ * @param getPendingMessages - 获取待处理用户消息队列的回调函数
+ * @param clearPendingMessages - 清空待处理用户消息队列的回调函数
  * @returns 子智能体的最终结果
  */
 export async function executeSubAgent(
@@ -100,7 +103,13 @@ export async function executeSubAgent(
 	yoloMode?: boolean,
 	addToAlwaysApproved?: AddToAlwaysApprovedCallback,
 	requestUserQuestion?: UserQuestionCallback,
+	getPendingMessages?: () => PendingMessage[],
+	clearPendingMessages?: () => void,
 ): Promise<SubAgentResult> {
+	// Pending message callbacks - will be used after tool calls complete
+	void getPendingMessages;
+	void clearPendingMessages;
+
 	// Save main agent's readFolders state BEFORE any operations
 	// This must be declared outside try block for finally to access it
 	const mainAgentReadFolders = getReadFolders();
@@ -1550,6 +1559,52 @@ OPEN QUESTIONS:
 
 			// Add tool results to conversation
 			messages.push(...toolResults);
+			// Check and handle pending messages from user
+			if (getPendingMessages && clearPendingMessages) {
+				const pendingMessages = getPendingMessages();
+				if (pendingMessages.length > 0) {
+					// Merge multiple pending messages with \n\n separator
+					const combinedMessage = pendingMessages.map(m => m.text).join('\n\n');
+
+					// Collect all images from all pending messages
+					const allPendingImages = pendingMessages
+						.flatMap(m => m.images || [])
+						.map(img => ({
+							type: 'image' as const,
+							data: img.data,
+							mimeType: img.mimeType,
+						}));
+
+					// Insert user message to conversation context (without any prefix or mark)
+					messages.push({
+						role: 'user',
+						content: combinedMessage,
+						...(allPendingImages.length > 0 && {
+							images: allPendingImages,
+						}),
+					});
+
+					// Notify UI to display user message in sub-agent conversation
+					if (onMessage) {
+						onMessage({
+							type: 'sub_agent_message',
+							agentId: agent.id,
+							agentName: agent.name,
+							message: {
+								type: 'content',
+								content: combinedMessage,
+								role: 'user',
+								...(allPendingImages.length > 0 && {
+									images: allPendingImages,
+								}),
+							},
+						});
+					}
+
+					// Clear the pending messages queue immediately
+					clearPendingMessages();
+				}
+			}
 
 			// Continue to next iteration if there were tool calls
 			// The loop will continue until no more tool calls

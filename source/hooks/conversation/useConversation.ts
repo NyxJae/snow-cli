@@ -1060,6 +1060,7 @@ async function executeWithInternalRetry(
 
 							// Extract content from the sub-agent message
 							let content = '';
+							let messageRole = subAgentMessage.message.role || 'assistant'; // Default to assistant if role not specified
 							if (subAgentMessage.message.type === 'content') {
 								content = subAgentMessage.message.content;
 								// Update token count for sub-agent content
@@ -1133,20 +1134,36 @@ async function executeWithInternalRetry(
 								}
 								return updated;
 							} else if (content) {
-								// Add new sub-agent message
-								return [
-									...prev,
-									{
-										role: 'subagent' as const,
-										content,
-										streaming: true,
-										subAgent: {
-											agentId: subAgentMessage.agentId,
-											agentName: subAgentMessage.agentName,
-											isComplete: false,
+								// Add new message based on role
+								if (messageRole === 'user') {
+									// User message - display as user role
+									return [
+										...prev,
+										{
+											role: 'user' as const,
+											content,
+											streaming: false,
+											...(subAgentMessage.message.images && {
+												images: subAgentMessage.message.images,
+											}),
 										},
-									},
-								];
+									];
+								} else {
+									// Assistant message - display as subagent role
+									return [
+										...prev,
+										{
+											role: 'subagent' as const,
+											content,
+											streaming: true,
+											subAgent: {
+												agentId: subAgentMessage.agentId,
+												agentName: subAgentMessage.agentName,
+												isComplete: false,
+											},
+										},
+									];
+								}
 							}
 
 							return prev;
@@ -1176,6 +1193,8 @@ async function executeWithInternalRetry(
 							multiSelect,
 						);
 					},
+					options.getPendingMessages,
+					options.clearPendingMessages,
 				);
 
 				// Check if aborted during tool execution

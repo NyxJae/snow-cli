@@ -4,7 +4,7 @@ import type {SubAgentMessage} from './subAgentExecutor.js';
 import type {ConfirmationResult} from '../../ui/components/tools/ToolConfirmation.js';
 import type {ImageContent} from '../../api/types.js';
 import type {MultimodalContent} from '../../mcp/types/filesystem.types.js';
-
+import type {PendingMessage} from '../../mcp/subagent.js';
 //安全解析JSON，处理可能被拼接的多个JSON对象
 function safeParseToolArguments(argsString: string): Record<string, any> {
 	if (!argsString || argsString.trim() === '') {
@@ -118,6 +118,14 @@ export interface UserInteractionCallback {
 	}>;
 }
 
+export interface GetPendingMessagesCallback {
+	(): PendingMessage[];
+}
+
+export interface ClearPendingMessagesCallback {
+	(): void;
+}
+
 /**
  * Check if a value is a multimodal content array
  */
@@ -215,6 +223,8 @@ export async function executeToolCall(
 	yoloMode?: boolean,
 	addToAlwaysApproved?: AddToAlwaysApprovedCallback,
 	onUserInteractionNeeded?: UserInteractionCallback,
+	getPendingMessages?: GetPendingMessagesCallback,
+	clearPendingMessages?: ClearPendingMessagesCallback,
 ): Promise<ToolResult> {
 	let result: ToolResult | undefined;
 	let executionError: Error | null = null;
@@ -333,6 +343,8 @@ export async function executeToolCall(
 				yoloMode,
 				addToAlwaysApproved,
 				requestUserQuestion: onUserInteractionNeeded,
+				getPendingMessages,
+				clearPendingMessages,
 			});
 
 			result = {
@@ -572,6 +584,8 @@ export async function executeToolCalls(
 	yoloMode?: boolean,
 	addToAlwaysApproved?: AddToAlwaysApprovedCallback,
 	onUserInteractionNeeded?: UserInteractionCallback,
+	getPendingMessages?: GetPendingMessagesCallback,
+	clearPendingMessages?: ClearPendingMessagesCallback,
 ): Promise<ToolResult[]> {
 	// Group tool calls by their resource identifier
 	const resourceGroups = new Map<string, ToolCall[]>();
@@ -599,6 +613,8 @@ export async function executeToolCalls(
 					yoloMode,
 					addToAlwaysApproved,
 					onUserInteractionNeeded,
+					getPendingMessages,
+					clearPendingMessages,
 				);
 				groupResults.push(result);
 

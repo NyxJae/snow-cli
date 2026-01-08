@@ -4,6 +4,11 @@ import type {SubAgentMessage} from '../utils/execution/subAgentExecutor.js';
 import type {ToolCall} from '../utils/execution/toolExecutor.js';
 import type {ConfirmationResult} from '../ui/components/tools/ToolConfirmation.js';
 
+export interface PendingMessage {
+	text: string;
+	images?: Array<{data: string; mimeType: string}>;
+}
+
 export interface SubAgentToolExecutionOptions {
 	agentId: string;
 	prompt: string;
@@ -22,6 +27,8 @@ export interface SubAgentToolExecutionOptions {
 		options: string[],
 		multiSelect?: boolean,
 	) => Promise<{selected: string | string[]; customInput?: string}>;
+	getPendingMessages?: () => PendingMessage[];
+	clearPendingMessages?: () => void;
 }
 
 /**
@@ -43,6 +50,8 @@ export class SubAgentService {
 			yoloMode,
 			addToAlwaysApproved,
 			requestUserQuestion,
+			getPendingMessages,
+			clearPendingMessages,
 		} = options;
 
 		// Create a tool confirmation adapter for sub-agent if needed
@@ -71,6 +80,8 @@ export class SubAgentService {
 			yoloMode,
 			addToAlwaysApproved,
 			requestUserQuestion,
+			getPendingMessages,
+			clearPendingMessages,
 		);
 
 		if (!result.success) {
