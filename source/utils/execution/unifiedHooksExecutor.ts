@@ -16,6 +16,7 @@ import {createStreamingResponse} from '../../api/responses.js';
 import {createStreamingGeminiCompletion} from '../../api/gemini.js';
 import {createStreamingAnthropicCompletion} from '../../api/anthropic.js';
 import type {RequestMethod} from '../config/apiConfig.js';
+import {selectShellForExecution, getUtf8EnvVars} from './shellSelector.js';
 
 /**
  * Prompt Hook 执行结果（小模型返回的 JSON）
@@ -93,52 +94,6 @@ export interface HookContext {
  * - 严格按照配置顺序执行
  * - 支持 matcher 匹配
  */
-
-// Cache for Git Bash availability check
-let gitBashAvailable: boolean | null = null;
-
-/**
- * Check if Git Bash is available on the system
- * @returns true if Git Bash is available, false otherwise
- */
-function isGitBashAvailable(): boolean {
-	// Return cached result if available
-	if (gitBashAvailable !== null) {
-		return gitBashAvailable;
-	}
-
-	// Only check on Windows
-	if (process.platform !== 'win32') {
-		gitBashAvailable = false;
-		return false;
-	}
-
-	// Try to detect Git Bash by checking common installation paths
-	const commonPaths = [
-		'C:\\Program Files\\Git\\bin\\bash.exe',
-		'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
-		'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
-	];
-
-	const {existsSync} = require('fs');
-	for (const path of commonPaths) {
-		if (existsSync(path)) {
-			gitBashAvailable = true;
-			return true;
-		}
-	}
-
-	// If not found in common paths, try to use 'where' command
-	try {
-		const {execSync} = require('child_process');
-		const result = execSync('where bash', {encoding: 'utf8', timeout: 2000});
-		gitBashAvailable = result.trim().length > 0;
-		return gitBashAvailable;
-	} catch {
-		gitBashAvailable = false;
-		return false;
-	}
-}
 
 export class UnifiedHooksExecutor {
 	// Command 执行器配置
@@ -446,11 +401,8 @@ export class UnifiedHooksExecutor {
 		const stdinData = context ? JSON.stringify(context) : '';
 
 		try {
-			// 智能选择 shell: Windows 下优先使用 Git Bash，不可用时回退到 cmd
-			const shell =
-				process.platform === 'win32' && isGitBashAvailable()
-					? 'bash.exe'
-					: undefined;
+			// 智能选择 shell: 用户当前 shell > Git Bash > cmd.exe
+			const shell = selectShellForExecution();
 
 			const childProcess = exec(command, {
 				cwd: process.cwd(),
@@ -460,17 +412,7 @@ export class UnifiedHooksExecutor {
 				encoding: 'utf8',
 				env: {
 					...process.env,
-					// 指定 UTF-8 编码环境变量
-					...(process.platform === 'win32' && {
-						LANG: 'zh_CN.UTF-8',
-						LC_ALL: 'zh_CN.UTF-8',
-						PYTHONIOENCODING: 'utf-8',
-					}),
-					// Unix/Linux/macOS 设置 UTF-8 编码
-					...(process.platform !== 'win32' && {
-						LANG: 'en_US.UTF-8',
-						LC_ALL: 'en_US.UTF-8',
-					}),
+					...getUtf8EnvVars(),
 				},
 			});
 			// 处理 stdin
