@@ -38,6 +38,8 @@ import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
 import {getSimpleMode} from '../../utils/config/themeConfig.js';
 import {getAllProfiles} from '../../utils/config/configManager.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
+import {getTodoService} from '../../utils/execution/mcpToolsManager.js';
+import {todoEvents} from '../../utils/events/todoEvents.js';
 import {useSessionSave} from '../../hooks/session/useSessionSave.js';
 import {useToolConfirmation} from '../../hooks/conversation/useToolConfirmation.js';
 
@@ -578,6 +580,20 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 							const uiMessages = convertSessionMessagesToUI(session.messages);
 							setMessages(uiMessages);
 							initializeFromSession(session.messages);
+
+							// Load and emit TODO list for the restored session
+							try {
+								const todoService = getTodoService();
+								const todoList = await todoService.getTodoList(session.id);
+								todoEvents.emitTodoUpdate(session.id, todoList?.todos ?? []);
+							} catch (todoError) {
+								// TODO loading failure should not affect session restoration
+								logger.warn('Failed to load TODO list for session', {
+									error: todoError,
+								});
+								// Emit empty TODO list to ensure UI is in consistent state
+								todoEvents.emitTodoUpdate(session.id, []);
+							}
 						}
 					}
 				}
