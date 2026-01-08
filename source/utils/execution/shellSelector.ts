@@ -115,21 +115,11 @@ export function selectShellForExecution(): string | undefined {
 
 /**
  * 获取 UTF-8 编码环境变量
- * 只设置编码，不强制语言环境（修复国际化问题）
  * @returns 环境变量对象
  */
 export function getUtf8EnvVars(): Record<string, string> {
-	const platform = process.platform;
-
-	// Windows: 只设置 PYTHONIOENCODING，不强制 LANG/LC_ALL
-	if (platform === 'win32') {
-		return {
-			PYTHONIOENCODING: 'utf-8',
-		};
-	}
-
-	// Unix/Linux/macOS: 设置 UTF-8 编码
 	return {
+		PYTHONIOENCODING: 'utf-8',
 		LANG: 'en_US.UTF-8',
 		LC_ALL: 'en_US.UTF-8',
 	};
