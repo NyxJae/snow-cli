@@ -478,6 +478,7 @@ export const en: TranslationKeys = {
 		commands: {
 			help: 'Show keyboard shortcuts and help information',
 			clear: 'Clear chat context and conversation history',
+			copyLast: 'Copy last AI message to clipboard',
 			resume: 'Resume a conversation',
 			mcp: 'Show Model Context Protocol services and tools',
 			yolo: 'Toggle unattended mode (auto-approve all tools)',

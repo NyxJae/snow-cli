@@ -14,6 +14,8 @@ import {
 import {exportMessagesToFile} from '../../utils/session/chatExporter.js';
 import {clearReadFolders} from '../../utils/core/folderNotebookPreprocessor.js';
 import {todoEvents} from '../../utils/events/todoEvents.js';
+import {copyToClipboard} from '../../utils/clipboard.js';
+import {spawn} from 'child_process';
 
 /**
  * 执行上下文压缩
@@ -648,7 +650,6 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				});
 
 				// Execute the command using spawn
-				const {spawn} = require('child_process');
 				const isWindows = process.platform === 'win32';
 				const shell = isWindows ? 'cmd' : 'sh';
 				const shellArgs = isWindows
@@ -716,10 +717,9 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				result.prompt
 			) {
 				// Delete custom command
-				const {
-					deleteCustomCommand,
-					registerCustomCommands,
-				} = require('../../utils/commands/custom.js');
+				const {deleteCustomCommand, registerCustomCommands} = await import(
+					'../../utils/commands/custom.js'
+				);
 
 				try {
 					// Use the location from result, default to 'global' if not provided
@@ -751,7 +751,9 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 			} else if (result.success && result.action === 'toggleYolo') {
 				// Toggle YOLO mode via MainAgentManager to keep single source of truth
 				try {
-					const {toggleYoloMode} = require('../../utils/MainAgentManager.js');
+					const {toggleYoloMode} = await import(
+						'../../utils/MainAgentManager.js'
+					);
 					const newYoloState = toggleYoloMode();
 					options.setYoloMode(newYoloState);
 				} catch (error) {
@@ -880,6 +882,69 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						};
 						options.setMessages(prev => [...prev, errorMessage]);
 					}
+				}
+			} else if (result.success && result.action === 'copyLastMessage') {
+				// Handle copy last message command - copy last AI assistant message to clipboard
+				try {
+					// Find the last assistant message
+					const messages = options.messages;
+					let lastAssistantMessage: Message | undefined;
+					for (let i = messages.length - 1; i >= 0; i--) {
+						const msg = messages[i];
+						if (msg && msg.role === 'assistant' && !msg.subAgentInternal) {
+							lastAssistantMessage = msg;
+							break;
+						}
+					}
+
+					if (!lastAssistantMessage) {
+						const errorMessage: Message = {
+							role: 'command',
+							content: 'No AI assistant message found to copy.',
+							commandName: commandName,
+						};
+						options.setMessages(prev => [...prev, errorMessage]);
+						return;
+					}
+
+					// Get the content to copy
+					const contentToCopy = lastAssistantMessage.content || '';
+
+					if (!contentToCopy) {
+						const errorMessage: Message = {
+							role: 'command',
+							content: 'The last AI assistant message has no content to copy.',
+							commandName: commandName,
+						};
+						options.setMessages(prev => [...prev, errorMessage]);
+						return;
+					}
+
+					// Copy to clipboard using platform-specific method
+					await copyToClipboard(contentToCopy);
+
+					// Show success message
+					const messageLength = contentToCopy.length;
+					const sizeDisplay =
+						messageLength >= 1024
+							? `${Math.floor(messageLength / 1024)}KB`
+							: `${messageLength} characters`;
+
+					const successMessage: Message = {
+						role: 'command',
+						content: `✓ Last AI message copied to clipboard (${sizeDisplay})`,
+						commandName: commandName,
+					};
+					options.setMessages(prev => [...prev, successMessage]);
+				} catch (error) {
+					const errorMsg =
+						error instanceof Error ? error.message : 'Unknown error';
+					const errorMessage: Message = {
+						role: 'command',
+						content: `✗ Failed to copy to clipboard: ${errorMsg}`,
+						commandName: commandName,
+					};
+					options.setMessages(prev => [...prev, errorMessage]);
 				}
 			} else if (result.message) {
 				// For commands that just return a message (like /init without AGENTS.md, etc.)

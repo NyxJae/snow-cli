@@ -32,6 +32,7 @@ export interface CommandResult {
 		| 'showRoleDeletion'
 		| 'showPermissionsPanel'
 		| 'reindexCodebase'
+		| 'copyLastMessage'
 		| 'sendAsMessage'
 		| 'quit';
 	prompt?: string;

@@ -447,6 +447,7 @@ export const zh: TranslationKeys = {
 		commands: {
 			help: '显示快捷键和帮助信息',
 			clear: '清空聊天上下文和对话历史',
+			copyLast: '复制最后一条AI回复到剪贴板',
 			resume: '恢复对话',
 			mcp: '显示模型上下文协议服务和工具',
 			yolo: '切换无人值守模式(自动批准所有工具)',

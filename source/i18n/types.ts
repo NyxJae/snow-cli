@@ -449,6 +449,7 @@ export type TranslationKeys = {
 		commands: {
 			help: string;
 			clear: string;
+			copyLast: string;
 			resume: string;
 			mcp: string;
 			yolo: string;
