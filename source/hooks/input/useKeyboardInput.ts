@@ -118,6 +118,8 @@ type KeyboardInputOptions = {
 	}>;
 	onSwitchMainAgent?: () => void;
 	onMainAgentSelect?: (agentId: string) => void;
+	onTodoScrollUp?: () => void;
+	onTodoScrollDown?: () => void;
 };
 
 export function useKeyboardInput(options: KeyboardInputOptions) {
@@ -201,6 +203,8 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 		getFilteredMainAgents,
 		onSwitchMainAgent,
 		onMainAgentSelect,
+		onTodoScrollUp,
+		onTodoScrollDown,
 	} = options;
 
 	// Mark variables as used (they are used in useInput closure below)
@@ -303,6 +307,22 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 		if (isProfileSwitchShortcut) {
 			if (onSwitchProfile) {
 				onSwitchProfile();
+			}
+			return;
+		}
+
+		// Alt+U - TODO 向上滚动
+		if (key.meta && input === 'u') {
+			if (onTodoScrollUp) {
+				onTodoScrollUp();
+			}
+			return;
+		}
+
+		// Alt+D - TODO 向下滚动
+		if (key.meta && input === 'd') {
+			if (onTodoScrollDown) {
+				onTodoScrollDown();
 			}
 			return;
 		}

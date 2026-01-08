@@ -1,24 +1,136 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import chalk from 'chalk';
 import {useTheme} from '../../contexts/ThemeContext.js';
-
-interface TodoItem {
-	id: string;
-	content: string;
-	// 运行时可能出现非标准值，仅将 'completed' 视为已完成；其他值一律按未完成处理。
-	status: string;
-	parentId?: string;
-}
-
+import type {TodoItem} from '../../../mcp/types/todo.types.js';
+/**
+ * TodoTree 组件属性接口
+ * @property todos - TODO 列表
+ * @property scrollOffset - 滚动偏移量，从第几条开始显示（可选，默认 0）
+ */
 interface TodoTreeProps {
 	todos: TodoItem[];
+	scrollOffset?: number;
 }
 
 /**
  * TODO Tree 组件 - 显示紧凑任务列表
  */
-export default function TodoTree({todos}: TodoTreeProps) {
+
+/**
+ * 树节点接口 - 表示树状结构中的节点
+ */
+interface TreeNode {
+	id: string;
+	content: string;
+	status: 'pending' | 'completed';
+	createdAt: string;
+	updatedAt: string;
+	parentId?: string;
+	level: number; // 层级深度，0 表示根任务
+	children: TreeNode[]; // 子任务列表
+}
+
+/**
+ * 扁平化的 TODO 接口 - 用于渲染显示
+ */
+interface FlattenedTodo extends TodoItem {
+	prefix: string; // 连接符前缀
+	level: number; // 层级深度
+}
+
+/**
+ * 构建 TODO 树状结构
+ * @param todos - 扁平的 TODO 列表
+ * @returns 树状结构的根节点列表
+ */
+export function buildTodoTree(todos: TodoItem[]): TreeNode[] {
+	// 步骤1：创建所有节点的 Map
+	const nodeMap = new Map<string, TreeNode>();
+	todos.forEach(todo => {
+		nodeMap.set(todo.id, {
+			...todo,
+			level: 0,
+			children: [],
+		});
+	});
+
+	// 步骤2：构建父子关系
+	const roots: TreeNode[] = [];
+	todos.forEach(todo => {
+		const node = nodeMap.get(todo.id)!;
+		if (!todo.parentId) {
+			roots.push(node);
+		} else {
+			const parent = nodeMap.get(todo.parentId);
+			if (parent) {
+				parent.children.push(node);
+			}
+		}
+	});
+
+	// 步骤3：计算层级深度
+	const calculateLevel = (node: TreeNode, level: number) => {
+		node.level = level;
+		node.children.forEach(child => calculateLevel(child, level + 1));
+	};
+	roots.forEach(root => calculateLevel(root, 0));
+
+	return roots;
+}
+
+/**
+ * 将树状结构扁平化并添加连接符前缀
+ * @param nodes - 树状结构的节点列表
+ * @returns 扁平化的 TODO 列表，带有连接符前缀
+ */
+export function flattenTree(nodes: TreeNode[]): FlattenedTodo[] {
+	const result: FlattenedTodo[] = [];
+
+	const traverse = (
+		node: TreeNode,
+		prefix: string,
+		siblingsTotal: number,
+		siblingIndex: number,
+	) => {
+		const isLast = siblingIndex === siblingsTotal - 1;
+		const currentPrefix =
+			node.level === 0
+				? isLast
+					? '└─ '
+					: '├─ '
+				: prefix + (isLast ? '└─ ' : '├─ ');
+		const verticalPrefix =
+			node.level === 0
+				? isLast
+					? '  '
+					: '│ '
+				: prefix + (isLast ? '  ' : '│ ');
+
+		result.push({
+			id: node.id,
+			content: node.content,
+			status: node.status,
+			createdAt: node.createdAt,
+			updatedAt: node.updatedAt,
+			parentId: node.parentId,
+			prefix: currentPrefix,
+			level: node.level,
+		});
+
+		// 递归处理子任务
+		node.children.forEach((child, i) => {
+			traverse(child, verticalPrefix, node.children.length, i);
+		});
+	};
+
+	nodes.forEach((node, i) => {
+		traverse(node, '', nodes.length, i);
+	});
+
+	return result;
+}
+
+export default function TodoTree({todos, scrollOffset = 0}: TodoTreeProps) {
 	const {theme} = useTheme();
 	if (todos.length === 0) {
 		return (
@@ -31,55 +143,44 @@ export default function TodoTree({todos}: TodoTreeProps) {
 		);
 	}
 
-	const MAX_VISIBLE_TOTAL = 5;
-	const totalCount = todos.length;
-	const completedCount = todos.reduce(
+	// 构建树状结构并扁平化
+	const treeNodes = buildTodoTree(todos);
+	const flattenedTodos = flattenTree(treeNodes);
+
+	const MAX_VISIBLE = 5;
+	const totalCount = flattenedTodos.length;
+	const completedCount = flattenedTodos.reduce(
 		(acc, t) => acc + (t.status === 'completed' ? 1 : 0),
 		0,
 	);
 
-	let visibleTodos: TodoItem[];
-	let hiddenCompletedCount = 0;
+	// 应用滚动偏移（在整个列表上滚动）
+	let visibleTodos: FlattenedTodo[];
 
-	// 全是未完成（包含非标准 status）：全部显示
-	if (completedCount === 0) {
-		visibleTodos = todos;
-	} else if (completedCount === totalCount) {
-		// 全是已完成：只显示最后 5 条
-		visibleTodos = todos.slice(-MAX_VISIBLE_TOTAL);
-		hiddenCompletedCount = Math.max(0, totalCount - visibleTodos.length);
+	if (totalCount <= MAX_VISIBLE) {
+		// 列表很短，全部显示
+		visibleTodos = flattenedTodos;
 	} else {
-		// 混合：按规则裁剪已完成
-		const pendingCount = totalCount - completedCount;
-		const EXTRA_COMPLETED_WHEN_PENDING_AT_LEAST_MAX = 2;
+		// 列表很长，应用滚动
+		const maxOffset = Math.max(0, totalCount - MAX_VISIBLE);
+		const validOffset = Math.min(Math.max(scrollOffset, 0), maxOffset);
+		visibleTodos = flattenedTodos.slice(validOffset, validOffset + MAX_VISIBLE);
+	}
 
-		// 先标记所有未完成可见（未完成始终全部显示）
-		const visibleMask = new Array<boolean>(totalCount).fill(false);
-		for (let i = 0; i < totalCount; i++) {
-			if (todos[i]!.status !== 'completed') visibleMask[i] = true;
+	// 计算滚动提示
+	const hasMoreAbove = scrollOffset > 0;
+	const hasMoreBelow = scrollOffset + visibleTodos.length < totalCount;
+	const needsScroll = totalCount > MAX_VISIBLE;
+
+	let scrollHint = '';
+	if (needsScroll) {
+		if (hasMoreAbove && hasMoreBelow) {
+			scrollHint = ' ⬆/⬇';
+		} else if (hasMoreAbove) {
+			scrollHint = ' ⬆';
+		} else if (hasMoreBelow) {
+			scrollHint = ' ⬇';
 		}
-
-		// 再从尾部补齐已完成：
-		// - 未完成 < 5：补齐到总数最多 5 条
-		// - 未完成 >= 5：额外显示 2 条已完成（总可见数会超过 5）
-		let remainingSlots =
-			pendingCount >= MAX_VISIBLE_TOTAL
-				? EXTRA_COMPLETED_WHEN_PENDING_AT_LEAST_MAX
-				: MAX_VISIBLE_TOTAL - pendingCount;
-		for (let i = totalCount - 1; i >= 0 && remainingSlots > 0; i--) {
-			if (todos[i]!.status === 'completed' && !visibleMask[i]) {
-				visibleMask[i] = true;
-				remainingSlots--;
-			}
-		}
-
-		visibleTodos = todos.filter((_, i) => visibleMask[i]!);
-
-		const visibleCompletedCount = visibleTodos.reduce(
-			(acc, t) => acc + (t.status === 'completed' ? 1 : 0),
-			0,
-		);
-		hiddenCompletedCount = Math.max(0, completedCount - visibleCompletedCount);
 	}
 
 	const getStatusIcon = (status: string) => {
@@ -92,20 +193,19 @@ export default function TodoTree({todos}: TodoTreeProps) {
 			: theme.colors.menuSecondary;
 	};
 
-	const renderTodoLine = (todo: TodoItem, index: number): React.ReactNode => {
+	const renderTodoLine = (
+		todo: FlattenedTodo,
+		index: number,
+	): React.ReactNode => {
 		const statusIcon = getStatusIcon(todo.status);
 		const statusColor = getStatusColor(todo.status);
 
-		const applyColor = (text: string) => {
-			return statusColor.startsWith('#')
-				? chalk.hex(statusColor)(text)
-				: (chalk as any)[statusColor]?.(text) ?? text;
-		};
-
 		return (
 			<Text key={`${todo.id}:${index}`}>
-				{applyColor(statusIcon)}
-				{applyColor(' ' + todo.content)}
+				{todo.prefix}
+				<Text color={statusColor}>
+					{statusIcon} {todo.content}
+				</Text>
 			</Text>
 		);
 	};
@@ -117,9 +217,8 @@ export default function TodoTree({todos}: TodoTreeProps) {
 				<Text color={theme.colors.menuInfo}>
 					({completedCount}/{totalCount})
 				</Text>
-				{hiddenCompletedCount > 0 && (
-					<Text dimColor> +{hiddenCompletedCount} completed hidden</Text>
-				)}
+				{scrollHint && <Text dimColor>{scrollHint}</Text>}
+				<Text dimColor> alt+u/d</Text>
 			</Text>
 			{visibleTodos.map((todo, index) => renderTodoLine(todo, index))}
 		</Box>

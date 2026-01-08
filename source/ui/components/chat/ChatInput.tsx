@@ -124,6 +124,8 @@ type Props = {
 	}>;
 	onSwitchMainAgent?: () => void;
 	onMainAgentSelect?: (agentId: string) => void;
+	onTodoScrollUp?: () => void;
+	onTodoScrollDown?: () => void;
 };
 
 export default function ChatInput({
@@ -161,6 +163,9 @@ export default function ChatInput({
 	getFilteredMainAgents,
 	onSwitchMainAgent,
 	onMainAgentSelect,
+	// TODO 滚动控制
+	onTodoScrollUp,
+	onTodoScrollDown,
 }: Props) {
 	// Use i18n hook for translations
 	const {t} = useI18n();
@@ -357,6 +362,8 @@ export default function ChatInput({
 		getFilteredMainAgents: getFilteredMainAgents || (() => []),
 		onSwitchMainAgent,
 		onMainAgentSelect,
+		onTodoScrollUp,
+		onTodoScrollDown,
 	});
 
 	// Set initial content when provided (e.g., when rolling back to first message)
