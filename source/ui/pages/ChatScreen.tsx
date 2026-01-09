@@ -168,6 +168,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		command: string;
 		resolve: (proceed: boolean) => void;
 	} | null>(null);
+	const [suppressLoadingIndicator, setSuppressLoadingIndicator] =
+		useState(false);
+	const hadBashSensitiveCommandRef = useRef(false);
 	// Hook error state for displaying in chat area
 	const [hookError, setHookError] = useState<HookErrorDetails | null>(null);
 	const {columns: terminalWidth, rows: terminalHeight} = useTerminalSize();
@@ -194,6 +197,29 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 
 	// Use custom hooks
 	const streamingState = useStreamingState();
+
+	// When bash confirmation panel shows/hides, suppress the loading indicator briefly
+	// to avoid visual jitter and stale lines in some terminals.
+	useEffect(() => {
+		const hasPanel = !!bashSensitiveCommand;
+		const hadPanel = hadBashSensitiveCommandRef.current;
+		hadBashSensitiveCommandRef.current = hasPanel;
+
+		if (hasPanel) {
+			setSuppressLoadingIndicator(true);
+			return undefined;
+		}
+
+		if (hadPanel && !hasPanel) {
+			setSuppressLoadingIndicator(true);
+			const timer = setTimeout(() => {
+				setSuppressLoadingIndicator(false);
+			}, 120);
+			return () => clearTimeout(timer);
+		}
+
+		return undefined;
+	}, [bashSensitiveCommand]);
 	const vscodeState = useVSCodeState();
 	const snapshotState = useSnapshotState(messages.length);
 	const bashMode = useBashMode();
@@ -1247,6 +1273,15 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				isSaving={isSaving}
 				hasPendingToolConfirmation={!!pendingToolConfirmation}
 				hasPendingUserQuestion={!!pendingUserQuestion}
+				hasBlockingOverlay={
+					!!bashSensitiveCommand ||
+					suppressLoadingIndicator ||
+					(bashMode.state.isExecuting && !!bashMode.state.currentCommand) ||
+					(terminalExecutionState.state.isExecuting &&
+						!terminalExecutionState.state.isBackgrounded &&
+						!!terminalExecutionState.state.command) ||
+					(customCommandExecution?.isRunning ?? false)
+				}
 				terminalWidth={terminalWidth}
 				animationFrame={streamingState.animationFrame}
 				retryStatus={streamingState.retryStatus}
