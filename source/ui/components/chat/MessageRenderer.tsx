@@ -9,10 +9,17 @@ import ToolResultPreview from '../tools/ToolResultPreview.js';
 import {HookErrorDisplay} from '../special/HookErrorDisplay.js';
 import SubAgentResultDisplay from '../special/SubAgentResultDisplay.js';
 
+/**
+ * Clean thinking content by removing XML-like tags
+ * Some third-party APIs may include <think></think> or <thinking></thinking> tags
+ */
+function cleanThinkingContent(content: string): string {
+	return content.replace(/\s*<\/?think(?:ing)?>\s*/gi, '').trim();
+}
+
 type Props = {
 	message: Message;
 	index: number;
-	isLastMessage: boolean;
 	filteredMessages: Message[];
 	terminalWidth: number;
 	showThinking?: boolean;
@@ -21,7 +28,6 @@ type Props = {
 export default function MessageRenderer({
 	message,
 	index,
-	isLastMessage,
 	filteredMessages,
 	terminalWidth,
 	showThinking = true,
@@ -91,8 +97,8 @@ export default function MessageRenderer({
 	return (
 		<Box
 			key={`msg-${index}`}
-			marginTop={index > 0 && !shouldShowParallelIndicator ? 1 : 0}
-			marginBottom={isLastMessage ? 1 : 0}
+			marginTop={0}
+			marginBottom={1}
 			paddingX={1}
 			flexDirection="column"
 			width={terminalWidth}
@@ -213,13 +219,13 @@ export default function MessageRenderer({
 											return (
 												<>
 													{message.thinking && showThinking && (
-														<Box flexDirection="column" marginBottom={1}>
+														<Box flexDirection="column" marginBottom={message.content ? 1 : 0}>
 															<Text
 																color={theme.colors.menuSecondary}
 																dimColor
 																italic
 															>
-																{message.thinking}
+																{cleanThinkingContent(message.thinking)}
 															</Text>
 														</Box>
 													)}
@@ -234,11 +240,11 @@ export default function MessageRenderer({
 																removeAnsiCodes(message.content),
 															)}
 														</Text>
-													) : (
+													) : message.content ? (
 														<MarkdownRenderer
-															content={message.content || ' '}
+															content={message.content}
 														/>
-													)}
+													) : null}
 												</>
 											);
 										})()

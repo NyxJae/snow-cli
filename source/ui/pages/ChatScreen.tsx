@@ -54,6 +54,7 @@ import {usePanelState} from '../../hooks/ui/usePanelState.js';
 import {useTerminalExecutionState} from '../../hooks/execution/useTerminalExecutionState.js';
 import {useBackgroundProcesses} from '../../hooks/execution/useBackgroundProcesses.js';
 import {useChatLogic} from '../../hooks/conversation/useChatLogic.js';
+import {useCursorHide} from '../../hooks/ui/useCursorHide.js';
 import {vscodeConnection} from '../../utils/ui/vscodeConnection.js';
 import {convertSessionMessagesToUI} from '../../utils/session/sessionConverter.js';
 import {validateGitignore} from '../../utils/codebase/gitignoreValidator.js';
@@ -194,6 +195,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		timestamp: number;
 	} | null>(null);
 	const codebaseAgentRef = useRef<CodebaseIndexAgent | null>(null);
+
+	// Hide terminal cursor to prevent flickering
+	useCursorHide();
 
 	// Use custom hooks
 	const streamingState = useStreamingState();
@@ -1239,13 +1243,11 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					...messages
 						.filter(m => !m.streaming)
 						.map((message, index, filteredMessages) => {
-							const isLastMessage = index === filteredMessages.length - 1;
 							return (
 								<MessageRenderer
 									key={`msg-${index}`}
 									message={message}
 									index={index}
-									isLastMessage={isLastMessage}
 									filteredMessages={filteredMessages}
 									terminalWidth={terminalWidth}
 									showThinking={showThinking}
@@ -1411,12 +1413,13 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					command: string,
 					type: 'execute' | 'prompt',
 					location: CommandLocation,
+					description?: string,
 				) => {
 					await saveCustomCommand(
 						name,
 						command,
 						type,
-						undefined,
+						description,
 						location,
 						workingDirectory,
 					);

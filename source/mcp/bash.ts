@@ -1,4 +1,4 @@
-import {exec} from 'child_process';
+import {exec, spawn} from 'child_process';
 // Type definitions
 import type {CommandExecutionResult} from './types/bash.types.js';
 // Utility functions
@@ -69,16 +69,35 @@ export class TerminalCommandService {
 					`Dangerous command detected and blocked: ${command.slice(0, 50)}`,
 				);
 			}
-			// Execute command using system default shell and register the process
-			// 智能选择 shell: 用户当前 shell > Git Bash > cmd.exe
-			const shell = selectShellForExecution();
+			// Execute command using system default shell and register the process.
+			// Using spawn (instead of exec) avoids relying on inherited stdio and is
+			// more resilient in some terminals where `exec` can fail with `spawn EBADF`.
+			// 智能选择 shell: 用户当前 shell > cmd.exe (Windows) / sh (Unix)
+			const selectedShell = selectShellForExecution();
+			const isWindows = process.platform === 'win32';
 
-			const childProcess = exec(command, {
+			// 根据 shell 类型确定参数格式
+			let shell: string;
+			let shellArgs: string[];
+			if (isWindows) {
+				shell = selectedShell || 'cmd.exe';
+				if (shell.includes('powershell') || shell.includes('pwsh')) {
+					shellArgs = ['-Command', command];
+				} else if (shell.includes('bash')) {
+					shellArgs = ['-c', command];
+				} else {
+					// cmd.exe
+					shellArgs = ['/c', command];
+				}
+			} else {
+				shell = selectedShell || 'sh';
+				shellArgs = ['-c', command];
+			}
+
+			const childProcess = spawn(shell, shellArgs, {
 				cwd: this.workingDirectory,
-				timeout,
-				maxBuffer: this.maxOutputLength,
-				shell,
-				encoding: 'utf8',
+				stdio: ['ignore', 'pipe', 'pipe'],
+				windowsHide: true,
 				env: {
 					...process.env,
 					...getUtf8EnvVars(),

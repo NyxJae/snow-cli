@@ -25,6 +25,60 @@ if (major < MIN_NODE_VERSION) {
 	process.exit(1);
 }
 
+// Sanitize NODE_OPTIONS to prevent noisy Node warnings
+// Some environments may inject an invalid `--localstorage-file` flag (e.g., without a path),
+// which causes: "Warning: `--localstorage-file` was provided without a valid path".
+function sanitizeNodeOptions() {
+	const raw = process.env['NODE_OPTIONS'];
+	if (!raw) return;
+
+	const tokens = raw.split(/\s+/).filter(Boolean);
+	const cleaned: string[] = [];
+
+	for (let i = 0; i < tokens.length; i++) {
+		const token = tokens[i]!;
+
+		// Handle both `--localstorage-file <path>` and `--localstorage-file=<path>`
+		if (token === '--localstorage-file') {
+			const next = tokens[i + 1];
+			// If missing/empty/looks like another flag, drop the flag entirely.
+			if (!next || next.startsWith('-')) {
+				continue;
+			}
+			// Keep as-is.
+			cleaned.push(token, next);
+			i++;
+			continue;
+		}
+
+		if (token.startsWith('--localstorage-file=')) {
+			const value = token.slice('--localstorage-file='.length);
+			if (!value) {
+				continue;
+			}
+			cleaned.push(token);
+			continue;
+		}
+
+		cleaned.push(token);
+	}
+
+	const nextRaw = cleaned.join(' ');
+	if (nextRaw !== raw) {
+		process.env['NODE_OPTIONS'] = nextRaw;
+	}
+}
+
+sanitizeNodeOptions();
+
+// Some injected NODE_OPTIONS are parsed by Node before userland code runs.
+// If that happens (e.g. `--localstorage-file` without a path), the process may
+// already fail before we can sanitize. As a last resort, allow users to opt out
+// of inheriting NODE_OPTIONS by setting SNOW_IGNORE_NODE_OPTIONS=1.
+if (process.env['SNOW_IGNORE_NODE_OPTIONS'] === '1') {
+	delete process.env['NODE_OPTIONS'];
+}
+
 // Suppress DEP0169 warning from dependencies
 const originalEmitWarning = process.emitWarning;
 process.emitWarning = function (warning: any, ...args: any[]) {
@@ -541,9 +595,8 @@ const Startup = ({
 
 // Disable bracketed paste mode on startup
 process.stdout.write('\x1b[?2004l');
-// Clear the early loading indicator and show cursor
-process.stdout.write('\x1b[2K\r'); // Clear line
-process.stdout.write('\x1b[?25h'); // Show cursor
+// Clear the early loading indicator
+process.stdout.write('\x1b[2K\r');
 
 // Track cleanup state to prevent multiple cleanup calls
 let isCleaningUp = false;
@@ -551,6 +604,8 @@ let isCleaningUp = false;
 // Synchronous cleanup for 'exit' event (cannot be async)
 const cleanupSync = () => {
 	process.stdout.write('\x1b[?2004l');
+	process.stdout.write('\x1b[?25h'); // Restore cursor visibility on exit
+	process.stdout.write('\x1b[0 q'); // Restore cursor shape to terminal default (DECSCUSR)
 	const deps = (global as any).__deps;
 	if (deps) {
 		// Kill all child processes synchronously
@@ -566,6 +621,8 @@ const cleanupAsync = async () => {
 	isCleaningUp = true;
 
 	process.stdout.write('\x1b[?2004l');
+	process.stdout.write('\x1b[?25h'); // Restore cursor visibility on exit
+	process.stdout.write('\x1b[0 q'); // Restore cursor shape to terminal default (DECSCUSR)
 	const deps = (global as any).__deps;
 	if (deps) {
 		// Close MCP connections first (graceful shutdown with timeout)

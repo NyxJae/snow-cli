@@ -108,6 +108,7 @@ export type TranslationKeys = {
 		chunkingOverlapLines: string;
 		saveError: string;
 		gitignoreNotFound: string;
+		enterValue: string;
 	};
 	// System Prompt Config Screen
 	systemPromptConfig: {
@@ -171,6 +172,7 @@ export type TranslationKeys = {
 		basicModel: string;
 		maxContextTokens: string;
 		maxTokens: string;
+		toolResultTokenLimit: string;
 		editSimilarityThreshold: string;
 		notSet: string;
 		enabled: string;
@@ -615,13 +617,16 @@ export type TranslationKeys = {
 			enterToSave: string;
 		};
 	};
-	// Custom Command Config
 	customCommand: {
 		title: string;
 		nameLabel: string;
 		namePlaceholder: string;
 		commandLabel: string;
 		commandPlaceholder: string;
+		descriptionLabel: string;
+		descriptionPlaceholder: string;
+		descriptionHint: string;
+		descriptionNotSet: string;
 		typeLabel: string;
 		typeExecute: string;
 		typePrompt: string;
