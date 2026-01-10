@@ -63,7 +63,7 @@ export default function LoadingIndicator({
 	isSaving,
 	hasPendingToolConfirmation,
 	hasPendingUserQuestion,
-	hasBlockingOverlay,
+	// hasBlockingOverlay,
 	terminalWidth,
 	animationFrame,
 	retryStatus,
@@ -80,8 +80,9 @@ export default function LoadingIndicator({
 	if (
 		(!isStreaming && !isSaving && !isStopping) ||
 		hasPendingToolConfirmation ||
-		hasPendingUserQuestion ||
-		hasBlockingOverlay
+		hasPendingUserQuestion
+		// hasPendingUserQuestion ||
+		// hasBlockingOverlay
 	) {
 		return null;
 	}
