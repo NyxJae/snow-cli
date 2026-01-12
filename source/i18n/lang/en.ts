@@ -3,7 +3,7 @@ import type {TranslationKeys} from '../types.js';
 export const en: TranslationKeys = {
 	welcome: {
 		title: '❆ SNOW AI CLI',
-		subtitle: 'Intelligent Command Line Assistant',
+		subtitle: 'Agentic coding in your terminal',
 		startChat: 'Start',
 		startChatInfo: 'Start a new chat conversation',
 		resumeLastChat: 'Resume Last Chat',
@@ -476,6 +476,8 @@ export const en: TranslationKeys = {
 			'Please wait for the conversation to complete before using commands',
 		scrollHint: '↑↓ to scroll',
 		moreHidden: '{count} more hidden',
+		moreAbove: '{count} more above',
+		moreBelow: '{count} more below',
 		interactionHint: 'Tab: Autocomplete • Enter: Execute',
 		commands: {
 			help: 'Show keyboard shortcuts and help information',
@@ -988,7 +990,7 @@ export const en: TranslationKeys = {
 		warningNotExistsProject:
 			'Warning: Project ROLE.md does not exist (./ROLE.md)',
 		deleteSuccessMessage:
-			'Deleted ROLE.md successfully! ｜ Location: {location} ｜ Path: {path}',
+			'Deleted ROLE.md successfully! | Location: {location} | Path: {path}',
 		deleteErrorMessage: 'Failed to delete ROLE.md: {error}',
 		errorNotFound: 'ROLE.md file does not exist',
 		errorUnknown: 'Unknown error',

@@ -3,7 +3,7 @@ import type {TranslationKeys} from '../types.js';
 export const zh: TranslationKeys = {
 	welcome: {
 		title: '❆ SNOW AI CLI',
-		subtitle: '智能命令行助手',
+		subtitle: '终端编程智能体',
 		startChat: '开始对话',
 		startChatInfo: '开始新的对话',
 		resumeLastChat: '继续上次对话',
@@ -445,6 +445,8 @@ export const zh: TranslationKeys = {
 		processingMessage: '请等待对话完成后再使用命令',
 		scrollHint: '↑↓ 滚动',
 		moreHidden: '隐藏 {count} 个',
+		moreAbove: '上方还有 {count} 项',
+		moreBelow: '下方还有 {count} 项',
 		interactionHint: 'Tab: 补全 • Enter: 执行',
 		commands: {
 			help: '显示快捷键和帮助信息',
