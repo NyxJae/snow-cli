@@ -1372,6 +1372,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 							timeout={terminalExecutionState.state.timeout || 30000}
 							terminalWidth={terminalWidth}
 							output={terminalExecutionState.state.output}
+							needsInput={terminalExecutionState.state.needsInput}
+							inputPrompt={terminalExecutionState.state.inputPrompt}
 						/>
 					</Box>
 				)}
@@ -1505,10 +1507,11 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				/>
 			)}
 
-			{/* Hide input during tool confirmation or session panel or MCP panel or usage panel or help panel or custom command config or skills creation or working dir panel or permissions panel or rollback confirmation or user question. ProfilePanel is NOT included because it renders inside ChatInput. Compression spinner is shown below, so input is always rendered when not hidden. */}
+			{/* Hide input during tool confirmation or session panel or MCP panel or usage panel or help panel or custom command config or skills creation or working dir panel or permissions panel or rollback confirmation or user question or terminal interactive input. ProfilePanel is NOT included because it renders inside ChatInput. */}
 			{!pendingToolConfirmation &&
 				!pendingUserQuestion &&
 				!bashSensitiveCommand &&
+				!terminalExecutionState.state.needsInput &&
 				!(
 					panelState.showSessionPanel ||
 					panelState.showMcpPanel ||

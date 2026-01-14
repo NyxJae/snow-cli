@@ -213,6 +213,7 @@ Options
 		--task        Create a background AI task (headless mode, saves session)
 		--task-list   Open task manager to view and manage background tasks
 		--dev         Enable developer mode with persistent userId for testing
+
 		--sse         Start SSE server mode for external integration (foreground)
 		--sse-daemon  Start SSE server as background daemon
 		--sse-stop    Stop SSE daemon server
@@ -232,9 +233,6 @@ Options
 				type: 'boolean',
 				default: false,
 			},
-			ask: {
-				type: 'string',
-			},
 			task: {
 				type: 'string',
 			},
@@ -251,6 +249,7 @@ Options
 				type: 'boolean',
 				default: false,
 			},
+
 			sse: {
 				type: 'boolean',
 				default: false,
@@ -489,6 +488,7 @@ const Startup = ({
 	showTaskList,
 	isDevMode,
 	enableYolo,
+	enablePlan,
 }: {
 	version: string | undefined;
 	skipWelcome: boolean;
@@ -498,6 +498,7 @@ const Startup = ({
 	showTaskList?: boolean;
 	isDevMode: boolean;
 	enableYolo: boolean;
+	enablePlan?: boolean;
 }) => {
 	const [appReady, setAppReady] = React.useState(false);
 	const [AppComponent, setAppComponent] = React.useState<any>(null);
@@ -589,6 +590,7 @@ const Startup = ({
 			headlessSessionId={headlessSessionId}
 			showTaskList={showTaskList}
 			enableYolo={enableYolo}
+			enablePlan={enablePlan}
 		/>
 	);
 };
@@ -655,7 +657,11 @@ render(
 		version={VERSION}
 		skipWelcome={Boolean(cli.flags.c)}
 		autoResume={Boolean(cli.flags.c)}
-		headlessPrompt={cli.flags.ask}
+		headlessPrompt={
+			typeof cli.flags['ask'] === 'string'
+				? (cli.flags['ask'] as string)
+				: undefined
+		}
 		headlessSessionId={cli.input[0]}
 		showTaskList={cli.flags.taskList}
 		isDevMode={cli.flags.dev}

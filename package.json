@@ -1,6 +1,6 @@
 {
 	"name": "snow-ai",
-	"version": "0.6.12",
+	"version": "0.6.13",
 	"description": "Agentic coding in your terminal",
 	"license": "MIT",
 	"bin": {
@@ -46,6 +46,12 @@
 		"bundle",
 		"scripts"
 	],
+	"dependencies": {
+		"@iarna/toml": "^2.2.5",
+		"@types/markdown-it": "^14.1.2",
+		"cli-table3": "^0.6.5",
+		"ssh2": "^1.17.0"
+	},
 	"devDependencies": {
 		"@inkjs/ui": "^2.0.0",
 		"@modelcontextprotocol/sdk": "^1.17.3",
@@ -60,6 +66,7 @@
 		"@types/semver": "^7.7.0",
 		"@types/sharp": "^0.32.0",
 		"@types/sql.js": "^1.4.9",
+		"@types/ssh2": "^1.15.5",
 		"@types/ws": "^8.5.8",
 		"@vdemedes/prettier-config": "^2.0.1",
 		"@vercel/ncc": "^0.38.4",
@@ -132,11 +139,6 @@
 		}
 	},
 	"prettier": "@vdemedes/prettier-config",
-	"dependencies": {
-		"@iarna/toml": "^2.2.5",
-		"@types/markdown-it": "^14.1.2",
-		"cli-table3": "^0.6.5"
-	},
 	"optionalDependencies": {
 		"sharp": "^0.34.5"
 	}

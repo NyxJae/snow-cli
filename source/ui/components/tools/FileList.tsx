@@ -14,6 +14,7 @@ import {useTerminalSize} from '../../../hooks/ui/useTerminalSize.js';
 import {useI18n} from '../../../i18n/index.js';
 import {useTheme} from '../../contexts/ThemeContext.js';
 import {getWorkingDirectories} from '../../../utils/config/workingDirConfig.js';
+import {SSHClient, parseSSHUrl} from '../../../utils/ssh/sshClient.js';
 
 type FileItem = {
 	name: string;
@@ -85,6 +86,151 @@ const FileList = memo(
 				// Load files from each working directory
 				for (const workingDir of workingDirs) {
 					const dirPath = workingDir.path;
+
+					// Handle remote SSH directories
+					if (workingDir.isRemote && workingDir.sshConfig) {
+						try {
+							const sshInfo = parseSSHUrl(dirPath);
+							if (!sshInfo) {
+								continue;
+							}
+
+							// Add the remote working directory itself to the list
+							const remoteDirName =
+								sshInfo.path.split('/').pop() || sshInfo.host;
+							allFiles.push({
+								name: remoteDirName,
+								path: dirPath, // Show full SSH URL as path
+								isDirectory: true,
+								sourceDir: dirPath,
+							});
+
+							const sshClient = new SSHClient();
+							const connectResult = await sshClient.connect(
+								workingDir.sshConfig,
+								workingDir.sshConfig.password,
+							);
+
+							if (!connectResult.success) {
+								continue;
+							}
+
+							// Get remote files recursively
+							const getRemoteFilesRecursively = async (
+								remotePath: string,
+								depth: number = 0,
+								maxDepth: number = searchDepth,
+								maxFiles: number = MAX_FILES,
+							): Promise<{files: FileItem[]; maxDepthReached: number}> => {
+								if (depth > maxDepth) {
+									return {files: [], maxDepthReached: depth - 1};
+								}
+
+								try {
+									const entries = await sshClient.listDirectory(remotePath);
+									let result: FileItem[] = [];
+									let currentMaxDepth = depth;
+
+									const baseIgnorePatterns = [
+										'node_modules',
+										'dist',
+										'build',
+										'coverage',
+										'.git',
+										'.vscode',
+										'.idea',
+										'out',
+										'target',
+										'bin',
+										'obj',
+										'.next',
+										'.nuxt',
+										'vendor',
+										'__pycache__',
+										'.pytest_cache',
+										'.mypy_cache',
+										'venv',
+										'.venv',
+										'env',
+										'.env',
+									];
+
+									for (const entry of entries) {
+										if (result.length >= maxFiles) break;
+
+										if (
+											(entry.name.startsWith('.') && entry.name !== '.snow') ||
+											baseIgnorePatterns.includes(entry.name)
+										) {
+											continue;
+										}
+
+										const fullRemotePath = remotePath + '/' + entry.name;
+										let relativePath = fullRemotePath.substring(
+											sshInfo.path.length,
+										);
+										if (!relativePath.startsWith('/')) {
+											relativePath = '/' + relativePath;
+										}
+										relativePath = '.' + relativePath;
+
+										result.push({
+											name: entry.name,
+											path: relativePath,
+											isDirectory: entry.isDirectory,
+											sourceDir: dirPath, // SSH URL as source
+										});
+
+										if (entry.isDirectory && depth < maxDepth) {
+											const subResult = await getRemoteFilesRecursively(
+												fullRemotePath,
+												depth + 1,
+												maxDepth,
+												maxFiles,
+											);
+											result = result.concat(subResult.files);
+											currentMaxDepth = Math.max(
+												currentMaxDepth,
+												subResult.maxDepthReached,
+											);
+										}
+									}
+
+									return {files: result, maxDepthReached: currentMaxDepth};
+								} catch {
+									return {files: [], maxDepthReached: depth};
+								}
+							};
+
+							const remoteResult = await getRemoteFilesRecursively(
+								sshInfo.path,
+							);
+							allFiles.push(...remoteResult.files);
+							globalMaxDepth = Math.max(
+								globalMaxDepth,
+								remoteResult.maxDepthReached,
+							);
+
+							sshClient.disconnect();
+						} catch {
+							// SSH connection failed, skip this directory
+						}
+
+						if (allFiles.length >= MAX_FILES) {
+							break;
+						}
+						continue;
+					}
+
+					// Handle local directories
+					// Add the local working directory itself to the list
+					const localDirName = path.basename(dirPath) || dirPath;
+					allFiles.push({
+						name: localDirName,
+						path: dirPath, // Show full path
+						isDirectory: true,
+						sourceDir: dirPath,
+					});
 
 					// Read .gitignore patterns for this directory
 					const gitignorePath = path.join(dirPath, '.gitignore');
@@ -415,8 +561,12 @@ const FileList = memo(
 						const filtered = files.filter(file => {
 							const fileName = file.name.toLowerCase();
 							const filePath = file.path.toLowerCase();
+							// Also search in sourceDir for working directory entries
+							const sourceDir = (file.sourceDir || '').toLowerCase();
 							return (
-								fileName.includes(queryLower) || filePath.includes(queryLower)
+								fileName.includes(queryLower) ||
+								filePath.includes(queryLower) ||
+								sourceDir.includes(queryLower)
 							);
 						});
 
@@ -527,7 +677,20 @@ const FileList = memo(
 							const selectedFile = allFilteredFiles[selectedIndex];
 							// Use sourceDir if available, otherwise use rootPath
 							const baseDir = selectedFile.sourceDir || rootPath;
-							const fullPath = path.join(baseDir, selectedFile.path);
+
+							// Handle SSH URLs - don't use path.join for remote paths
+							let fullPath: string;
+							if (baseDir.startsWith('ssh://')) {
+								// For SSH URLs, construct path manually
+								// Remove trailing slash from baseDir and leading ./ from relativePath
+								const cleanBase = baseDir.replace(/\/$/, '');
+								const cleanRelative = selectedFile.path
+									.replace(/^\.\//, '')
+									.replace(/^\//, '');
+								fullPath = `${cleanBase}/${cleanRelative}`;
+							} else {
+								fullPath = path.join(baseDir, selectedFile.path);
+							}
 
 							// For content search mode, include line number
 							if (selectedFile.lineNumber !== undefined) {
