@@ -570,6 +570,8 @@ async function refreshToolsCache(): Promise<void> {
 	// Add user-configured MCP server tools (probe for availability but don't maintain connections)
 	try {
 		const mcpConfig = getMCPConfig();
+		const connectedServices: {name: string; toolCount: number}[] = [];
+
 		for (const [serviceName, server] of Object.entries(mcpConfig.mcpServers)) {
 			// Skip disabled services
 			if (server.enabled === false) {
@@ -592,6 +594,11 @@ async function refreshToolsCache(): Promise<void> {
 					connected: true,
 				});
 
+				connectedServices.push({
+					name: serviceName,
+					toolCount: serviceTools.length,
+				});
+
 				for (const tool of serviceTools) {
 					allTools.push({
 						type: 'function',
@@ -611,6 +618,14 @@ async function refreshToolsCache(): Promise<void> {
 					error: error instanceof Error ? error.message : 'Unknown error',
 				});
 			}
+		}
+
+		// 只输出可用的服务
+		if (connectedServices.length > 0) {
+			console.log('[MCP] 可用服务:');
+			connectedServices.forEach(s => {
+				console.log(`  ${s.name} (${s.toolCount}个工具)`);
+			});
 		}
 	} catch (error) {
 		logger.warn('Failed to load MCP config:', error);
