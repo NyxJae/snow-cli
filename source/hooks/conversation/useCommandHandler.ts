@@ -304,8 +304,8 @@ type CommandHandlerOptions = {
 	setCompressionError: React.Dispatch<React.SetStateAction<string | null>>;
 	setShowSessionPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowMcpPanel: React.Dispatch<React.SetStateAction<boolean>>;
+
 	setShowUsagePanel: React.Dispatch<React.SetStateAction<boolean>>;
-	setShowHelpPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowCustomCommandConfig: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowSkillsCreation: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowWorkingDirPanel: React.Dispatch<React.SetStateAction<boolean>>;
@@ -316,6 +316,7 @@ type CommandHandlerOptions = {
 	setYoloMode: React.Dispatch<React.SetStateAction<boolean>>;
 	setContextUsage: React.Dispatch<React.SetStateAction<UsageInfo | null>>;
 	setCurrentContextPercentage: React.Dispatch<React.SetStateAction<number>>;
+	currentContextPercentageRef: React.MutableRefObject<number>;
 	setVscodeConnectionStatus: React.Dispatch<
 		React.SetStateAction<'disconnected' | 'connecting' | 'connected' | 'error'>
 	>;
@@ -435,6 +436,9 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						options.setRemountKey(prev => prev + 1);
 						options.setContextUsage(null);
 						options.setCurrentContextPercentage(0);
+						// CRITICAL: Also reset the ref immediately to prevent auto-compress trigger
+						// before useEffect syncs the state to ref
+						options.currentContextPercentageRef.current = 0;
 
 						// Clear TODO list for the cleared session
 						if (currentSessionId) {
@@ -568,14 +572,10 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					commandName: commandName,
 				};
 				options.setMessages(prev => [...prev, commandMessage]);
-			} else if (result.success && result.action === 'showHelpPanel') {
-				options.setShowHelpPanel(true);
-				const commandMessage: Message = {
-					role: 'command',
-					content: '',
-					commandName: commandName,
-				};
-				options.setMessages(prev => [...prev, commandMessage]);
+			} else if (result.success && result.action === 'help') {
+				// Help uses a dedicated screen to avoid chat layout overflow.
+				navigateTo('help');
+				// Don't add command message to keep UI clean
 			} else if (
 				result.success &&
 				result.action === 'showCustomCommandConfig'

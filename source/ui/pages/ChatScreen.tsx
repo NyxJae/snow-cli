@@ -820,7 +820,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setShowSessionPanel: panelState.setShowSessionPanel,
 		setShowMcpPanel: panelState.setShowMcpPanel,
 		setShowUsagePanel: panelState.setShowUsagePanel,
-		setShowHelpPanel: panelState.setShowHelpPanel,
 		setShowCustomCommandConfig: panelState.setShowCustomCommandConfig,
 		setShowSkillsCreation: panelState.setShowSkillsCreation,
 		setShowWorkingDirPanel: panelState.setShowWorkingDirPanel,
@@ -831,6 +830,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setYoloMode,
 		setContextUsage: streamingState.setContextUsage,
 		setCurrentContextPercentage,
+		currentContextPercentageRef,
 		setVscodeConnectionStatus: vscodeState.setVscodeConnectionStatus,
 		setIsExecutingTerminalCommand,
 		setCustomCommandExecution,
@@ -893,7 +893,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	// Pending messages are now handled inline during tool execution in useConversation
 	// Auto-send pending messages when streaming completely stops (as fallback)
 	useEffect(() => {
-		if (!streamingState.isStreaming && pendingMessages.length > 0) {
+		if (streamingState.streamStatus === 'idle' && pendingMessages.length > 0) {
 			const timer = setTimeout(() => {
 				// Set isStreaming=true BEFORE processing to show LoadingIndicator
 				streamingState.setIsStreaming(true);
@@ -902,7 +902,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			return () => clearTimeout(timer);
 		}
 		return undefined;
-	}, [streamingState.isStreaming, pendingMessages.length]);
+	}, [streamingState.streamStatus, pendingMessages.length]);
 
 	// Listen to codebase search events
 	useEffect(() => {
@@ -1061,12 +1061,22 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			return;
 		}
 
+		// 如果已经处于 stopping，但流已结束：允许再次按 ESC 直接解除卡死状态
+		if (
+			key.escape &&
+			streamingState.isStopping &&
+			!streamingState.isStreaming
+		) {
+			streamingState.setIsStopping(false);
+			return;
+		}
+
+		// Only handle ESC interrupt if terminal has focus
 		if (
 			key.escape &&
 			streamingState.isStreaming &&
 			streamingState.abortController
 		) {
-			// Mark that user manually interrupted
 			userInterruptedRef.current = true;
 
 			// Set stopping state to show "Stopping..." spinner
@@ -1123,7 +1133,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			panelState.showSessionPanel ||
 			panelState.showMcpPanel ||
 			panelState.showUsagePanel ||
-			panelState.showHelpPanel ||
 			panelState.showCustomCommandConfig ||
 			panelState.showSkillsCreation ||
 			panelState.showWorkingDirPanel ||
@@ -1158,7 +1167,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			panelState.showSessionPanel ||
 			panelState.showMcpPanel ||
 			panelState.showUsagePanel ||
-			panelState.showHelpPanel ||
 			panelState.showCustomCommandConfig ||
 			panelState.showSkillsCreation ||
 			panelState.showWorkingDirPanel ||
@@ -1271,7 +1279,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			{/* Show loading indicator when streaming or saving */}
 			<LoadingIndicator
 				isStreaming={streamingState.isStreaming}
-				isStopping={streamingState.isStopping || false}
+				isStopping={streamingState.isStopping}
 				isSaving={isSaving}
 				hasPendingToolConfirmation={!!pendingToolConfirmation}
 				hasPendingUserQuestion={!!pendingUserQuestion}
@@ -1393,7 +1401,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				showSessionPanel={panelState.showSessionPanel}
 				showMcpPanel={panelState.showMcpPanel}
 				showUsagePanel={panelState.showUsagePanel}
-				showHelpPanel={panelState.showHelpPanel}
 				showCustomCommandConfig={panelState.showCustomCommandConfig}
 				showSkillsCreation={panelState.showSkillsCreation}
 				showWorkingDirPanel={panelState.showWorkingDirPanel}
@@ -1516,7 +1523,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					panelState.showSessionPanel ||
 					panelState.showMcpPanel ||
 					panelState.showUsagePanel ||
-					panelState.showHelpPanel ||
 					panelState.showCustomCommandConfig ||
 					panelState.showSkillsCreation ||
 					panelState.showWorkingDirPanel ||
@@ -1536,9 +1542,11 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						disabled={
 							!!pendingToolConfirmation ||
 							!!bashSensitiveCommand ||
-							isExecutingTerminalCommand
+							isExecutingTerminalCommand ||
+							isCompressing ||
+							streamingState.isStopping
 						}
-						isStopping={streamingState.isStopping || false}
+						isStopping={streamingState.isStopping}
 						isProcessing={
 							streamingState.isStreaming ||
 							isSaving ||

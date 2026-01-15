@@ -22,6 +22,7 @@ const SystemPromptConfigScreen = React.lazy(
 const CustomHeadersScreen = React.lazy(
 	() => import('./ui/pages/CustomHeadersScreen.js'),
 );
+const HelpScreen = React.lazy(() => import('./ui/pages/HelpScreen.js'));
 
 import {
 	useGlobalExit,
@@ -118,6 +119,7 @@ function AppContent({
 	const [currentView, setCurrentView] = useState<
 		| 'welcome'
 		| 'chat'
+		| 'help'
 		| 'settings'
 		| 'mcp'
 		| 'systemprompt'
@@ -244,6 +246,12 @@ function AppContent({
 						<SystemPromptConfigScreen
 							onBack={() => setCurrentView('welcome')}
 						/>
+					</Suspense>
+				);
+			case 'help':
+				return (
+					<Suspense fallback={loadingFallback}>
+						<HelpScreen onBackDestination="chat" />
 					</Suspense>
 				);
 			case 'customheaders':
