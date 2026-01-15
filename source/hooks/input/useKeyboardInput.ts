@@ -585,7 +585,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				!/[\x00-\x1F]/.test(input) // Ignore other control characters
 			) {
 				if (setMainAgentSearchQuery && setMainAgentSelectedIndex) {
-					setMainAgentSearchQuery(mainAgentSearchQuery + input);
+					setMainAgentSearchQuery((mainAgentSearchQuery || '') + input);
 					setMainAgentSelectedIndex(0); // Reset to first item
 					triggerUpdate();
 				}

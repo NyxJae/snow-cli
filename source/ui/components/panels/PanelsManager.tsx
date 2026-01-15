@@ -88,7 +88,8 @@ export default function PanelsManager({
 	const {t} = useI18n();
 
 	// Calculate main agent items on every render to ensure isActive is up-to-date
-	const mainAgentItems =
+	// Apply search filter if mainAgentSearchQuery is provided
+	const allMainAgentItems =
 		mainAgentManager.getOrderedAgentList().map(config => ({
 			id: config.basicInfo.id,
 			name: config.basicInfo.name,
@@ -96,6 +97,17 @@ export default function PanelsManager({
 			isActive: config.basicInfo.id === mainAgentManager.getCurrentAgentId(),
 			isBuiltin: config.basicInfo.builtin ?? false,
 		})) || [];
+
+	const mainAgentItems = mainAgentSearchQuery
+		? allMainAgentItems.filter(agent => {
+				const query = mainAgentSearchQuery.toLowerCase();
+				return (
+					agent.id.toLowerCase().includes(query) ||
+					agent.name.toLowerCase().includes(query) ||
+					agent.description.toLowerCase().includes(query)
+				);
+		  })
+		: allMainAgentItems;
 
 	const loadingFallback = (
 		<Box>
