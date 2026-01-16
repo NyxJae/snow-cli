@@ -151,6 +151,8 @@ export type TranslationKeys = {
 		activeProfile: string;
 		settingsPosition: string;
 		scrollHint: string;
+		moreAbove: string;
+		moreBelow: string;
 		profile: string;
 		baseUrl: string;
 		apiKey: string;
@@ -483,6 +485,8 @@ export type TranslationKeys = {
 		title: string;
 		scrollHint: string;
 		moreHidden: string;
+		moreAbove: string;
+		moreBelow: string;
 		escHint: string;
 		activeLabel: string;
 		searchLabel: string;
