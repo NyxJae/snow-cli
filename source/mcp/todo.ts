@@ -380,7 +380,7 @@ WHEN TO USE (Very common):
 
 SUPPORTS BATCH ADDING:
 - Single: content="Task description"
-- Multiple: content=["Task 1", "Task 2", "Task 3"] (recommended for multi-step work)
+- Multiple: content=["Task 1", "Task 2", "Task 3"] (recommended for multi-step work)注意:这里是数组,不是字符串,中括号外不要加引号
 
 EXAMPLE: todo-add(content=["Read file", "Modify code", "Test changes"]) + filesystem-read("file.ts")`,
 				inputSchema: {
@@ -396,7 +396,7 @@ EXAMPLE: todo-add(content=["Read file", "Modify code", "Test changes"]) + filesy
 									type: 'array',
 									items: {type: 'string'},
 									description:
-										'Multiple TODO item descriptions for batch adding',
+										'Multiple TODO item descriptions for batch adding,注意:这里是数组,不是字符串,中括号外不要加引号',
 								},
 							],
 							description:
@@ -513,11 +513,33 @@ Proactively delete obsolete, redundant, or overly detailed completed subtasks to
 						parentId?: string;
 					};
 
+					// 智能解析 JSON 数组格式的字符串
+					let parsedContent: string | string[];
+					if (typeof content === 'string') {
+						const trimmed = content.trim();
+						if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+							try {
+								const parsed = JSON.parse(trimmed);
+								if (Array.isArray(parsed)) {
+									parsedContent = parsed;
+								} else {
+									parsedContent = content;
+								}
+							} catch {
+								parsedContent = content; // 解析失败则使用原始字符串
+							}
+						} else {
+							parsedContent = content;
+						}
+					} else {
+						parsedContent = content;
+					}
+
 					// 支持批量添加或单个添加
-					if (Array.isArray(content)) {
+					if (Array.isArray(parsedContent)) {
 						// 批量添加多个TODO项
 						let currentList = await this.getTodoList(sessionId);
-						for (const item of content) {
+						for (const item of parsedContent) {
 							currentList = await this.addTodoItem(sessionId, item, parentId);
 						}
 						return {
@@ -530,7 +552,11 @@ Proactively delete obsolete, redundant, or overly detailed completed subtasks to
 						};
 					} else {
 						// 单个添加
-						const result = await this.addTodoItem(sessionId, content, parentId);
+						const result = await this.addTodoItem(
+							sessionId,
+							parsedContent,
+							parentId,
+						);
 						return {
 							content: [
 								{
