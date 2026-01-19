@@ -1,6 +1,6 @@
-import { getOpenAiConfig, getCustomHeaders } from '../utils/config/apiConfig.js';
-import { logger } from '../utils/core/logger.js';
-import { addProxyToFetchOptions } from '../utils/core/proxyUtils.js';
+import {getOpenAiConfig, getCustomHeaders} from '../utils/config/apiConfig.js';
+import {logger} from '../utils/core/logger.js';
+import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 
 export interface Model {
 	id: string;
@@ -37,7 +37,11 @@ interface AnthropicModel {
 /**
  * Fetch models from OpenAI-compatible API
  */
-async function fetchOpenAIModels(baseUrl: string, apiKey: string, customHeaders: Record<string, string>): Promise<Model[]> {
+async function fetchOpenAIModels(
+	baseUrl: string,
+	apiKey: string,
+	customHeaders: Record<string, string>,
+): Promise<Model[]> {
 	const url = `${baseUrl}/models`;
 
 	const headers: Record<string, string> = {
@@ -68,18 +72,22 @@ async function fetchOpenAIModels(baseUrl: string, apiKey: string, customHeaders:
 /**
  * Fetch models from Gemini API
  */
-async function fetchGeminiModels(baseUrl: string, apiKey: string): Promise<Model[]> {
-	// Gemini uses API key as query parameter
-	const url = `${baseUrl}/models?key=${apiKey}`;
+async function fetchGeminiModels(
+	baseUrl: string,
+	apiKey: string,
+): Promise<Model[]> {
+	const url = `${baseUrl}/models`;
 
 	const fetchOptions = addProxyToFetchOptions(url, {
 		method: 'GET',
 		headers: {
 			'Content-Type': 'application/json',
+			'x-goog-api-key': apiKey,
 		},
 	});
 	const response = await fetch(url, fetchOptions);
-if (!response.ok) {
+
+	if (!response.ok) {
 		const errorMsg = `[API_ERROR] Failed to fetch Gemini models: HTTP ${response.status} ${response.statusText}`;
 		logger.error(errorMsg, {url, status: response.status});
 		throw new Error(errorMsg);
@@ -100,7 +108,11 @@ if (!response.ok) {
  * Fetch models from Anthropic API
  * Supports both Anthropic native format and OpenAI-compatible format for backward compatibility
  */
-async function fetchAnthropicModels(baseUrl: string, apiKey: string, customHeaders: Record<string, string>): Promise<Model[]> {
+async function fetchAnthropicModels(
+	baseUrl: string,
+	apiKey: string,
+	customHeaders: Record<string, string>,
+): Promise<Model[]> {
 	const url = `${baseUrl}/models`;
 
 	const headers: Record<string, string> = {
@@ -160,7 +172,8 @@ export async function fetchAvailableModels(): Promise<Model[]> {
 	const config = getOpenAiConfig();
 
 	if (!config.baseUrl) {
-		const errorMsg = '[API_ERROR] Base URL not configured. Please configure API settings first.';
+		const errorMsg =
+			'[API_ERROR] Base URL not configured. Please configure API settings first.';
 		logger.error(errorMsg);
 		throw new Error(errorMsg);
 	}
@@ -172,28 +185,39 @@ export async function fetchAvailableModels(): Promise<Model[]> {
 
 		switch (config.requestMethod) {
 			case 'gemini':
-			if (!config.apiKey) {
-				const errorMsg = '[API_ERROR] API key is required for Gemini API';
-				logger.error(errorMsg);
-				throw new Error(errorMsg);
-			}
-			models = await fetchGeminiModels(config.baseUrl.replace(/\/$/, ''), config.apiKey);
-			break;
+				if (!config.apiKey) {
+					const errorMsg = '[API_ERROR] API key is required for Gemini API';
+					logger.error(errorMsg);
+					throw new Error(errorMsg);
+				}
+				models = await fetchGeminiModels(
+					config.baseUrl.replace(/\/$/, ''),
+					config.apiKey,
+				);
+				break;
 
-		case 'anthropic':
-			if (!config.apiKey) {
-				const errorMsg = '[API_ERROR] API key is required for Anthropic API';
-				logger.error(errorMsg);
-				throw new Error(errorMsg);
-			}
-			models = await fetchAnthropicModels(config.baseUrl.replace(/\/$/, ''), config.apiKey, customHeaders);
-			break;
+			case 'anthropic':
+				if (!config.apiKey) {
+					const errorMsg = '[API_ERROR] API key is required for Anthropic API';
+					logger.error(errorMsg);
+					throw new Error(errorMsg);
+				}
+				models = await fetchAnthropicModels(
+					config.baseUrl.replace(/\/$/, ''),
+					config.apiKey,
+					customHeaders,
+				);
+				break;
 
 			case 'chat':
 			case 'responses':
 			default:
 				// OpenAI-compatible API
-				models = await fetchOpenAIModels(config.baseUrl.replace(/\/$/, ''), config.apiKey, customHeaders);
+				models = await fetchOpenAIModels(
+					config.baseUrl.replace(/\/$/, ''),
+					config.apiKey,
+					customHeaders,
+				);
 				break;
 		}
 
@@ -218,6 +242,6 @@ export function filterModels(models: Model[], searchTerm: string): Model[] {
 
 	const lowerSearchTerm = searchTerm.toLowerCase();
 	return models.filter(model =>
-		model.id.toLowerCase().includes(lowerSearchTerm)
+		model.id.toLowerCase().includes(lowerSearchTerm),
 	);
 }

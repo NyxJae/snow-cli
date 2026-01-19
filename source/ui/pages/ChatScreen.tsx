@@ -287,6 +287,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			import('../../utils/commands/skills.js'),
 			import('../../utils/commands/quit.js'),
 			import('../../utils/commands/reindex.js'),
+			import('../../utils/commands/codebase.js'),
 			import('../../utils/commands/addDir.js'),
 			import('../../utils/commands/permissions.js'),
 			import('../../utils/commands/backend.js'),
@@ -771,6 +772,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		handleSessionPanelSelect,
 		handleQuit,
 		handleReindexCodebase,
+		handleToggleCodebase,
 		handleReviewCommitConfirm,
 	} = useChatLogic({
 		messages,
@@ -837,6 +839,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		processMessage,
 		onQuit: handleQuit,
 		onReindexCodebase: handleReindexCodebase,
+		onToggleCodebase: handleToggleCodebase,
 	});
 
 	useEffect(() => {

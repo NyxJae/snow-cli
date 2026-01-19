@@ -1,6 +1,7 @@
 import {useStdout} from 'ink';
 import {useCallback} from 'react';
 import type {Message} from '../../ui/components/chat/MessageList.js';
+import type {ChatMessage} from '../../api/types.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
 import {compressContext} from '../../utils/core/contextCompressor.js';
 import {getTodoService} from '../../utils/execution/mcpToolsManager.js';
@@ -12,10 +13,7 @@ import {
 	isFileDialogSupported,
 } from '../../utils/ui/fileDialog.js';
 import {exportMessagesToFile} from '../../utils/session/chatExporter.js';
-import {clearReadFolders} from '../../utils/core/folderNotebookPreprocessor.js';
-import {todoEvents} from '../../utils/events/todoEvents.js';
 import {copyToClipboard} from '../../utils/clipboard.js';
-import {spawn} from 'child_process';
 
 /**
  * 执行上下文压缩
@@ -24,9 +22,12 @@ import {spawn} from 'child_process';
  */
 export async function executeContextCompression(sessionId?: string): Promise<{
 	uiMessages: Message[];
-	usage: UsageInfo;
-	preservedMessages?: Array<any>;
+	usage?: UsageInfo;
 	summary?: string;
+	preservedMessages?: ChatMessage[];
+	preservedMessageStartIndex?: number;
+	hookFailed?: boolean;
+	hookErrorDetails?: any;
 } | null> {
 	try {
 		// 必须提供 sessionId 才能执行压缩，避免压缩错误的会话
@@ -96,7 +97,7 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 				uiMessages: [],
 				hookFailed: true,
 				hookErrorDetails: compressionResult.hookErrorDetails,
-			} as any;
+			};
 		}
 
 		// 构建新的会话消息列表
@@ -158,35 +159,6 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 			true,
 		);
 
-		// 🔥 TODO迁移：将旧会话的TODO复制到新会话中，确保压缩前后TODO一致性
-		try {
-			const todoService = getTodoService();
-			const oldTodoList = await todoService.getTodoList(currentSession.id);
-
-			if (oldTodoList && oldTodoList.todos.length > 0) {
-				// 将旧会话的TODO列表复制到新会话
-				await todoService.saveTodoList(
-					compressedSession.id,
-					oldTodoList.todos,
-					oldTodoList,
-				);
-				// console.log(
-				// 	`TODO migration completed: ${oldTodoList.todos.length} todos copied from session ${currentSession.id} to ${compressedSession.id}`,
-				// );
-			} else {
-				console.log(
-					`No todos found in old session ${currentSession.id}, skipping TODO migration`,
-				);
-			}
-		} catch (error) {
-			// TODO迁移失败不应该影响会话压缩，记录日志即可
-			console.warn('Failed to migrate TODO during session compression:', {
-				oldSessionId: currentSession.id,
-				newSessionId: compressedSession.id,
-				error: error instanceof Error ? error.message : String(error),
-			});
-		}
-
 		// 设置新会话的消息
 		compressedSession.messages = newSessionMessages;
 		compressedSession.messageCount = newSessionMessages.length;
@@ -244,10 +216,6 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 		// 新会话有独立的快照系统，不需要重映射旧会话的快照
 		// 旧会话的快照保持不变，如果需要回滚到压缩前，可以切换回旧会话
 
-		// Clear read folders state after compression
-		// Folder notebooks will be re-collected when files are read in the new session context
-		clearReadFolders();
-
 		// 同步更新UI消息列表：从会话消息转换为UI Message格式
 		const newUIMessages: Message[] = [];
 
@@ -286,8 +254,9 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 				completion_tokens: compressionResult.usage.completion_tokens,
 				total_tokens: compressionResult.usage.total_tokens,
 			},
-			preservedMessages: compressionResult.preservedMessages || [],
 			summary: compressionResult.summary,
+			preservedMessages: compressionResult.preservedMessages,
+			preservedMessageStartIndex: compressionResult.preservedMessageStartIndex,
 		};
 	} catch (error) {
 		console.error('Context compression failed:', error);
@@ -339,6 +308,7 @@ type CommandHandlerOptions = {
 	) => Promise<void>;
 	onQuit?: () => void;
 	onReindexCodebase?: (force?: boolean) => Promise<void>;
+	onToggleCodebase?: (mode?: string) => Promise<void>;
 };
 
 export function useCommandHandler(options: CommandHandlerOptions) {
@@ -382,7 +352,9 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					options.setRemountKey(prev => prev + 1);
 
 					// Update token usage with compression result
-					options.setContextUsage(compressionResult.usage);
+					if (compressionResult.usage) {
+						options.setContextUsage(compressionResult.usage);
+					}
 				} catch (error) {
 					// Show error message
 					const errorMsg =
@@ -420,45 +392,6 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 			if (result.success && result.action === 'clear') {
 				// Execute onSessionStart hook BEFORE clearing session
 				(async () => {
-					// Helper function to perform session clear and reset UI state
-					const performSessionClear = (
-						warningMsg?: string | null,
-						cmdName?: string,
-					) => {
-						// Get current session ID before clearing
-						const currentSession = sessionManager.getCurrentSession();
-						const currentSessionId = currentSession?.id;
-
-						resetTerminal(stdout);
-						sessionManager.clearCurrentSession();
-						options.clearSavedMessages();
-						options.setMessages([]);
-						options.setRemountKey(prev => prev + 1);
-						options.setContextUsage(null);
-						options.setCurrentContextPercentage(0);
-						// CRITICAL: Also reset the ref immediately to prevent auto-compress trigger
-						// before useEffect syncs the state to ref
-						options.currentContextPercentageRef.current = 0;
-
-						// Clear TODO list for the cleared session
-						if (currentSessionId) {
-							todoEvents.emitTodoUpdate(currentSessionId, []);
-						}
-
-						// Add command message
-						const commandMessage: Message = {
-							role: 'command',
-							content: '',
-							commandName: cmdName,
-						};
-						options.setMessages([commandMessage]);
-
-						// Display warning AFTER clearing screen (if any)
-						if (warningMsg) {
-							console.log(warningMsg);
-						}
-					};
-
 					try {
 						const {unifiedHooksExecutor} = await import(
 							'../../utils/execution/unifiedHooksExecutor.js'
@@ -513,11 +446,49 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						}
 
 						// Hook passed, now clear session
-						performSessionClear(warningMessage, commandName);
+						resetTerminal(stdout);
+						sessionManager.clearCurrentSession();
+						options.clearSavedMessages();
+						options.setMessages([]);
+						options.setRemountKey(prev => prev + 1);
+						options.setContextUsage(null);
+						options.setCurrentContextPercentage(0);
+						// CRITICAL: Also reset the ref immediately to prevent auto-compress trigger
+						// before useEffect syncs the state to ref
+						options.currentContextPercentageRef.current = 0;
+
+						// Add command message
+						const commandMessage: Message = {
+							role: 'command',
+							content: '',
+							commandName: commandName,
+						};
+						options.setMessages([commandMessage]);
+
+						// Display warning AFTER clearing screen
+						if (warningMessage) {
+							console.log(warningMessage);
+						}
 					} catch (error) {
 						console.error('Failed to execute onSessionStart hook:', error);
 						// On exception, still clear session
-						performSessionClear(null, commandName);
+						resetTerminal(stdout);
+						sessionManager.clearCurrentSession();
+						options.clearSavedMessages();
+						options.setMessages([]);
+						options.setRemountKey(prev => prev + 1);
+						options.setContextUsage(null);
+						options.setCurrentContextPercentage(0);
+						// CRITICAL: Also reset the ref immediately to prevent auto-compress trigger
+						// before useEffect syncs the state to ref
+						options.currentContextPercentageRef.current = 0;
+
+						const commandMessage: Message = {
+							role: 'command',
+							content: '',
+							commandName: commandName,
+						};
+						options.setMessages([commandMessage]);
 					}
 				})();
 			} else if (result.success && result.action === 'showReviewCommitPanel') {
@@ -603,14 +574,6 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					commandName: commandName,
 				};
 				options.setMessages(prev => [...prev, commandMessage]);
-			} else if (result.success && result.action === 'showReviewCommitPanel') {
-				options.setShowReviewCommitPanel(true);
-				const commandMessage: Message = {
-					role: 'command',
-					content: '',
-					commandName: commandName,
-				};
-				options.setMessages(prev => [...prev, commandMessage]);
 			} else if (result.success && result.action === 'showPermissionsPanel') {
 				options.setShowPermissionsPanel(true);
 				const commandMessage: Message = {
@@ -650,6 +613,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				});
 
 				// Execute the command using spawn
+				const {spawn} = require('child_process');
 				const isWindows = process.platform === 'win32';
 				const shell = isWindows ? 'cmd' : 'sh';
 				const shellArgs = isWindows
@@ -717,9 +681,10 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				result.prompt
 			) {
 				// Delete custom command
-				const {deleteCustomCommand, registerCustomCommands} = await import(
-					'../../utils/commands/custom.js'
-				);
+				const {
+					deleteCustomCommand,
+					registerCustomCommands,
+				} = require('../../utils/commands/custom.js');
 
 				try {
 					// Use the location from result, default to 'global' if not provided
@@ -749,20 +714,14 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				resetTerminal(stdout);
 				navigateTo('welcome');
 			} else if (result.success && result.action === 'toggleYolo') {
-				// Toggle YOLO mode via MainAgentManager to keep single source of truth
-				try {
-					const {toggleYoloMode} = await import(
-						'../../utils/MainAgentManager.js'
-					);
-					const newYoloState = toggleYoloMode();
-					options.setYoloMode(newYoloState);
-				} catch (error) {
-					console.warn('Failed to toggle YOLO mode via /yolo command:', error);
-				}
+				// Toggle YOLO mode without adding command message
+				options.setYoloMode(prev => !prev);
 				// Don't add command message to keep UI clean
-				// toggleTeam 和 toggleVulnerabilityHunting 已整合为 Debugger 主代理切换，不再需要独立处理
-				// Don't add command message to keep UI clean
-			} else if (result.success && result.prompt) {
+			} else if (
+				result.success &&
+				result.action === 'initProject' &&
+				result.prompt
+			) {
 				// Add command execution feedback
 				const commandMessage: Message = {
 					role: 'command',
@@ -946,8 +905,23 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					};
 					options.setMessages(prev => [...prev, errorMessage]);
 				}
+			} else if (result.success && result.action === 'toggleCodebase') {
+				if (options.onToggleCodebase) {
+					try {
+						await options.onToggleCodebase(result.prompt);
+					} catch (error) {
+						const errorMsg =
+							error instanceof Error ? error.message : 'Unknown error';
+						const errorMessage: Message = {
+							role: 'command',
+							content: `Failed to toggle codebase: ${errorMsg}`,
+							commandName: commandName,
+						};
+						options.setMessages(prev => [...prev, errorMessage]);
+					}
+				}
 			} else if (result.message) {
-				// For commands that just return a message (like /init without AGENTS.md, etc.)
+				// For commands that just return a message (like /role, /init without AGENTS.md, etc.)
 				// Display the message as a command message
 				const commandMessage: Message = {
 					role: 'command',

@@ -28,12 +28,10 @@ export interface CommandResult {
 		| 'executeTerminalCommand'
 		| 'deleteCustomCommand'
 		| 'showSkillsCreation'
-		| 'showRoleCreation'
-		| 'showRoleDeletion'
-		| 'showRoleList'
 		| 'showPermissionsPanel'
 		| 'reindexCodebase'
 		| 'copyLastMessage'
+		| 'toggleCodebase'
 		| 'sendAsMessage'
 		| 'quit';
 	prompt?: string;

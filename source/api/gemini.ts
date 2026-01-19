@@ -482,7 +482,9 @@ export async function* createStreamingGeminiCompletion(
 					? config.baseUrl
 					: 'https://generativelanguage.googleapis.com/v1beta';
 
-			const url = `${baseUrl}/${modelName}:streamGenerateContent?key=${config.apiKey}&alt=sse`;
+			const urlObj = new URL(`${baseUrl}/${modelName}:streamGenerateContent`);
+			urlObj.searchParams.set('alt', 'sse');
+			const url = urlObj.toString();
 
 			// Use custom headers from options if provided, otherwise get from current config (supports profile override)
 			const customHeaders =
@@ -493,6 +495,7 @@ export async function* createStreamingGeminiCompletion(
 				headers: {
 					'Content-Type': 'application/json',
 					Authorization: `Bearer ${config.apiKey}`,
+					'x-goog-api-key': config.apiKey,
 					'x-snow': getVersionHeader(),
 					...customHeaders,
 				},

@@ -889,7 +889,8 @@ async function executeWithInternalRetry(
 								// For time-consuming tools, always show result with full details (Diff, etc.)
 								if (isTimeConsumingTool) {
 									const statusIcon = isError ? '✗' : '✓';
-									const statusText = isError ? `\n  └─ ${msg.content}` : '';
+									// UI only shows simple failure message, detailed error is sent to AI via msg.content
+									const statusText = '';
 
 									// For terminal-execute, try to extract terminal result data
 									let terminalResultData:
@@ -1004,10 +1005,10 @@ async function executeWithInternalRetry(
 
 								// For quick tools, only show error results, success results update inline
 								if (isError) {
-									const statusText = `\n  └─ ${msg.content}`;
+									// UI only shows simple failure message, detailed error is sent to AI
 									const uiMsg = {
 										role: 'subagent' as const,
-										content: `\x1b[38;2;255;100;100m⚇✗ ${msg.tool_name}\x1b[0m${statusText}`,
+										content: `\x1b[38;2;255;100;100m⚇✗ ${msg.tool_name}\x1b[0m`,
 										streaming: false,
 										subAgent: {
 											agentId: subAgentMessage.agentId,
@@ -1460,7 +1461,8 @@ async function executeWithInternalRetry(
 						if (toolCall.function.name.startsWith('subagent-')) {
 							const isError = result.content.startsWith('Error:');
 							const statusIcon = isError ? '✗' : '✓';
-							const statusText = isError ? `\n  └─ ${result.content}` : '';
+							// UI only shows simple failure message, detailed error is sent to AI via result.content
+							const statusText = '';
 
 							// Parse sub-agent result to extract usage information
 							let usage: any = undefined;
@@ -1490,7 +1492,8 @@ async function executeWithInternalRetry(
 
 						const isError = result.content.startsWith('Error:');
 						const statusIcon = isError ? '✗' : '✓';
-						const statusText = isError ? `\n  └─ ${result.content}` : '';
+						// UI only shows simple failure message, detailed error is sent to AI via result.content
+						const statusText = '';
 
 						// Check if this is an edit tool with diff data
 						let editDiffData:

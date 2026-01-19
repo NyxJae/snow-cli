@@ -505,6 +505,8 @@ export const en: TranslationKeys = {
 				'Add working directory for multi-project context. Usage: /add-dir or /add-dir path',
 			reindex:
 				'Rebuild codebase index. Use -force to delete existing database and rebuild from scratch',
+			codebase:
+				'Toggle codebase indexing for current project. Usage: /codebase [on|off|status]',
 			permissions: 'Manage always-approved tools permissions',
 			backend: 'Show background processes panel',
 			profiles: 'Switch configuration profiles',
@@ -1195,12 +1197,15 @@ export const en: TranslationKeys = {
 		searchPlaceholder: 'Type to search',
 		searching: 'searching...',
 		navigationHint:
-			'Type to search • ↑↓ navigate • Space mark • D delete • Enter select • ESC close',
+			'Type to search • ↑↓ navigate • Space mark • D delete • R rename • Enter select • ESC close',
 		moreAbove: '↑ {count} more above',
 		moreBelow: '↓ {count} more below',
 		scrollToLoadMore: '(scroll to load more)',
 		untitled: 'Untitled',
 		now: 'now',
+		renamePrompt: 'Rename Session',
+		renaming: 'Renaming...',
+		renamePlaceholder: 'Enter new title',
 	},
 	mcpInfoPanel: {
 		title: 'MCP Services',

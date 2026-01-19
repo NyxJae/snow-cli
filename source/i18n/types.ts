@@ -475,6 +475,7 @@ export type TranslationKeys = {
 			todo: string;
 			addDir: string;
 			reindex: string;
+			codebase: string;
 			permissions: string;
 			vulnerabilityHunting: string;
 			quit: string;
@@ -1139,6 +1140,9 @@ export type TranslationKeys = {
 		scrollToLoadMore: string;
 		untitled: string;
 		now: string;
+		renamePrompt: string;
+		renaming: string;
+		renamePlaceholder: string;
 	};
 	mcpInfoPanel: {
 		title: string;
