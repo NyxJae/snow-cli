@@ -1130,7 +1130,7 @@ export class ACECodeSearchService {
 					pattern,
 					fileGlob,
 					maxResults,
-					rgAvailable ? 'rg' : 'grep',
+					grepAvailable ? 'grep' : 'rg',
 				);
 				return await this.sortResultsByRecency(results);
 			} catch (error) {
