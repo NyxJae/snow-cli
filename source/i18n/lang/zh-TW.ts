@@ -1200,7 +1200,7 @@ export const zhTW: TranslationKeys = {
 	},
 	undoManager: {
 		undoFailedEmpty: '❌ 撤銷失敗。沒有可撤銷的編輯操作。',
-		undoSuccess: '✅ 撤銷成功。已撤銷 {steps} 次編輯操作。',
+		undoSuccess: '✅ 撤銷成功。已撤銷 {steps} 次編輯操作。如果想修正錯誤編輯,建議使用 filesystem-edit_search 進行單次編輯並提供更多行的辅助編輯上下文.',
 		undoFailed: '❌ 撤銷失敗。{error}',
 		unknownError: '未知錯誤',
 		invalidStepsParameter:

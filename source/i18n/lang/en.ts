@@ -1271,7 +1271,7 @@ export const en: TranslationKeys = {
 	},
 	undoManager: {
 		undoFailedEmpty: '❌ Undo failed. No edits available to undo.',
-		undoSuccess: '✅ Undo successful. Reverted {steps} edit(s).',
+		undoSuccess: '✅ Undo successful. Reverted {steps} edit(s). If you want to fix the wrong edit, please use filesystem-edit_search to edit once and provide more lines of editing context.',
 		undoFailed: '❌ Undo failed. {error}',
 		unknownError: 'Unknown error',
 		invalidStepsParameter:
