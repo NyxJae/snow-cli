@@ -20,6 +20,7 @@ export interface ToolCall {
 export interface ChatMessage {
 	role: 'system' | 'user' | 'assistant' | 'tool';
 	content: string;
+	timestamp?: number; // 消息时间戳（毫秒）
 	messageStatus?: 'pending' | 'success' | 'error';
 	tool_call_id?: string;
 	tool_calls?: ToolCall[];

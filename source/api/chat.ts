@@ -128,9 +128,23 @@ function convertToOpenAIMessages(
 
 			// 添加文本内容
 			if (msg.content) {
+				// 添加本地时间戳（到秒）
+				const date = new Date(msg.timestamp || Date.now());
+				const timestamp =
+					date.getFullYear() +
+					'-' +
+					String(date.getMonth() + 1).padStart(2, '0') +
+					'-' +
+					String(date.getDate()).padStart(2, '0') +
+					'T' +
+					String(date.getHours()).padStart(2, '0') +
+					':' +
+					String(date.getMinutes()).padStart(2, '0') +
+					':' +
+					String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 				contentParts.push({
 					type: 'text',
-					text: msg.content,
+					text: `[${timestamp}] ${msg.content}`,
 				});
 			}
 
@@ -150,11 +164,24 @@ function convertToOpenAIMessages(
 			} as ChatCompletionMessageParam;
 		}
 
+		// 添加本地时间戳（到秒）
+		const date = new Date(msg.timestamp || Date.now());
+		const timestamp =
+			date.getFullYear() +
+			'-' +
+			String(date.getMonth() + 1).padStart(2, '0') +
+			'-' +
+			String(date.getDate()).padStart(2, '0') +
+			'T' +
+			String(date.getHours()).padStart(2, '0') +
+			':' +
+			String(date.getMinutes()).padStart(2, '0') +
+			':' +
+			String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 		const baseMessage = {
 			role: msg.role,
-			content: msg.content,
+			content: msg.content ? `[${timestamp}] ${msg.content}` : msg.content,
 		};
-
 		if (msg.role === 'assistant' && msg.tool_calls) {
 			const result: any = {
 				...baseMessage,
@@ -178,9 +205,23 @@ function convertToOpenAIMessages(
 
 				// Add text content
 				if (msg.content) {
+					// 添加本地时间戳（到秒）
+					const date = new Date(msg.timestamp || Date.now());
+					const timestamp =
+						date.getFullYear() +
+						'-' +
+						String(date.getMonth() + 1).padStart(2, '0') +
+						'-' +
+						String(date.getDate()).padStart(2, '0') +
+						'T' +
+						String(date.getHours()).padStart(2, '0') +
+						':' +
+						String(date.getMinutes()).padStart(2, '0') +
+						':' +
+						String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 					content.push({
 						type: 'text',
-						text: msg.content,
+						text: `[${timestamp}] ${msg.content}`,
 					});
 				}
 
@@ -201,13 +242,26 @@ function convertToOpenAIMessages(
 				} as ChatCompletionMessageParam;
 			}
 
+			// 添加本地时间戳（到秒）
+			const date = new Date(msg.timestamp || Date.now());
+			const timestamp =
+				date.getFullYear() +
+				'-' +
+				String(date.getMonth() + 1).padStart(2, '0') +
+				'-' +
+				String(date.getDate()).padStart(2, '0') +
+				'T' +
+				String(date.getHours()).padStart(2, '0') +
+				':' +
+				String(date.getMinutes()).padStart(2, '0') +
+				':' +
+				String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 			return {
 				role: 'tool',
-				content: msg.content,
+				content: msg.content ? `[${timestamp}] ${msg.content}` : msg.content,
 				tool_call_id: msg.tool_call_id,
 			} as ChatCompletionMessageParam;
 		}
-
 		// Include reasoning_content for assistant messages (DeepSeek R1)
 		if (msg.role === 'assistant' && (msg as any).reasoning_content) {
 			return {

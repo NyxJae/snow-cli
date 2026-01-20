@@ -203,9 +203,23 @@ function convertToAnthropicMessages(
 
 				// Add text content first
 				if (msg.content) {
+					// 添加本地时间戳（到秒）
+					const date = new Date(msg.timestamp || Date.now());
+					const timestamp =
+						date.getFullYear() +
+						'-' +
+						String(date.getMonth() + 1).padStart(2, '0') +
+						'-' +
+						String(date.getDate()).padStart(2, '0') +
+						'T' +
+						String(date.getHours()).padStart(2, '0') +
+						':' +
+						String(date.getMinutes()).padStart(2, '0') +
+						':' +
+						String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 					contentArray.push({
 						type: 'text',
-						text: msg.content,
+						text: `[${timestamp}] ${msg.content}`,
 					});
 				}
 
@@ -224,7 +238,23 @@ function convertToAnthropicMessages(
 				toolResultContent = contentArray;
 			} else {
 				// Text-only tool result
-				toolResultContent = msg.content;
+				// 添加本地时间戳（到秒）
+				const date = new Date(msg.timestamp || Date.now());
+				const timestamp =
+					date.getFullYear() +
+					'-' +
+					String(date.getMonth() + 1).padStart(2, '0') +
+					'-' +
+					String(date.getDate()).padStart(2, '0') +
+					'T' +
+					String(date.getHours()).padStart(2, '0') +
+					':' +
+					String(date.getMinutes()).padStart(2, '0') +
+					':' +
+					String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
+				toolResultContent = msg.content
+					? `[${timestamp}] ${msg.content}`
+					: msg.content;
 			}
 
 			anthropicMessages.push({
@@ -244,9 +274,23 @@ function convertToAnthropicMessages(
 			const content: any[] = [];
 
 			if (msg.content) {
+				// 添加本地时间戳（到秒）
+				const date = new Date(msg.timestamp || Date.now());
+				const timestamp =
+					date.getFullYear() +
+					'-' +
+					String(date.getMonth() + 1).padStart(2, '0') +
+					'-' +
+					String(date.getDate()).padStart(2, '0') +
+					'T' +
+					String(date.getHours()).padStart(2, '0') +
+					':' +
+					String(date.getMinutes()).padStart(2, '0') +
+					':' +
+					String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 				content.push({
 					type: 'text',
-					text: msg.content,
+					text: `[${timestamp}] ${msg.content}`,
 				});
 			}
 
@@ -286,9 +330,23 @@ function convertToAnthropicMessages(
 			}
 
 			if (msg.content) {
+				// 添加本地时间戳（到秒）
+				const date = new Date(msg.timestamp || Date.now());
+				const timestamp =
+					date.getFullYear() +
+					'-' +
+					String(date.getMonth() + 1).padStart(2, '0') +
+					'-' +
+					String(date.getDate()).padStart(2, '0') +
+					'T' +
+					String(date.getHours()).padStart(2, '0') +
+					':' +
+					String(date.getMinutes()).padStart(2, '0') +
+					':' +
+					String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 				content.push({
 					type: 'text',
-					text: msg.content,
+					text: `[${timestamp}] ${msg.content}`,
 				});
 			}
 
@@ -319,9 +377,23 @@ function convertToAnthropicMessages(
 
 				// Then text content
 				if (msg.content) {
+					// 添加本地时间戳（到秒）
+					const date = new Date(msg.timestamp || Date.now());
+					const timestamp =
+						date.getFullYear() +
+						'-' +
+						String(date.getMonth() + 1).padStart(2, '0') +
+						'-' +
+						String(date.getDate()).padStart(2, '0') +
+						'T' +
+						String(date.getHours()).padStart(2, '0') +
+						':' +
+						String(date.getMinutes()).padStart(2, '0') +
+						':' +
+						String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 					content.push({
 						type: 'text',
-						text: msg.content,
+						text: `[${timestamp}] ${msg.content}`,
 					});
 				}
 
@@ -330,9 +402,23 @@ function convertToAnthropicMessages(
 					content,
 				});
 			} else {
+				// 添加本地时间戳（到秒）
+				const date = new Date(msg.timestamp || Date.now());
+				const timestamp =
+					date.getFullYear() +
+					'-' +
+					String(date.getMonth() + 1).padStart(2, '0') +
+					'-' +
+					String(date.getDate()).padStart(2, '0') +
+					'T' +
+					String(date.getHours()).padStart(2, '0') +
+					':' +
+					String(date.getMinutes()).padStart(2, '0') +
+					':' +
+					String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 				anthropicMessages.push({
 					role: msg.role,
-					content: msg.content,
+					content: msg.content ? `[${timestamp}] ${msg.content}` : msg.content,
 				});
 			}
 		}

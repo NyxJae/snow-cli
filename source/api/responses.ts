@@ -206,9 +206,23 @@ function convertToResponseInput(
 
 			// 添加文本内容
 			if (msg.content) {
+				// 添加本地时间戳（到秒）
+				const date = new Date(msg.timestamp || Date.now());
+				const timestamp =
+					date.getFullYear() +
+					'-' +
+					String(date.getMonth() + 1).padStart(2, '0') +
+					'-' +
+					String(date.getDate()).padStart(2, '0') +
+					'T' +
+					String(date.getHours()).padStart(2, '0') +
+					':' +
+					String(date.getMinutes()).padStart(2, '0') +
+					':' +
+					String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 				contentParts.push({
 					type: 'input_text',
-					text: msg.content,
+					text: `[${timestamp}] ${msg.content}`,
 				});
 			}
 
@@ -251,13 +265,27 @@ function convertToResponseInput(
 
 		// Assistant 消息（纯文本）
 		if (msg.role === 'assistant') {
+			// 添加本地时间戳（到秒）
+			const date = new Date(msg.timestamp || Date.now());
+			const timestamp =
+				date.getFullYear() +
+				'-' +
+				String(date.getMonth() + 1).padStart(2, '0') +
+				'-' +
+				String(date.getDate()).padStart(2, '0') +
+				'T' +
+				String(date.getHours()).padStart(2, '0') +
+				':' +
+				String(date.getMinutes()).padStart(2, '0') +
+				':' +
+				String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 			result.push({
 				type: 'message',
 				role: 'assistant',
 				content: [
 					{
 						type: 'output_text',
-						text: msg.content || '',
+						text: msg.content ? `[${timestamp}] ${msg.content}` : msg.content,
 					},
 				],
 			});
@@ -274,9 +302,23 @@ function convertToResponseInput(
 
 				// Add text content
 				if (msg.content) {
+					// 添加本地时间戳（到秒）
+					const date = new Date(msg.timestamp || Date.now());
+					const timestamp =
+						date.getFullYear() +
+						'-' +
+						String(date.getMonth() + 1).padStart(2, '0') +
+						'-' +
+						String(date.getDate()).padStart(2, '0') +
+						'T' +
+						String(date.getHours()).padStart(2, '0') +
+						':' +
+						String(date.getMinutes()).padStart(2, '0') +
+						':' +
+						String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 					outputContent.push({
 						type: 'input_text',
-						text: msg.content,
+						text: `[${timestamp}] ${msg.content}`,
 					});
 				}
 
@@ -294,10 +336,24 @@ function convertToResponseInput(
 					output: outputContent,
 				});
 			} else {
+				// 添加本地时间戳（到秒）
+				const date = new Date(msg.timestamp || Date.now());
+				const timestamp =
+					date.getFullYear() +
+					'-' +
+					String(date.getMonth() + 1).padStart(2, '0') +
+					'-' +
+					String(date.getDate()).padStart(2, '0') +
+					'T' +
+					String(date.getHours()).padStart(2, '0') +
+					':' +
+					String(date.getMinutes()).padStart(2, '0') +
+					':' +
+					String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
 				result.push({
 					type: 'function_call_output',
 					call_id: msg.tool_call_id,
-					output: msg.content,
+					output: msg.content ? `[${timestamp}] ${msg.content}` : msg.content,
 				});
 			}
 			continue;

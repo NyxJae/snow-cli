@@ -165,9 +165,22 @@ function convertToGeminiMessages(
 
 			// Add text content if exists
 			if (msg.content) {
-				parts.push({text: msg.content});
+				// 添加本地时间戳（到秒）
+				const date = new Date(msg.timestamp || Date.now());
+				const timestamp =
+					date.getFullYear() +
+					'-' +
+					String(date.getMonth() + 1).padStart(2, '0') +
+					'-' +
+					String(date.getDate()).padStart(2, '0') +
+					'T' +
+					String(date.getHours()).padStart(2, '0') +
+					':' +
+					String(date.getMinutes()).padStart(2, '0') +
+					':' +
+					String(date.getSeconds()).padStart(2, '0');
+				parts.push({text: `[${timestamp}] ${msg.content}`});
 			}
-
 			// Add function calls and build mapping
 			for (const toolCall of msg.tool_calls) {
 				// Store tool_call_id -> function_name mapping
@@ -246,6 +259,21 @@ function convertToGeminiMessages(
 				if (!toolResp.content) {
 					responseData = {};
 				} else {
+					// 添加本地时间戳（到秒）
+					const date = new Date(msg.timestamp || Date.now());
+					const timestamp =
+						date.getFullYear() +
+						'-' +
+						String(date.getMonth() + 1).padStart(2, '0') +
+						'-' +
+						String(date.getDate()).padStart(2, '0') +
+						'T' +
+						String(date.getHours()).padStart(2, '0') +
+						':' +
+						String(date.getMinutes()).padStart(2, '0') +
+						':' +
+						String(date.getSeconds()).padStart(2, '0');
+
 					let contentToParse = toolResp.content;
 
 					// Sometimes the content is double-encoded as JSON
@@ -279,14 +307,21 @@ function convertToGeminiMessages(
 							parsed !== null &&
 							!Array.isArray(parsed)
 						) {
-							responseData = parsed;
+							// Add timestamp to the response object
+							responseData = {...parsed, _timestamp: timestamp};
 						} else {
 							// If it's a primitive, array, or null, wrap it
-							responseData = {content: parsed};
+							responseData = {
+								_timestamp: timestamp,
+								content: parsed,
+							};
 						}
 					} else {
 						// Not valid JSON, wrap the raw string
-						responseData = {content: contentToParse};
+						responseData = {
+							_timestamp: timestamp,
+							content: contentToParse,
+						};
 					}
 				}
 
@@ -324,7 +359,21 @@ function convertToGeminiMessages(
 
 		// Add text content
 		if (msg.content) {
-			parts.push({text: msg.content});
+			// 添加本地时间戳（到秒）
+			const date = new Date(msg.timestamp || Date.now());
+			const timestamp =
+				date.getFullYear() +
+				'-' +
+				String(date.getMonth() + 1).padStart(2, '0') +
+				'-' +
+				String(date.getDate()).padStart(2, '0') +
+				'T' +
+				String(date.getHours()).padStart(2, '0') +
+				':' +
+				String(date.getMinutes()).padStart(2, '0') +
+				':' +
+				String(date.getSeconds()).padStart(2, '0');
+			parts.push({text: `[${timestamp}] ${msg.content}`});
 		}
 
 		// Add images for user messages
