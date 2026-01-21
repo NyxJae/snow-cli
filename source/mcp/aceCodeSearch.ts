@@ -805,11 +805,12 @@ export class ACECodeSearchService {
 		pattern: string,
 		fileGlob?: string,
 		maxResults: number = 100,
-		grepCommand: 'rg' | 'grep' = 'grep',
+		grepCommand: 'rg' | 'grep' = 'rg',
 	): Promise<
 		Array<{filePath: string; line: number; column: number; content: string}>
 	> {
 		const isRipgrep = grepCommand === 'rg';
+		const timeoutMs = 15000;
 
 		return new Promise((resolve, reject) => {
 			const args = isRipgrep
@@ -857,6 +858,19 @@ export class ACECodeSearchService {
 				windowsHide: true,
 			});
 
+			let timedOut = false;
+			const timeout = setTimeout(() => {
+				timedOut = true;
+				try {
+					child.kill('SIGTERM');
+				} catch {
+					// ignore
+				}
+				reject(
+					new Error(`${grepCommand} search timed out after ${timeoutMs}ms`),
+				);
+			}, timeoutMs);
+
 			// Register child process for cleanup
 			processManager.register(child);
 
@@ -876,10 +890,18 @@ export class ACECodeSearchService {
 			});
 
 			child.on('error', err => {
+				clearTimeout(timeout);
+				if (timedOut) {
+					return;
+				}
 				reject(new Error(`Failed to start ${grepCommand}: ${err.message}`));
 			});
 
 			child.on('close', code => {
+				clearTimeout(timeout);
+				if (timedOut) {
+					return;
+				}
 				const stdoutData = Buffer.concat(stdoutChunks).toString('utf8');
 				const stderrData = Buffer.concat(stderrChunks).toString('utf8').trim();
 
@@ -1130,7 +1152,7 @@ export class ACECodeSearchService {
 					pattern,
 					fileGlob,
 					maxResults,
-					grepAvailable ? 'grep' : 'rg',
+					rgAvailable ? 'rg' : 'grep',
 				);
 				return await this.sortResultsByRecency(results);
 			} catch (error) {
