@@ -270,10 +270,11 @@ export default function SubAgentConfigScreen({
 		if (agentId && mcpServices.length > 0) {
 			const agent = getSubAgent(agentId);
 			if (agent && agent.tools && agent.tools.length > 0) {
-				// 反向映射：将完整格式的工具名转换为UI显示的纯工具名
-				const reverseToolMapping = new Map<string, string>();
+				// CRITICAL: 子代理配置必须保留外置MCP工具全称(服务器名-工具名)
+				const fullToolNames = new Set<string>();
+				const shortToFullMapping = new Map<string, string>();
 
-				// 为每个MCP服务创建反向映射
+				// 为每个MCP服务创建工具名映射(短名->全称)
 				for (const service of mcpServices) {
 					if (
 						!service.isBuiltIn &&
@@ -282,7 +283,10 @@ export default function SubAgentConfigScreen({
 					) {
 						for (const tool of service.tools) {
 							const fullName = `${service.serviceName}-${tool.name}`;
-							reverseToolMapping.set(fullName, tool.name); // 完整名 -> 纯名
+							fullToolNames.add(fullName);
+							if (!shortToFullMapping.has(tool.name)) {
+								shortToFullMapping.set(tool.name, fullName);
+							}
 						}
 					}
 				}
@@ -325,8 +329,11 @@ export default function SubAgentConfigScreen({
 					if (isBuiltIn) {
 						return toolName;
 					}
-					// 尝试反向映射
-					return reverseToolMapping.get(toolName) || toolName;
+					// 已是全称则保留,否则尝试将短名映射为全称
+					if (fullToolNames.has(toolName)) {
+						return toolName;
+					}
+					return shortToFullMapping.get(toolName) || toolName;
 				});
 
 				setSelectedTools(new Set(convertedTools));
