@@ -5,6 +5,7 @@ import type {ChatMessage} from '../../api/types.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
 import {compressContext} from '../../utils/core/contextCompressor.js';
 import {getTodoService} from '../../utils/execution/mcpToolsManager.js';
+import {todoEvents} from '../../utils/events/todoEvents.js';
 import {navigateTo} from '../integration/useGlobalNavigation.js';
 import type {UsageInfo} from '../../api/chat.js';
 import {resetTerminal} from '../../utils/execution/terminal.js';
@@ -447,6 +448,15 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 
 						// Hook passed, now clear session
 						resetTerminal(stdout);
+						const currentSession = sessionManager.getCurrentSession();
+						if (currentSession) {
+							try {
+								await getTodoService().deleteTodoList(currentSession.id);
+								todoEvents.emitTodoUpdate(currentSession.id, []);
+							} catch (error) {
+								console.warn('Failed to clear TODO list:', error);
+							}
+						}
 						sessionManager.clearCurrentSession();
 						options.clearSavedMessages();
 						options.setMessages([]);
@@ -473,6 +483,15 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						console.error('Failed to execute onSessionStart hook:', error);
 						// On exception, still clear session
 						resetTerminal(stdout);
+						const currentSession = sessionManager.getCurrentSession();
+						if (currentSession) {
+							try {
+								await getTodoService().deleteTodoList(currentSession.id);
+								todoEvents.emitTodoUpdate(currentSession.id, []);
+							} catch (error) {
+								console.warn('Failed to clear TODO list:', error);
+							}
+						}
 						sessionManager.clearCurrentSession();
 						options.clearSavedMessages();
 						options.setMessages([]);
