@@ -343,7 +343,8 @@ export default function SubAgentConfigScreen({
 			if (!service.isBuiltIn && service.connected && service.tools.length > 0) {
 				categories.push({
 					name: `${service.serviceName} ${t.subAgentConfig.categoryMCP}`,
-					tools: service.tools.map(t => t.name),
+					// 外置MCP工具必须保存全称(服务器名-工具名),否则子代理筛选会被误过滤
+					tools: service.tools.map(t => `${service.serviceName}-${t.name}`),
 				});
 			}
 		}
