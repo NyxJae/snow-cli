@@ -17,6 +17,7 @@ export type PanelState = {
 	showPermissionsPanel: boolean;
 	showReviewCommitPanel: boolean;
 	showProfilePanel: boolean;
+	showModelsPanel: boolean;
 	profileSelectedIndex: number;
 	profileSearchQuery: string;
 	currentProfileName: string;
@@ -35,6 +36,7 @@ export type PanelActions = {
 	setShowPermissionsPanel: Dispatch<SetStateAction<boolean>>;
 	setShowReviewCommitPanel: Dispatch<SetStateAction<boolean>>;
 	setShowProfilePanel: Dispatch<SetStateAction<boolean>>;
+	setShowModelsPanel: Dispatch<SetStateAction<boolean>>;
 	setProfileSelectedIndex: Dispatch<SetStateAction<number>>;
 	setProfileSearchQuery: Dispatch<SetStateAction<string>>;
 	setShowMainAgentPanel: Dispatch<SetStateAction<boolean>>;
@@ -68,6 +70,7 @@ export function usePanelState(): PanelState & PanelActions {
 	const [showPermissionsPanel, setShowPermissionsPanel] = useState(false);
 	const [showReviewCommitPanel, setShowReviewCommitPanel] = useState(false);
 	const [showProfilePanel, setShowProfilePanel] = useState(false);
+	const [showModelsPanel, setShowModelsPanel] = useState(false);
 	const [profileSelectedIndex, setProfileSelectedIndex] = useState(0);
 	const [profileSearchQuery, setProfileSearchQuery] = useState('');
 	const [showMainAgentPanel, setShowMainAgentPanel] = useState(false);
@@ -97,6 +100,7 @@ export function usePanelState(): PanelState & PanelActions {
 			showPermissionsPanel ||
 			showReviewCommitPanel ||
 			showProfilePanel ||
+			showModelsPanel ||
 			options.hasPendingRollback ||
 			options.hasPendingToolConfirmation ||
 			options.hasPendingUserQuestion ||
@@ -225,6 +229,12 @@ export function usePanelState(): PanelState & PanelActions {
 			return true;
 		}
 
+		// ModelsPanel handles its own ESC key logic internally
+		// Don't close it here - let the panel decide when to close
+		if (showModelsPanel) {
+			return false; // Let ModelsPanel handle ESC
+		}
+
 		return false; // ESC not handled
 	};
 
@@ -239,7 +249,8 @@ export function usePanelState(): PanelState & PanelActions {
 			showPermissionsPanel ||
 			showReviewCommitPanel ||
 			showProfilePanel ||
-			showMainAgentPanel
+			showMainAgentPanel ||
+			showModelsPanel
 		);
 	};
 
@@ -254,6 +265,7 @@ export function usePanelState(): PanelState & PanelActions {
 		showPermissionsPanel,
 		showReviewCommitPanel,
 		showProfilePanel,
+		showModelsPanel,
 		profileSelectedIndex,
 		profileSearchQuery,
 		currentProfileName,
@@ -270,6 +282,7 @@ export function usePanelState(): PanelState & PanelActions {
 		setShowPermissionsPanel,
 		setShowReviewCommitPanel,
 		setShowProfilePanel,
+		setShowModelsPanel,
 		setProfileSelectedIndex,
 		setProfileSearchQuery,
 		setShowMainAgentPanel,

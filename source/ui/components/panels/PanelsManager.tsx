@@ -5,6 +5,7 @@ import {useTheme} from '../../contexts/ThemeContext.js';
 import {useI18n} from '../../../i18n/I18nContext.js';
 import {CustomCommandConfigPanel} from './CustomCommandConfigPanel.js';
 import {SkillsCreationPanel} from './SkillsCreationPanel.js';
+import {ModelsPanel} from './ModelsPanel.js';
 import WorkingDirectoryPanel from './WorkingDirectoryPanel.js';
 import PermissionsPanel from './PermissionsPanel.js';
 import MainAgentPanel from './MainAgentPanel.js';
@@ -26,11 +27,15 @@ type PanelsManagerProps = {
 	showSessionPanel: boolean;
 	showMcpPanel: boolean;
 	showUsagePanel: boolean;
+	showModelsPanel: boolean;
 	showCustomCommandConfig: boolean;
 	showSkillsCreation: boolean;
 	showWorkingDirPanel: boolean;
 	showPermissionsPanel: boolean;
+	advancedModel: string;
+	basicModel: string;
 	setShowSessionPanel: (show: boolean) => void;
+	setShowModelsPanel: (show: boolean) => void;
 	setShowCustomCommandConfig: (show: boolean) => void;
 	setShowSkillsCreation: (show: boolean) => void;
 	setShowWorkingDirPanel: (show: boolean) => void;
@@ -65,11 +70,15 @@ export default function PanelsManager({
 	showSessionPanel,
 	showMcpPanel,
 	showUsagePanel,
+	showModelsPanel,
 	showCustomCommandConfig,
 	showSkillsCreation,
 	showWorkingDirPanel,
 	showPermissionsPanel,
+	advancedModel,
+	basicModel,
 	setShowSessionPanel,
+	setShowModelsPanel,
 	setShowCustomCommandConfig,
 	setShowSkillsCreation,
 	setShowWorkingDirPanel,
@@ -156,6 +165,18 @@ export default function PanelsManager({
 							{t.chatScreen.pressEscToClose}
 						</Text>
 					</Box>
+				</Box>
+			)}
+
+			{/* Show models panel if active - replaces input */}
+			{showModelsPanel && (
+				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
+					<ModelsPanel
+						advancedModel={advancedModel}
+						basicModel={basicModel}
+						visible={showModelsPanel}
+						onClose={() => setShowModelsPanel(false)}
+					/>
 				</Box>
 			)}
 

@@ -35,6 +35,21 @@ export default function MessageRenderer({
 	const {theme} = useTheme();
 	const {t} = useI18n();
 
+	// If showThinking is false and message only has thinking content (no actual content),
+	// don't render anything to avoid showing empty ❆ icon
+	if (
+		!showThinking &&
+		message.thinking &&
+		!message.content &&
+		!message.toolCall &&
+		!message.toolResult &&
+		!message.terminalResult &&
+		!message.discontinued &&
+		!message.hookError
+	) {
+		return null;
+	}
+
 	// Helper function to remove ANSI escape codes
 	const removeAnsiCodes = (text: string): string => {
 		return text.replace(/\x1b\[[0-9;]*m/g, '');
@@ -219,7 +234,10 @@ export default function MessageRenderer({
 											return (
 												<>
 													{message.thinking && showThinking && (
-														<Box flexDirection="column" marginBottom={message.content ? 1 : 0}>
+														<Box
+															flexDirection="column"
+															marginBottom={message.content ? 1 : 0}
+														>
 															<Text
 																color={theme.colors.menuSecondary}
 																dimColor
@@ -241,9 +259,7 @@ export default function MessageRenderer({
 															)}
 														</Text>
 													) : message.content ? (
-														<MarkdownRenderer
-															content={message.content}
-														/>
+														<MarkdownRenderer content={message.content} />
 													) : null}
 												</>
 											);

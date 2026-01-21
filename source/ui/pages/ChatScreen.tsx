@@ -3,6 +3,7 @@ import {Box, Text, useInput, Static, useStdout, useApp} from 'ink';
 import ansiEscapes from 'ansi-escapes';
 import {useI18n} from '../../i18n/I18nContext.js';
 import {useTheme} from '../contexts/ThemeContext.js';
+import {configEvents} from '../../utils/config/configEvents.js';
 import {type Message} from '../components/chat/MessageList.js';
 import PendingMessages from '../components/chat/PendingMessages.js';
 import ToolConfirmation from '../components/tools/ToolConfirmation.js';
@@ -147,7 +148,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		// Load simple mode from config
 		return getSimpleMode();
 	});
-	const [showThinking, _setShowThinking] = useState(() => {
+	const [showThinking, setShowThinking] = useState(() => {
 		// Load showThinking from config (default: true)
 		const config = getOpenAiConfig();
 		return config.showThinking !== false;
@@ -177,6 +178,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const {columns: terminalWidth, rows: terminalHeight} = useTerminalSize();
 	const {stdout} = useStdout();
 	const workingDirectory = process.cwd();
+	const apiConfig = getOpenAiConfig();
+	const advancedModel = apiConfig.advancedModel || '';
+	const basicModel = apiConfig.basicModel || '';
 	const isInitialMount = useRef(true);
 
 	// Codebase indexing state
@@ -291,6 +295,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			import('../../utils/commands/addDir.js'),
 			import('../../utils/commands/permissions.js'),
 			import('../../utils/commands/backend.js'),
+			import('../../utils/commands/models.js'),
 		])
 			.then(async () => {
 				// Load and register custom commands from user directory
@@ -576,6 +581,21 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		return () => clearInterval(interval);
 	}, [simpleMode]);
 
+	// Listen to showThinking config changes via event system
+	useEffect(() => {
+		const handleConfigChange = (event: {type: string; value: any}) => {
+			if (event.type === 'showThinking') {
+				setShowThinking(event.value);
+			}
+		};
+
+		configEvents.onConfigChange(handleConfigChange);
+
+		return () => {
+			configEvents.removeConfigChangeListener(handleConfigChange);
+		};
+	}, []);
+
 	// Clear restore input content after it's been used
 	useEffect(() => {
 		if (restoreInputContent !== null) {
@@ -822,7 +842,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setShowSessionPanel: panelState.setShowSessionPanel,
 		setShowMcpPanel: panelState.setShowMcpPanel,
 		setShowUsagePanel: panelState.setShowUsagePanel,
+		setShowModelsPanel: panelState.setShowModelsPanel,
 		setShowCustomCommandConfig: panelState.setShowCustomCommandConfig,
+
 		setShowSkillsCreation: panelState.setShowSkillsCreation,
 		setShowWorkingDirPanel: panelState.setShowWorkingDirPanel,
 		setShowReviewCommitPanel: panelState.setShowReviewCommitPanel,
@@ -1404,11 +1426,15 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				showSessionPanel={panelState.showSessionPanel}
 				showMcpPanel={panelState.showMcpPanel}
 				showUsagePanel={panelState.showUsagePanel}
+				showModelsPanel={panelState.showModelsPanel}
 				showCustomCommandConfig={panelState.showCustomCommandConfig}
 				showSkillsCreation={panelState.showSkillsCreation}
 				showWorkingDirPanel={panelState.showWorkingDirPanel}
 				showPermissionsPanel={panelState.showPermissionsPanel}
+				advancedModel={advancedModel}
+				basicModel={basicModel}
 				setShowSessionPanel={panelState.setShowSessionPanel}
+				setShowModelsPanel={panelState.setShowModelsPanel}
 				setShowCustomCommandConfig={panelState.setShowCustomCommandConfig}
 				setShowSkillsCreation={panelState.setShowSkillsCreation}
 				setShowWorkingDirPanel={panelState.setShowWorkingDirPanel}
@@ -1526,6 +1552,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					panelState.showSessionPanel ||
 					panelState.showMcpPanel ||
 					panelState.showUsagePanel ||
+					panelState.showModelsPanel ||
 					panelState.showCustomCommandConfig ||
 					panelState.showSkillsCreation ||
 					panelState.showWorkingDirPanel ||

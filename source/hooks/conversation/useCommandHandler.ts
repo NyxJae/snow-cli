@@ -276,6 +276,7 @@ type CommandHandlerOptions = {
 	setShowMcpPanel: React.Dispatch<React.SetStateAction<boolean>>;
 
 	setShowUsagePanel: React.Dispatch<React.SetStateAction<boolean>>;
+	setShowModelsPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowCustomCommandConfig: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowSkillsCreation: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowWorkingDirPanel: React.Dispatch<React.SetStateAction<boolean>>;
@@ -532,6 +533,14 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				options.setMessages(prev => [...prev, commandMessage]);
 			} else if (result.success && result.action === 'showUsagePanel') {
 				options.setShowUsagePanel(true);
+				const commandMessage: Message = {
+					role: 'command',
+					content: '',
+					commandName: commandName,
+				};
+				options.setMessages(prev => [...prev, commandMessage]);
+			} else if (result.success && result.action === 'showModelsPanel') {
+				options.setShowModelsPanel(true);
 				const commandMessage: Message = {
 					role: 'command',
 					content: '',
