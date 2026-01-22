@@ -47,6 +47,18 @@ interface UseChatLogicProps {
 	requestUserQuestion: any;
 	isToolAutoApproved: any;
 	addMultipleToAlwaysApproved: any;
+	setSubAgentRunState?: React.Dispatch<
+		React.SetStateAction<{
+			parallel: boolean;
+			agentName?: string;
+		} | null>
+	>;
+
+	subAgentRunState?: {
+		parallel: boolean;
+		agentName?: string;
+	} | null;
+
 	setRestoreInputContent: React.Dispatch<
 		React.SetStateAction<{
 			text: string;
@@ -55,7 +67,9 @@ interface UseChatLogicProps {
 	>;
 	setIsCompressing: React.Dispatch<React.SetStateAction<boolean>>;
 	setCompressionError: React.Dispatch<React.SetStateAction<string | null>>;
+
 	currentContextPercentageRef: React.MutableRefObject<number>;
+
 	userInterruptedRef: React.MutableRefObject<boolean>;
 	pendingMessagesRef: React.MutableRefObject<
 		Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
@@ -88,7 +102,7 @@ interface UseChatLogicProps {
 			}) => void;
 		} | null>
 	>;
-	// Session panel handlers
+
 	initializeFromSession: (messages: any[]) => void;
 	setShowSessionPanel: (show: boolean) => void;
 	setShowReviewCommitPanel: (show: boolean) => void;
@@ -130,14 +144,19 @@ export function useChatLogic(props: UseChatLogicProps) {
 		yoloMode,
 		saveMessage,
 		clearSavedMessages,
+
 		setRemountKey,
 		requestToolConfirmation,
 		requestUserQuestion,
 		isToolAutoApproved,
+
+		setSubAgentRunState,
+		subAgentRunState,
 		addMultipleToAlwaysApproved,
 		setRestoreInputContent,
 		setIsCompressing,
 		setCompressionError,
+
 		currentContextPercentageRef,
 		userInterruptedRef,
 		pendingMessagesRef,
@@ -165,6 +184,19 @@ export function useChatLogic(props: UseChatLogicProps) {
 				hideUserMessage?: boolean,
 			) => Promise<void>
 		>();
+
+	const getSubAgentExecutionTarget = () => {
+		if (subAgentRunState && !subAgentRunState.parallel) {
+			return {
+				expectedTarget: 'subagent' as const,
+				expectedTargetName: subAgentRunState.agentName,
+			};
+		}
+		return {
+			expectedTarget: 'main' as const,
+			expectedTargetName: undefined,
+		};
+	};
 
 	const handleMessageSubmit = async (
 		message: string,
@@ -408,43 +440,39 @@ export function useChatLogic(props: UseChatLogicProps) {
 				}
 			};
 
-			try {
-				await handleConversationWithTools({
-					userContent: messageForAI.content,
-					editorContext: messageForAI.editorContext,
-					imageContents,
-					controller,
-					messages,
-					saveMessage: saveMessageWithOriginal,
-					setMessages,
-					setStreamTokenCount: streamingState.setStreamTokenCount,
-					requestToolConfirmation,
-					requestUserQuestion,
-					isToolAutoApproved,
-					addMultipleToAlwaysApproved,
-					yoloMode,
-					setContextUsage: streamingState.setContextUsage,
-					useBasicModel,
-					getPendingMessages: () => pendingMessagesRef.current,
-					clearPendingMessages: () => setPendingMessages([]),
-					setIsStreaming: streamingState.setIsStreaming,
-					setIsStopping: streamingState.setIsStopping,
-					setIsReasoning: streamingState.setIsReasoning,
-					setRetryStatus: streamingState.setRetryStatus,
-					clearSavedMessages,
-					setRemountKey,
-					setSnapshotFileCount: snapshotState.setSnapshotFileCount,
-					getCurrentContextPercentage: () =>
-						currentContextPercentageRef.current,
-					setCurrentModel: streamingState.setCurrentModel,
-				});
-			} finally {
-				// NOTE: New on-demand backup system - snapshot management is now automatic
-				// Files are backed up when they are created/modified
-				// No need for manual commit process
-			}
+			await handleConversationWithTools({
+				userContent: messageForAI.content,
+				editorContext: messageForAI.editorContext,
+				imageContents,
+				controller,
+				messages,
+				saveMessage: saveMessageWithOriginal,
+				setMessages,
+				setStreamTokenCount: streamingState.setStreamTokenCount,
+				requestToolConfirmation,
+				requestUserQuestion,
+				isToolAutoApproved,
+				addMultipleToAlwaysApproved,
+				yoloMode,
+				setContextUsage: streamingState.setContextUsage,
+				useBasicModel,
+				getPendingMessages: () => pendingMessagesRef.current,
+				clearPendingMessages: () => setPendingMessages([]),
+				setIsStreaming: streamingState.setIsStreaming,
+				setIsStopping: streamingState.setIsStopping,
+				setIsReasoning: streamingState.setIsReasoning,
+				setRetryStatus: streamingState.setRetryStatus,
+				clearSavedMessages,
+				setSnapshotFileCount: snapshotState.setSnapshotFileCount,
+				getCurrentContextPercentage: () => currentContextPercentageRef.current,
+				setCurrentModel: streamingState.setCurrentModel,
+				setSubAgentRunState,
+			});
+
+			// NOTE: New on-demand backup system - snapshot management is now automatic
+			// Files are backed up when they are created/modified
+			// No need for manual commit process
 		} catch (error) {
-			// Don't show error message if user manually interrupted or request was aborted
 			if (!controller.signal.aborted && !userInterruptedRef.current) {
 				const errorMessage =
 					error instanceof Error ? error.message : 'Unknown error occurred';
@@ -552,6 +580,7 @@ export function useChatLogic(props: UseChatLogicProps) {
 
 		const messagesToProcess = [...pendingMessages];
 		setPendingMessages([]);
+		setSubAgentRunState?.(null);
 
 		const combinedMessage = messagesToProcess.map(m => m.text).join('\n\n');
 
@@ -646,41 +675,37 @@ export function useChatLogic(props: UseChatLogicProps) {
 				vscodeState.vscodeConnected ? vscodeState.editorContext : undefined,
 			);
 
-			try {
-				await handleConversationWithTools({
-					userContent: messageForAI.content,
-					editorContext: messageForAI.editorContext,
-					imageContents,
-					controller,
-					messages,
-					saveMessage,
-					setMessages,
-					setStreamTokenCount: streamingState.setStreamTokenCount,
-					requestToolConfirmation,
-					requestUserQuestion,
-					isToolAutoApproved,
-					addMultipleToAlwaysApproved,
-					yoloMode,
-					setContextUsage: streamingState.setContextUsage,
-					getPendingMessages: () => pendingMessagesRef.current,
-					clearPendingMessages: () => setPendingMessages([]),
-					setIsStreaming: streamingState.setIsStreaming,
-					setIsStopping: streamingState.setIsStopping,
-					setIsReasoning: streamingState.setIsReasoning,
-					setRetryStatus: streamingState.setRetryStatus,
-					clearSavedMessages,
-					setRemountKey,
-					setSnapshotFileCount: snapshotState.setSnapshotFileCount,
-					getCurrentContextPercentage: () =>
-						currentContextPercentageRef.current,
-					setCurrentModel: streamingState.setCurrentModel,
-				});
-			} finally {
-				// Snapshots are now created on-demand during file operations
-				// No global commit needed
-			}
+			await handleConversationWithTools({
+				userContent: messageForAI.content,
+				editorContext: messageForAI.editorContext,
+				imageContents,
+				controller,
+				messages,
+				saveMessage,
+				setMessages,
+				setStreamTokenCount: streamingState.setStreamTokenCount,
+				requestToolConfirmation,
+				requestUserQuestion,
+				isToolAutoApproved,
+				addMultipleToAlwaysApproved,
+				yoloMode,
+				setContextUsage: streamingState.setContextUsage,
+				getPendingMessages: () => pendingMessagesRef.current,
+				clearPendingMessages: () => setPendingMessages([]),
+				setIsStreaming: streamingState.setIsStreaming,
+				setIsStopping: streamingState.setIsStopping,
+				setIsReasoning: streamingState.setIsReasoning,
+				setRetryStatus: streamingState.setRetryStatus,
+				clearSavedMessages,
+				setSnapshotFileCount: snapshotState.setSnapshotFileCount,
+				getCurrentContextPercentage: () => currentContextPercentageRef.current,
+				setCurrentModel: streamingState.setCurrentModel,
+				setSubAgentRunState,
+			});
+
+			// Snapshots are now created on-demand during file operations
+			// No global commit needed
 		} catch (error) {
-			// Don't show error message if user manually interrupted or request was aborted
 			if (!controller.signal.aborted && !userInterruptedRef.current) {
 				const errorMessage =
 					error instanceof Error ? error.message : 'Unknown error occurred';
@@ -1045,43 +1070,6 @@ export function useChatLogic(props: UseChatLogicProps) {
 					rollbackFiles,
 				);
 			}
-		}
-	};
-
-	const rollbackViaSSE = async (params: {
-		serverUrl: string;
-		sessionId: string;
-		messageIndex: number;
-		rollbackFiles: boolean;
-		selectedFiles?: string[];
-		requestId?: string;
-	}) => {
-		const response = await fetch(`${params.serverUrl}/message`, {
-			method: 'POST',
-			headers: {'Content-Type': 'application/json'},
-			body: JSON.stringify({
-				type: 'rollback',
-				sessionId: params.sessionId,
-				requestId: params.requestId,
-				rollback: {
-					messageIndex: params.messageIndex,
-					rollbackFiles: params.rollbackFiles,
-					selectedFiles: params.selectedFiles,
-				},
-			}),
-		});
-
-		if (!response.ok) {
-			let detail: any = undefined;
-			try {
-				detail = await response.json();
-			} catch {
-				// ignore
-			}
-			throw new Error(
-				`Rollback request failed: ${response.status} ${response.statusText}` +
-					(detail ? ` (${JSON.stringify(detail)})` : ''),
-			);
 		}
 	};
 
@@ -1460,7 +1448,7 @@ Please provide your review in a clear, structured format.`;
 
 	return {
 		handleMessageSubmit,
-		processMessage: processMessageRef.current!,
+		processMessage,
 		processPendingMessages,
 		handleHistorySelect,
 		handleRollbackConfirm,
@@ -1470,6 +1458,6 @@ Please provide your review in a clear, structured format.`;
 		handleReindexCodebase,
 		handleToggleCodebase,
 		handleReviewCommitConfirm,
-		rollbackViaSSE,
+		getSubAgentExecutionTarget,
 	};
 }

@@ -104,6 +104,12 @@ export type ConversationHandlerOptions = {
 	getCurrentContextPercentage?: () => number; // Get current context percentage from ChatInput
 	setCurrentModel?: React.Dispatch<React.SetStateAction<string | null>>; // Set current model name for display
 	setIsStopping?: React.Dispatch<React.SetStateAction<boolean>>; // Control stopping state
+	setSubAgentRunState?: React.Dispatch<
+		React.SetStateAction<{
+			parallel: boolean;
+			agentName?: string;
+		} | null>
+	>;
 };
 
 /**
@@ -754,6 +760,23 @@ async function executeWithInternalRetry(
 
 				// Execute approved tools with sub-agent message callback and terminal output callback
 				// Track sub-agent content for token counting
+				const subAgentTools = approvedTools.filter(toolCall =>
+					toolCall.function.name.startsWith('subagent-'),
+				);
+				if (options.setSubAgentRunState) {
+					if (subAgentTools.length === 0) {
+						options.setSubAgentRunState(null);
+					} else {
+						const singleAgentName =
+							subAgentTools.length === 1
+								? subAgentTools[0]?.function.name.substring('subagent-'.length)
+								: undefined;
+						options.setSubAgentRunState({
+							parallel: subAgentTools.length > 1,
+							agentName: singleAgentName,
+						});
+					}
+				}
 				let subAgentContentAccumulator = '';
 				const toolResults = await executeToolCalls(
 					approvedTools,
@@ -1137,13 +1160,14 @@ async function executeWithInternalRetry(
 							} else if (content) {
 								// Add new message based on role
 								if (messageRole === 'user') {
-									// User message - display as user role
+									// 子代理插嘴用户消息,仅用于展示,不进入 ESC 历史回退
 									return [
 										...prev,
 										{
 											role: 'user' as const,
 											content,
 											streaming: false,
+											subAgentUserMessage: true,
 											...(subAgentMessage.message.images && {
 												images: subAgentMessage.message.images,
 											}),
@@ -1197,6 +1221,7 @@ async function executeWithInternalRetry(
 					options.getPendingMessages,
 					options.clearPendingMessages,
 				);
+				options.setSubAgentRunState?.(null);
 
 				// Check if aborted during tool execution
 				if (controller.signal.aborted) {

@@ -587,6 +587,11 @@ export async function executeToolCalls(
 	getPendingMessages?: GetPendingMessagesCallback,
 	clearPendingMessages?: ClearPendingMessagesCallback,
 ): Promise<ToolResult[]> {
+	const subAgentToolCount = toolCalls.filter(toolCall =>
+		toolCall.function.name.startsWith('subagent-'),
+	).length;
+	const allowPendingMessagesForSubAgent = subAgentToolCount <= 1;
+
 	// Group tool calls by their resource identifier
 	const resourceGroups = new Map<string, ToolCall[]>();
 
@@ -603,6 +608,9 @@ export async function executeToolCalls(
 			// Within the same resource group, execute sequentially
 			const groupResults: ToolResult[] = [];
 			for (const toolCall of group) {
+				const shouldPassPendingMessages =
+					!toolCall.function.name.startsWith('subagent-') ||
+					allowPendingMessagesForSubAgent;
 				const result = await executeToolCall(
 					toolCall,
 					abortSignal,
@@ -613,8 +621,8 @@ export async function executeToolCalls(
 					yoloMode,
 					addToAlwaysApproved,
 					onUserInteractionNeeded,
-					getPendingMessages,
-					clearPendingMessages,
+					shouldPassPendingMessages ? getPendingMessages : undefined,
+					shouldPassPendingMessages ? clearPendingMessages : undefined,
 				);
 				groupResults.push(result);
 

@@ -10,6 +10,7 @@ type ChatMessage = {
 	role: string;
 	content: string;
 	images?: Array<{type: 'image'; data: string; mimeType: string}>;
+	subAgentUserMessage?: boolean;
 };
 
 export function useHistoryNavigation(
@@ -60,12 +61,16 @@ export function useHistoryNavigation(
 	const getUserMessages = useCallback(() => {
 		const userMessages = chatHistory
 			.map((msg, index) => ({...msg, originalIndex: index}))
-			.filter(msg => msg.role === 'user' && msg.content.trim());
+			.filter(
+				msg =>
+					msg.role === 'user' && msg.content.trim() && !msg.subAgentUserMessage,
+			);
 
 		// Keep original order (oldest first, newest last) and map with display numbers
 		return userMessages.map((msg, index) => {
 			// Clean IDE context info first, then clean for display
 			const cleanedContent = cleanIDEContext(msg.content);
+
 			// Remove all newlines, control characters and extra whitespace to ensure single line display
 			const cleanContent = cleanedContent
 				.replace(/[\r\n\t\v\f\u0000-\u001F\u007F-\u009F]+/g, ' ')

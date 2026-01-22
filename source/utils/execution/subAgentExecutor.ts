@@ -1180,8 +1180,49 @@ OPEN QUESTIONS:
 					error: errorMessage,
 				};
 			}
-			// If no tool calls, we're done
+			// 没有工具调用时,优先处理待发送消息
 			if (toolCalls.length === 0) {
+				if (getPendingMessages && clearPendingMessages) {
+					const pendingMessages = getPendingMessages();
+					if (pendingMessages.length > 0) {
+						const combinedMessage = pendingMessages
+							.map(m => m.text)
+							.join('\n\n');
+						const allPendingImages = pendingMessages
+							.flatMap(m => m.images || [])
+							.map(img => ({
+								type: 'image' as const,
+								data: img.data,
+								mimeType: img.mimeType,
+							}));
+						messages.push({
+							role: 'user',
+							content: combinedMessage,
+							...(allPendingImages.length > 0 && {
+								images: allPendingImages,
+							}),
+						});
+
+						if (onMessage) {
+							onMessage({
+								type: 'sub_agent_message',
+								agentId: agent.id,
+								agentName: agent.name,
+								message: {
+									type: 'content',
+									content: combinedMessage,
+									role: 'user',
+									...(allPendingImages.length > 0 && {
+										images: allPendingImages,
+									}),
+								},
+							});
+						}
+
+						clearPendingMessages();
+						continue;
+					}
+				}
 				// 执行 onSubAgentComplete 钩子（在子代理任务完成前）
 				try {
 					const hookResult = await unifiedHooksExecutor.executeHooks(

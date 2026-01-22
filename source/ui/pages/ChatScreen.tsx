@@ -65,7 +65,7 @@ import {codebaseSearchEvents} from '../../utils/codebase/codebaseSearchEvents.js
 import {logger} from '../../utils/core/logger.js';
 import LoadingIndicator from '../components/chat/LoadingIndicator.js';
 
-// Commands will be loaded dynamically after mount to avoid blocking initial render
+// 命令在挂载后再加载,避免首屏阻塞
 
 type Props = {
 	autoResume?: boolean;
@@ -75,23 +75,28 @@ type Props = {
 export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const {t} = useI18n();
 	const {theme} = useTheme();
-	const {exit} = useApp();
+	const app = useApp();
 	const [messages, setMessages] = useState<Message[]>([]);
-	const [isSaving] = useState(false);
 	const [pendingMessages, setPendingMessages] = useState<
 		Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
 	>([]);
+
+	const [subAgentRunState, setSubAgentRunState] = useState<{
+		parallel: boolean;
+		agentName?: string;
+	} | null>(null);
 	const pendingMessagesRef = useRef<
 		Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
 	>([]);
 	const hasAttemptedAutoVscodeConnect = useRef(false);
-	const userInterruptedRef = useRef(false); // Track if user manually interrupted via ESC
+
+	const userInterruptedRef = useRef(false);
 	const [remountKey, setRemountKey] = useState(0);
-	const [currentContextPercentage, setCurrentContextPercentage] = useState(0); // Track context percentage from ChatInput
-	const currentContextPercentageRef = useRef(0); // Use ref to avoid closure issues
+	const [currentContextPercentage, setCurrentContextPercentage] = useState(0);
+	const currentContextPercentageRef = useRef(0);
 	const [isExecutingTerminalCommand, setIsExecutingTerminalCommand] =
-		useState(false); // Track terminal command execution
-	const panelState = usePanelState(); // Panel state for managing various UI panels
+		useState(false);
+	const panelState = usePanelState();
 	const [customCommandExecution, setCustomCommandExecution] = useState<{
 		commandName: string;
 		command: string;
@@ -99,9 +104,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		output: string[];
 		exitCode?: number | null;
 		error?: string;
-	} | null>(null); // Track custom command execution state
+	} | null>(null);
 
-	// Sync state to ref
+	// 同步到 ref,避免闭包使用旧值
 	useEffect(() => {
 		currentContextPercentageRef.current = currentContextPercentage;
 	}, [currentContextPercentage]);
@@ -112,7 +117,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			const {mainAgentManager} = require('../../utils/MainAgentManager.js');
 			return mainAgentManager.getYoloEnabled();
 		} catch {
-			// Fallback to prop or localStorage
+			// 回退到传入参数或 localStorage
 			if (enableYolo !== undefined) {
 				return enableYolo;
 			}
@@ -794,6 +799,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		handleReindexCodebase,
 		handleToggleCodebase,
 		handleReviewCommitConfirm,
+		getSubAgentExecutionTarget,
 	} = useChatLogic({
 		messages,
 		setMessages,
@@ -816,14 +822,17 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setCompressionError,
 		currentContextPercentageRef,
 		userInterruptedRef,
+		setSubAgentRunState,
+		subAgentRunState,
 		pendingMessagesRef,
+
 		setBashSensitiveCommand,
 		pendingUserQuestion,
 		setPendingUserQuestion,
 		initializeFromSession,
 		setShowSessionPanel: panelState.setShowSessionPanel,
 		setShowReviewCommitPanel: panelState.setShowReviewCommitPanel,
-		exitApp: exit,
+		exitApp: app.exit,
 		codebaseAgentRef,
 		setCodebaseIndexing,
 		setCodebaseProgress,
@@ -858,7 +867,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setVscodeConnectionStatus: vscodeState.setVscodeConnectionStatus,
 		setIsExecutingTerminalCommand,
 		setCustomCommandExecution,
-		processMessage,
+		processMessage: processMessage || handleMessageSubmit,
 		onQuit: handleQuit,
 		onReindexCodebase: handleReindexCodebase,
 		onToggleCodebase: handleToggleCodebase,
@@ -1045,11 +1054,11 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			return;
 		}
 
-		// Skip ESC handling when tool confirmation is showing (let ToolConfirmation handle it)
+		// 工具确认期间跳过 ESC 处理,避免误关闭弹窗
 		if (pendingToolConfirmation) {
 			return;
 		}
-		// Handle bash sensitive command confirmation
+		// bash 敏感命令确认时接管输入,避免误触继续执行
 		if (bashSensitiveCommand) {
 			if (input.toLowerCase() === 'y') {
 				bashSensitiveCommand.resolve(true);
@@ -1058,16 +1067,36 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				bashSensitiveCommand.resolve(false);
 				setBashSensitiveCommand(null);
 			} else if (key.escape) {
-				// Allow ESC to cancel
+				// 允许 ESC 取消
 				bashSensitiveCommand.resolve(false);
 				setBashSensitiveCommand(null);
 			}
 			return;
 		}
 
-		// Clear hook error on ESC
+		// 允许 ESC 清除 hook 错误,避免错误提示阻塞输入
 		if (hookError && key.escape) {
 			setHookError(null);
+			return;
+		}
+
+		// 允许 ESC 撤回 pendingMessages,避免误触打断当前流程
+		if (key.escape && pendingMessages.length > 0) {
+			const combinedText = pendingMessages
+				.map(message => message.text)
+				.join('\n\n');
+			const combinedImages = pendingMessages.flatMap(message =>
+				(message.images || []).map(img => ({
+					type: 'image' as const,
+					data: img.data,
+					mimeType: img.mimeType,
+				})),
+			);
+			setRestoreInputContent({
+				text: combinedText,
+				images: combinedImages.length > 0 ? combinedImages : undefined,
+			});
+			setPendingMessages([]);
 			return;
 		}
 
@@ -1078,7 +1107,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			return;
 		}
 
-		// Handle ESC for all panels using panelState
+		// 通过 panelState 处理所有面板的 ESC
 		if (panelState.isAnyPanelOpen()) {
 			if (key.escape) {
 				panelState.handleEscapeKey();
@@ -1086,7 +1115,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			return;
 		}
 
-		// 如果已经处于 stopping，但流已结束：允许再次按 ESC 直接解除卡死状态
+		// 如果已经处于 stopping,但流已结束:允许再次按 ESC 直接解除卡死状态
 		if (
 			key.escape &&
 			streamingState.isStopping &&
@@ -1096,54 +1125,49 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			return;
 		}
 
-		// Only handle ESC interrupt if terminal has focus
-		if (
-			key.escape &&
-			streamingState.isStreaming &&
-			streamingState.abortController
-		) {
+		// 仅在终端聚焦时处理 ESC 中断
+		const abortController = streamingState.abortController;
+		if (key.escape && streamingState.isStreaming && abortController) {
 			userInterruptedRef.current = true;
 
-			// Set stopping state to show "Stopping..." spinner
+			// 设置 stopping 状态,显示停止中的提示
 			streamingState.setIsStopping(true);
 
-			// Clear retry and search status to prevent flashing
+			// 清理重试与搜索状态,避免闪烁
 			streamingState.setRetryStatus(null);
 			streamingState.setCodebaseSearchStatus(null);
-			// Abort the controller
-			streamingState.abortController.abort();
+			// 中断 controller
+			abortController.abort();
 
-			// Clear retry status immediately when user cancels
+			// 立即清理重试状态
 			streamingState.setRetryStatus(null);
 
-			// Remove all pending tool call messages (those with toolPending: true)
+			// 移除所有待处理的工具调用消息
 			setMessages(prev => prev.filter(msg => !msg.toolPending));
 
-			// Restore pending messages to input instead of discarding them
+			// 恢复全部 pendingMessages 到输入框,而不是只恢复第一条
 			if (pendingMessages.length > 0) {
-				// Get the first pending message (usually there's only one)
-				const firstPending = pendingMessages[0];
-				if (firstPending) {
-					setRestoreInputContent({
-						text: firstPending.text,
-						images: firstPending.images?.map(img => ({
-							type: 'image' as const,
-							data: img.data,
-							mimeType: img.mimeType,
-						})),
-					});
-				}
+				const combinedText = pendingMessages
+					.map(message => message.text)
+					.join('\n\n');
+				const combinedImages = pendingMessages.flatMap(message =>
+					(message.images || []).map(img => ({
+						type: 'image' as const,
+						data: img.data,
+						mimeType: img.mimeType,
+					})),
+				);
+				setRestoreInputContent({
+					text: combinedText,
+					images: combinedImages.length > 0 ? combinedImages : undefined,
+				});
 			}
-			// Clear pending messages to prevent auto-send after abort
+			// 清空 pendingMessages,避免中断后自动发送
 			setPendingMessages([]);
 
-			// Note: Don't manually clear isStopping here!
-			// It will be cleared automatically in useConversation's finally block
-			// when setIsStreaming(false) is called, ensuring "Stopping..." spinner
-			// is visible until "user discontinue" message appears
-
-			// Note: discontinued message will be added in processMessage/processPendingMessages finally block
-			// Note: session cleanup will be handled in processMessage/processPendingMessages finally block
+			// 注意:不要手动清空 isStopping
+			// 它会在 useConversation 的 finally 中自动清理
+			// 当 setIsStreaming(false) 被调用时,确保 "Stopping..." 提示可见
 		}
 	});
 
@@ -1287,7 +1311,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 								/>
 							);
 						}),
-					// 添加提问头部到Static（静态显示问题）
+					// 提问头部放在 Static 中,避免随滚动丢失上下文
 					...(pendingUserQuestion
 						? [
 								<QuestionHeader
@@ -1301,15 +1325,14 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				{item => item}
 			</Static>
 
-			{/* Show loading indicator when streaming or saving */}
+			{/* 显示加载指示器,基于 streaming 状态 */}
 			<LoadingIndicator
 				isStreaming={streamingState.isStreaming}
 				isStopping={streamingState.isStopping}
-				isSaving={isSaving}
+				isSaving={false}
 				hasPendingToolConfirmation={!!pendingToolConfirmation}
 				hasPendingUserQuestion={!!pendingUserQuestion}
 				hasBlockingOverlay={
-					!!bashSensitiveCommand ||
 					suppressLoadingIndicator ||
 					(bashMode.state.isExecuting && !!bashMode.state.currentCommand) ||
 					(terminalExecutionState.state.isExecuting &&
@@ -1328,7 +1351,10 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			/>
 
 			<Box paddingX={1} width={terminalWidth}>
-				<PendingMessages pendingMessages={pendingMessages} />
+				<PendingMessages
+					pendingMessages={pendingMessages}
+					{...getSubAgentExecutionTarget()}
+				/>
 			</Box>
 
 			{/* Display Hook error in chat area */}
@@ -1578,9 +1604,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						}
 						isStopping={streamingState.isStopping}
 						isProcessing={
-							streamingState.isStreaming ||
-							isSaving ||
-							bashMode.state.isExecuting
+							streamingState.isStreaming || bashMode.state.isExecuting
 						}
 						chatHistory={messages}
 						yoloMode={yoloMode}

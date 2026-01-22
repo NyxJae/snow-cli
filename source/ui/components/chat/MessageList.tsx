@@ -45,6 +45,7 @@ export interface Message {
 		exitCode?: number;
 		command?: string;
 	};
+	subAgentUserMessage?: boolean; // 子代理插嘴产生的用户消息,不进入 ESC 双击回退列表
 	// Custom command execution state
 	customCommandExecution?: {
 		command: string;
