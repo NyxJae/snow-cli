@@ -1274,7 +1274,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						workingDirectory={workingDirectory}
 					/>,
 					...messages
-						.filter(m => !m.streaming)
+						.filter(message => message.role === 'user' || !message.streaming)
 						.map((message, index, filteredMessages) => {
 							return (
 								<MessageRenderer
