@@ -1032,6 +1032,11 @@ OPEN QUESTIONS:
 			let hasReceivedData = false; // 标记是否收到过任何数据
 
 			for await (const event of stream) {
+				// Check abort signal - 子代理需要检测中断并立即停止
+				if (abortSignal?.aborted) {
+					break;
+				}
+
 				// 检测是否收到有效数据
 				if (
 					event.type === 'content' ||
