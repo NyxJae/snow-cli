@@ -248,6 +248,44 @@ export async function getMCPTools(projectRoot?: string) {
 }
 
 /**
+ * Detect scripts directory and script files in skill
+ */
+async function detectSkillScripts(skillPath: string): Promise<{
+	hasScripts: boolean;
+	scriptsDir: string | null;
+	scripts: string[];
+}> {
+	try {
+		const {readdirSync} = await import('fs');
+		const scriptsDir = join(skillPath, 'scripts');
+		const {existsSync} = await import('fs');
+
+		// Check if scripts directory exists
+		if (!existsSync(scriptsDir)) {
+			return {hasScripts: false, scriptsDir: null, scripts: []};
+		}
+
+		// Read scripts directory
+		const entries = readdirSync(scriptsDir, {withFileTypes: true});
+		const scripts: string[] = [];
+
+		for (const entry of entries) {
+			if (entry.isFile()) {
+				scripts.push(entry.name);
+			}
+		}
+
+		return {
+			hasScripts: scripts.length > 0,
+			scriptsDir,
+			scripts: scripts.sort(),
+		};
+	} catch (error) {
+		return {hasScripts: false, scriptsDir: null, scripts: []};
+	}
+}
+
+/**
  * Generate directory tree structure for skill
  */
 async function generateSkillTree(skillPath: string): Promise<string> {
@@ -342,6 +380,11 @@ export async function executeSkillTool(
 	// Generate directory tree for skill
 	const directoryTree = await generateSkillTree(skill.path);
 
+	// Detect scripts directory and scripts
+	const {hasScripts, scriptsDir} = await detectSkillScripts(
+		skill.path,
+	);
+
 	// Generate allowed tools restriction if specified
 	let toolRestriction = '';
 	if (skill.allowedTools && skill.allowedTools.length > 0) {
@@ -355,6 +398,15 @@ You MUST NOT use any other tools. Any tool not listed above is forbidden for thi
 </tool-restrictions>`;
 	}
 
+	// Generate scripts info section if scripts exist
+	let scriptsInfo = '';
+	if (hasScripts && scriptsDir) {
+		scriptsInfo = `
+Scripts Directory: ${scriptsDir}
+
+⚠️ IMPORTANT: This skill provides scripts. Use the absolute path. Scripts can be referenced or executed as needed based on the skill's instructions.`;
+	}
+
 	// Return the skill content (markdown instructions)
 	return `<command-message>The "${skill.name}" skill is loading</command-message>
 
@@ -362,7 +414,7 @@ ${skill.content}${toolRestriction}
 
 <skill-info>
 Skill Name: ${skill.name}
-Absolute Path: ${skill.path}
+Absolute Path: ${skill.path}${scriptsInfo}
 
 Directory Structure:
 \`\`\`
