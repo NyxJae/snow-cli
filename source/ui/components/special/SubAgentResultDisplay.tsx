@@ -9,7 +9,7 @@ import {getSubAgent} from '../../../utils/config/subAgentConfig.js';
 interface SubAgentResultProps {
 	/** Agent类型标识符（如：'explore', 'plan', 'general', 或自定义Agent ID） */
 	agentType: string;
-	/** 显示的内容（已截断到100字符） */
+	/** 显示的完整内容 */
 	content: string;
 	/** 执行状态 */
 	status: 'success' | 'error' | 'timeout';

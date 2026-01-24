@@ -1295,24 +1295,8 @@ OPEN QUESTIONS:
 					console.error('onSubAgentComplete hook execution failed:', error);
 				}
 
-				// 发送结果消息给UI显示（只发送前100个字符）
+				// 发送完整结果消息给UI显示
 				if (onMessage && finalResponse) {
-					// 格式化内容，截取前100个字符
-					let displayContent = finalResponse;
-					if (displayContent.length > 100) {
-						// 尝试在单词边界截断
-						const truncated = displayContent.substring(0, 100);
-						const lastSpace = truncated.lastIndexOf(' ');
-						const lastNewline = truncated.lastIndexOf('\n');
-						const cutPoint = Math.max(lastSpace, lastNewline);
-
-						if (cutPoint > 80) {
-							displayContent = truncated.substring(0, cutPoint) + '...';
-						} else {
-							displayContent = truncated + '...';
-						}
-					}
-
 					onMessage({
 						type: 'sub_agent_message',
 						agentId: agent.id,
@@ -1320,7 +1304,7 @@ OPEN QUESTIONS:
 						message: {
 							type: 'subagent_result',
 							agentType: agent.id.replace('agent_', ''),
-							content: displayContent,
+							content: finalResponse,
 							originalContent: finalResponse,
 							status: 'success',
 							timestamp: Date.now(),
