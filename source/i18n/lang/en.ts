@@ -171,6 +171,7 @@ export const en: TranslationKeys = {
 		baseUrl: 'Base URL:',
 		apiKey: 'API Key:',
 		requestMethod: 'Request Method:',
+		requestUrlLabel: 'Request URL: ',
 		anthropicBeta: 'Anthropic Beta:',
 		anthropicCacheTTL: 'Anthropic Cache TTL:',
 		anthropicCacheTTL5m: '5 minutes (default)',
@@ -499,6 +500,8 @@ export const en: TranslationKeys = {
 			export: 'Export chat conversation to text file with save dialog',
 			custom: 'Add custom command and save to ~/.snow/commands',
 			skills: 'Create skill template with documentation and examples',
+			skillsPicker:
+				'Pick a skill and inject its SKILL.md content into the input',
 			agent: 'Select and use a sub-agent to handle specific tasks',
 			todo: 'Search and select TODO comments from project files',
 			addDir:
@@ -579,6 +582,20 @@ export const en: TranslationKeys = {
 		searchLabel: 'Search:',
 		noResults: 'No matching main agents found',
 		builtinLabel: 'Built-in',
+	},
+
+	skillsPickerPanel: {
+		title: 'Select Skill',
+		keyboardHint: '(ESC: cancel · Tab: switch · Enter: confirm)',
+		loading: 'Loading skills...',
+		searchLabel: 'Search:',
+		appendLabel: 'Append:',
+		empty: '(empty)',
+		noSkillsFound: 'No skills found',
+		noDescription: 'No description',
+		scrollHint: '↑↓ to scroll',
+		moreAbove: '{count} above',
+		moreBelow: '{count} below',
 	},
 	reviewCommitPanel: {
 		title: 'Review: Select Changes',
@@ -1305,7 +1322,8 @@ export const en: TranslationKeys = {
 	},
 	undoManager: {
 		undoFailedEmpty: '❌ Undo failed. No edits available to undo.',
-		undoSuccess: '✅ Undo successful. Reverted {steps} edit(s). If you want to fix the wrong edit, please use filesystem-edit_search to edit once and provide more lines of editing context.',
+		undoSuccess:
+			'✅ Undo successful. Reverted {steps} edit(s). If you want to fix the wrong edit, please use filesystem-edit_search to edit once and provide more lines of editing context.',
 		undoFailed: '❌ Undo failed. {error}',
 		unknownError: 'Unknown error',
 		invalidStepsParameter:

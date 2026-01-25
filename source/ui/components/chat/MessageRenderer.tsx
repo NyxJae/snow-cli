@@ -8,6 +8,7 @@ import DiffViewer from '../tools/DiffViewer.js';
 import ToolResultPreview from '../tools/ToolResultPreview.js';
 import {HookErrorDisplay} from '../special/HookErrorDisplay.js';
 import SubAgentResultDisplay from '../special/SubAgentResultDisplay.js';
+import {maskSkillInjectedText} from '../../../utils/ui/skillMask.js';
 
 /**
  * Clean thinking content by removing XML-like tags
@@ -53,6 +54,11 @@ export default function MessageRenderer({
 	// Helper function to remove ANSI escape codes
 	const removeAnsiCodes = (text: string): string => {
 		return text.replace(/\x1b\[[0-9;]*m/g, '');
+	};
+
+	const getDisplayContent = (content: string): string => {
+		// 只做视觉隐藏：保留原始 message.content 用于请求体/持久化。
+		return maskSkillInjectedText(removeAnsiCodes(content || '')).displayText;
 	};
 
 	const formatUserBubbleText = (text: string): string => {
@@ -121,7 +127,7 @@ export default function MessageRenderer({
 			{/* Plain output - no icons or prefixes */}
 			{message.plainOutput ? (
 				<Text color={message.role === 'user' ? 'white' : toolStatusColor}>
-					{removeAnsiCodes(message.content)}
+					{getDisplayContent(message.content)}
 				</Text>
 			) : (
 				<>
@@ -162,7 +168,7 @@ export default function MessageRenderer({
 									)}
 									{message.content && (
 										<Text color="white">
-											{removeAnsiCodes(message.content)}
+											{getDisplayContent(message.content)}
 										</Text>
 									)}
 								</>
@@ -255,11 +261,13 @@ export default function MessageRenderer({
 															}
 														>
 															{formatUserBubbleText(
-																removeAnsiCodes(message.content),
+																getDisplayContent(message.content),
 															)}
 														</Text>
 													) : message.content ? (
-														<MarkdownRenderer content={message.content} />
+														<MarkdownRenderer
+															content={getDisplayContent(message.content)}
+														/>
 													) : null}
 												</>
 											);

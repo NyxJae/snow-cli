@@ -61,6 +61,11 @@ import {logger} from '../utils/core/logger.js';
 import type {CodeSymbol} from './types/aceCodeSearch.types.js';
 // Notebook utilities for automatic note retrieval
 import {queryNotebook} from '../utils/core/notebookManager.js';
+// Encoding detection and conversion utilities
+import {
+	readFileWithEncoding,
+	writeFileWithEncoding,
+} from './utils/filesystem/encoding.utils.js';
 
 const {resolve, dirname, isAbsolute, extname} = path;
 
@@ -559,7 +564,7 @@ export class FilesystemMCPService {
 							}
 						}
 
-						const content = await fs.readFile(fullPath, 'utf-8');
+						const content = await readFileWithEncoding(fullPath);
 						const lines = content.split('\n');
 						const totalLines = lines.length;
 
@@ -758,7 +763,7 @@ export class FilesystemMCPService {
 			}
 
 			// Text file processing
-			const content = await fs.readFile(fullPath, 'utf-8');
+			const content = await readFileWithEncoding(fullPath);
 
 			// Parse lines
 			const lines = content.split('\n');
@@ -915,7 +920,7 @@ export class FilesystemMCPService {
 				await fs.mkdir(dir, {recursive: true});
 			}
 
-			await fs.writeFile(fullPath, content, 'utf-8');
+			await writeFileWithEncoding(fullPath, content);
 			return `File created successfully: ${filePath}`;
 		} catch (error) {
 			throw new Error(
@@ -1152,7 +1157,7 @@ export class FilesystemMCPService {
 				}
 
 				// Read the entire file
-				content = await fs.readFile(fullPath, 'utf-8');
+				content = await readFileWithEncoding(fullPath);
 			}
 
 			const lines = content.split('\n');
@@ -1474,7 +1479,7 @@ export class FilesystemMCPService {
 			if (isRemote) {
 				await this.writeRemoteFile(fullPath, modifiedContent);
 			} else {
-				await fs.writeFile(fullPath, modifiedContent, 'utf-8');
+				await writeFileWithEncoding(fullPath, modifiedContent);
 			}
 
 			// Format with Prettier asynchronously (non-blocking)
@@ -1504,7 +1509,7 @@ export class FilesystemMCPService {
 					if (isRemote) {
 						await this.writeRemoteFile(fullPath, finalContent);
 					} else {
-						await fs.writeFile(fullPath, finalContent, 'utf-8');
+						await writeFileWithEncoding(fullPath, finalContent);
 					}
 					finalLines = finalContent.split('\n');
 					finalTotalLines = finalLines.length;
@@ -1796,7 +1801,7 @@ export class FilesystemMCPService {
 				}
 
 				// Read the entire file
-				content = await fs.readFile(fullPath, 'utf-8');
+				content = await readFileWithEncoding(fullPath);
 			}
 
 			const lines = content.split('\n');
@@ -1899,7 +1904,7 @@ export class FilesystemMCPService {
 			if (isRemote) {
 				await this.writeRemoteFile(fullPath, modifiedLines.join('\n'));
 			} else {
-				await fs.writeFile(fullPath, modifiedLines.join('\n'), 'utf-8');
+				await writeFileWithEncoding(fullPath, modifiedLines.join('\n'));
 			}
 
 			// Format the file with Prettier after editing to ensure consistent code style
@@ -1927,7 +1932,7 @@ export class FilesystemMCPService {
 					if (isRemote) {
 						await this.writeRemoteFile(fullPath, formattedContent);
 					} else {
-						await fs.writeFile(fullPath, formattedContent, 'utf-8');
+						await writeFileWithEncoding(fullPath, formattedContent);
 					}
 					finalLines = formattedContent.split('\n');
 					finalTotalLines = finalLines.length;

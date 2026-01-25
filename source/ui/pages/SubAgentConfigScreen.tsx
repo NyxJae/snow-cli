@@ -351,7 +351,9 @@ export default function SubAgentConfigScreen({
 				categories.push({
 					name: `${service.serviceName} ${t.subAgentConfig.categoryMCP}`,
 					// 外置MCP工具必须保存全称(服务器名-工具名),否则子代理筛选会被误过滤
-					tools: service.tools.map(t => `${service.serviceName}-${t.name}`),
+					tools: service.tools.map(
+						tool => `${service.serviceName}-${tool.name}`,
+					),
 				});
 			}
 		}

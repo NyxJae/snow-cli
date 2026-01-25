@@ -65,6 +65,8 @@ export class TextBuffer {
 	private onUpdateCallback?: () => void; // 更新回调函数
 	private isDestroyed: boolean = false; // 标记是否已销毁
 	private tempPastingPlaceholder: string | null = null; // 临时"粘贴中"占位符文本
+	private lastTextPlaceholderId: string | null = null; // 合并同一批次粘贴
+	private lastTextPlaceholderAt = 0; // 最近一次文本占位符更新时间
 
 	private visualLines: string[] = [''];
 	private visualLineStarts: number[] = [0];
@@ -193,6 +195,49 @@ export class TextBuffer {
 		// 如果之前显示了"粘贴中"占位符，或者是大文本（>300字符），创建占位符
 		// 使用 || 确保只要显示过"粘贴中"就一定创建占位符，防止sanitize后长度变化导致不一致
 		if (hasPastingIndicator || charCount > 300) {
+			const now = Date.now();
+			const shouldMerge =
+				this.lastTextPlaceholderId !== null &&
+				now - this.lastTextPlaceholderAt < 1200;
+
+			if (shouldMerge && this.lastTextPlaceholderId) {
+				const existing = this.placeholderStorage.get(
+					this.lastTextPlaceholderId,
+				);
+				if (existing && existing.type === 'text') {
+					existing.content += sanitized;
+					existing.charCount += charCount;
+					const lineCount = (existing.content.match(/\n/g) || []).length + 1;
+					const nextPlaceholder = `[Paste ${lineCount} lines #${existing.index}] `;
+					existing.placeholder = nextPlaceholder;
+					const placeholderPattern = new RegExp(
+						`\\[Paste \\d+ lines #${existing.index}\\] `,
+						'g',
+					);
+					const match = placeholderPattern.exec(this.content);
+					if (match) {
+						const placeholderIndex = match.index;
+						const previousLength = match[0].length;
+						const nextLength = nextPlaceholder.length;
+						const delta = nextLength - previousLength;
+						if (delta !== 0 && this.cursorIndex > placeholderIndex) {
+							this.cursorIndex = Math.max(
+								placeholderIndex,
+								this.cursorIndex + delta,
+							);
+						}
+					}
+					this.content = this.content.replace(
+						placeholderPattern,
+						nextPlaceholder,
+					);
+					this.lastTextPlaceholderAt = now;
+					this.recalculateVisualState();
+					this.scheduleUpdate();
+					return;
+				}
+			}
+
 			this.textPlaceholderCounter++;
 			const pasteId = `paste_${Date.now()}_${this.textPlaceholderCounter}`;
 			// 计算行数
@@ -208,9 +253,14 @@ export class TextBuffer {
 				placeholder: placeholderText,
 			});
 
+			this.lastTextPlaceholderId = pasteId;
+			this.lastTextPlaceholderAt = now;
+
 			// 插入占位符而不是原文本
 			this.insertPlainText(placeholderText);
 		} else {
+			this.lastTextPlaceholderId = null;
+			this.lastTextPlaceholderAt = 0;
 			// 普通输入，直接插入文本
 			this.insertPlainText(sanitized);
 		}
@@ -230,6 +280,45 @@ export class TextBuffer {
 		// 创建静态的临时占位符（简单明了）
 		this.tempPastingPlaceholder = `[Pasting...]`;
 		this.insertPlainText(this.tempPastingPlaceholder);
+		this.scheduleUpdate();
+	}
+
+	/**
+	 * 插入文本占位符：显示 placeholderText，但 getFullText() 会还原为原始 content。
+	 * 用于 skills 注入等“只做视觉隐藏”的场景。
+	 */
+	insertTextPlaceholder(content: string, placeholderText: string): void {
+		const sanitizedContent = sanitizeInput(content);
+		const sanitizedPlaceholder = sanitizeInput(placeholderText);
+		if (!sanitizedPlaceholder) return;
+
+		this.textPlaceholderCounter++;
+		const id = `text_${Date.now()}_${this.textPlaceholderCounter}`;
+
+		this.placeholderStorage.set(id, {
+			id,
+			type: 'text',
+			content: sanitizedContent,
+			charCount: sanitizedContent.length,
+			index: this.textPlaceholderCounter,
+			placeholder: sanitizedPlaceholder,
+		});
+
+		// 直接插入占位符文本，不触发“大文本粘贴占位符”逻辑。
+		this.insertPlainText(sanitizedPlaceholder);
+		this.scheduleUpdate();
+	}
+
+	/**
+	 * 用于“回滚恢复”场景的插入：不触发大文本粘贴占位符逻辑。
+	 * 这样可以把历史消息原样恢复到输入框，而不是显示为 [Paste ...]。
+	 */
+	insertRestoredText(input: string): void {
+		const sanitized = sanitizeInput(input);
+		if (!sanitized) return;
+		this.lastTextPlaceholderId = null;
+		this.lastTextPlaceholderAt = 0;
+		this.insertPlainText(sanitized);
 		this.scheduleUpdate();
 	}
 
@@ -454,16 +543,20 @@ export class TextBuffer {
 				}
 
 				if (closePos < codePoints.length && codePoints[closePos] === ']') {
-					const placeholderText = codePoints
-						.slice(openPos, closePos + 1)
-						.join('');
+					const baseText = codePoints.slice(openPos, closePos + 1).join('');
+					const hasTrailingSpace = codePoints[closePos + 1] === ' ';
+					const placeholderText = hasTrailingSpace ? `${baseText} ` : baseText;
+					const end = hasTrailingSpace ? closePos + 2 : closePos + 1;
+
 					// Check if it's a valid placeholder
 					if (
-						placeholderText.match(/^\[Paste \d+ lines #\d+\]$/) ||
-						placeholderText.match(/^\[image #\d+\]$/) ||
-						placeholderText === '[Pasting...]'
+						placeholderText.match(/^\[Paste \d+ lines #\d+\] ?$/) ||
+						placeholderText.match(/^\[image #\d+\] ?$/) ||
+						placeholderText === '[Pasting...]' ||
+						placeholderText === '[Pasting...] ' ||
+						placeholderText.match(/^\[Skill:[^\]]+\] ?$/)
 					) {
-						return {start: openPos, end: closePos + 1};
+						return {start: openPos, end};
 					}
 				}
 			}

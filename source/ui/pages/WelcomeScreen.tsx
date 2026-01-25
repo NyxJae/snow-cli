@@ -93,6 +93,10 @@ export default function WelcomeScreen({
 	const {columns: terminalWidth} = useTerminalSize();
 	const {stdout} = useStdout();
 	const isInitialMount = useRef(true);
+	const inlineDivider = useMemo(() => {
+		const dividerWidth = Math.max(0, terminalWidth - 2);
+		return dividerWidth > 0 ? '-'.repeat(dividerWidth) : '';
+	}, [terminalWidth]);
 
 	// Local state for menu index, synced with parent's defaultMenuIndex
 	const [currentMenuIndex, setCurrentMenuIndex] = useState(defaultMenuIndex);
@@ -432,6 +436,11 @@ export default function WelcomeScreen({
 			{inlineView === 'menu' && (
 				<Box paddingX={1}>
 					<Alert variant="info">{infoText}</Alert>
+				</Box>
+			)}
+			{inlineView !== 'menu' && (
+				<Box paddingX={1}>
+					<Text color={theme.colors.menuSecondary}>{inlineDivider}</Text>
 				</Box>
 			)}
 			{inlineView === 'config' && (

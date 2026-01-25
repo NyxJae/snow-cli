@@ -156,6 +156,7 @@ export const zhTW: TranslationKeys = {
 		baseUrl: 'Base URL:',
 		apiKey: 'API 金鑰:',
 		requestMethod: '請求方式:',
+		requestUrlLabel: '請求 URL: ',
 		anthropicBeta: 'Anthropic Beta:',
 		anthropicCacheTTL: 'Anthropic 快取時效:',
 		anthropicCacheTTL5m: '5分鐘（預設）',
@@ -467,6 +468,7 @@ export const zhTW: TranslationKeys = {
 			export: '將聊天對話匯出到帶儲存對話方塊的文字檔案',
 			custom: '新增自訂命令並儲存到 ~/.snow/commands',
 			skills: '建立包含文件和範例的技能模板',
+			skillsPicker: '選擇 Skill 並將其 SKILL.md 內容注入到輸入框',
 			agent: '選擇並使用子代理處理特定任務',
 			todo: '從專案檔案搜尋並選擇 TODO 註釋',
 			addDir: '新增工作目錄以支援多專案上下文。用法: /add-dir 或 /add-dir 路徑',
@@ -543,6 +545,20 @@ export const zhTW: TranslationKeys = {
 		searchLabel: '搜尋:',
 		noResults: '未找到符合的主代理',
 		builtinLabel: '內建',
+	},
+
+	skillsPickerPanel: {
+		title: '選擇技能',
+		keyboardHint: '(ESC: 取消 · Tab: 切換 · Enter: 確認)',
+		loading: '正在載入技能...',
+		searchLabel: '搜尋:',
+		appendLabel: '追加:',
+		empty: '(空)',
+		noSkillsFound: '未找到技能',
+		noDescription: '無描述',
+		scrollHint: '↑↓ 捲動',
+		moreAbove: '上方 {count} 項',
+		moreBelow: '下方 {count} 項',
 	},
 	reviewCommitPanel: {
 		title: '程式碼審查：選擇變更',
@@ -1234,7 +1250,8 @@ export const zhTW: TranslationKeys = {
 	},
 	undoManager: {
 		undoFailedEmpty: '❌ 撤銷失敗。沒有可撤銷的編輯操作。',
-		undoSuccess: '✅ 撤銷成功。已撤銷 {steps} 次編輯操作。如果想修正錯誤編輯,建議使用 filesystem-edit_search 進行單次編輯並提供更多行的辅助編輯上下文.',
+		undoSuccess:
+			'✅ 撤銷成功。已撤銷 {steps} 次編輯操作。如果想修正錯誤編輯,建議使用 filesystem-edit_search 進行單次編輯並提供更多行的辅助編輯上下文.',
 		undoFailed: '❌ 撤銷失敗。{error}',
 		unknownError: '未知錯誤',
 		invalidStepsParameter:

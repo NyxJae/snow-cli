@@ -7,15 +7,12 @@ import {
 	truncateOutput,
 } from './utils/bash/security.utils.js';
 import {processManager} from '../utils/core/processManager.js';
+import {detectWindowsPowerShell} from '../prompt/shared/promptHelpers.js';
 import {
 	appendTerminalOutput,
 	setTerminalNeedsInput,
 	registerInputCallback,
 } from '../hooks/execution/useTerminalExecutionState.js';
-import {
-	selectShellForExecution,
-	getUtf8EnvVars,
-} from '../utils/execution/shellSelector.js';
 import {logger} from '../utils/core/logger.js';
 // SSH support
 import {SSHClient, parseSSHUrl} from '../utils/ssh/sshClient.js';
@@ -212,25 +209,28 @@ export class TerminalCommandService {
 			// Local execution: Execute command using system default shell and register the process.
 			// Using spawn (instead of exec) avoids relying on inherited stdio and is
 			// more resilient in some terminals where `exec` can fail with `spawn EBADF`.
-			// 智能选择 shell: 用户当前 shell > cmd.exe (Windows) / sh (Unix)
-			const selectedShell = selectShellForExecution();
 			const isWindows = process.platform === 'win32';
 
 			// 根据 shell 类型确定参数格式
 			let shell: string;
 			let shellArgs: string[];
+
 			if (isWindows) {
-				shell = selectedShell || 'cmd.exe';
-				if (shell.includes('powershell') || shell.includes('pwsh')) {
-					shellArgs = ['-Command', command];
-				} else if (shell.includes('bash')) {
-					shellArgs = ['-c', command];
+				// Use upstream's PowerShell detection with UTF-8 encoding
+				const psType = detectWindowsPowerShell();
+				if (psType) {
+					// Use PowerShell (pwsh for 7.x, powershell for 5.x)
+					shell = psType === 'pwsh' ? 'pwsh' : 'powershell';
+					const utf8WrappedCommand = `& { $OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); ${command} }`;
+					shellArgs = ['-NoProfile', '-Command', utf8WrappedCommand];
 				} else {
-					// cmd.exe
-					shellArgs = ['/c', command];
+					// Fallback to cmd if not in PowerShell environment
+					shell = 'cmd';
+					const utf8Command = `chcp 65001>nul && ${command}`;
+					shellArgs = ['/c', utf8Command];
 				}
 			} else {
-				shell = selectedShell || 'sh';
+				shell = 'sh';
 				shellArgs = ['-c', command];
 			}
 
@@ -240,7 +240,10 @@ export class TerminalCommandService {
 				windowsHide: true,
 				env: {
 					...process.env,
-					...getUtf8EnvVars(),
+					...(process.platform !== 'win32' && {
+						LANG: 'en_US.UTF-8',
+						LC_ALL: 'en_US.UTF-8',
+					}),
 				},
 			});
 

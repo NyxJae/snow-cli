@@ -157,6 +157,7 @@ export type TranslationKeys = {
 		baseUrl: string;
 		apiKey: string;
 		requestMethod: string;
+		requestUrlLabel: string;
 		anthropicBeta: string;
 		anthropicCacheTTL: string;
 		anthropicCacheTTL5m: string;
@@ -472,6 +473,7 @@ export type TranslationKeys = {
 			export: string;
 			custom: string;
 			skills: string;
+			skillsPicker: string;
 			agent: string;
 			todo: string;
 			addDir: string;
@@ -504,6 +506,21 @@ export type TranslationKeys = {
 		searchLabel: string;
 		noResults: string;
 		builtinLabel: string;
+	};
+
+	// Skills Picker Panel
+	skillsPickerPanel: {
+		title: string;
+		keyboardHint: string;
+		loading: string;
+		searchLabel: string;
+		appendLabel: string;
+		empty: string;
+		noSkillsFound: string;
+		noDescription: string;
+		scrollHint: string;
+		moreAbove: string;
+		moreBelow: string;
 	};
 
 	reviewCommitPanel: {

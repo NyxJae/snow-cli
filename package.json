@@ -1,6 +1,6 @@
 {
 	"name": "snow-ai",
-	"version": "0.6.17",
+	"version": "0.6.18",
 	"description": "Agentic coding in your terminal",
 	"license": "MIT",
 	"bin": {
@@ -72,6 +72,7 @@
 		"@vercel/ncc": "^0.38.4",
 		"ava": "^5.2.0",
 		"chalk": "^5.2.0",
+		"chardet": "^2.1.1",
 		"chokidar": "^4.0.3",
 		"cli-highlight": "^2.1.11",
 		"diff": "^8.0.2",
@@ -84,6 +85,7 @@
 		"gray-matter": "^4.0.3",
 		"http-proxy-agent": "^7.0.2",
 		"https-proxy-agent": "^7.0.6",
+		"iconv-lite": "^0.7.2",
 		"ignore": "^7.0.5",
 		"ink": "^5.2.1",
 		"ink-gradient": "^3.0.0",

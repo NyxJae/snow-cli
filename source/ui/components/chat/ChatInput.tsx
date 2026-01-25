@@ -15,6 +15,7 @@ const CommandPanel = lazy(() => import('../panels/CommandPanel.js'));
 const FileList = lazy(() => import('../tools/FileList.js'));
 const AgentPickerPanel = lazy(() => import('../panels/AgentPickerPanel.js'));
 const TodoPickerPanel = lazy(() => import('../panels/TodoPickerPanel.js'));
+const SkillsPickerPanel = lazy(() => import('../panels/SkillsPickerPanel.js'));
 const ProfilePanel = lazy(() => import('../panels/ProfilePanel.js'));
 
 import {useInputBuffer} from '../../../hooks/input/useInputBuffer.js';
@@ -27,9 +28,84 @@ import {useTerminalSize} from '../../../hooks/ui/useTerminalSize.js';
 import {useTerminalFocus} from '../../../hooks/ui/useTerminalFocus.js';
 import {useAgentPicker} from '../../../hooks/picker/useAgentPicker.js';
 import {useTodoPicker} from '../../../hooks/picker/useTodoPicker.js';
+import {useSkillsPicker} from '../../../hooks/picker/useSkillsPicker.js';
 import {useI18n} from '../../../i18n/index.js';
 import {useTheme} from '../../contexts/ThemeContext.js';
 import {useBashMode} from '../../../hooks/input/useBashMode.js';
+
+function parseSkillIdFromHeaderLine(line: string): string {
+	return line.replace(/^# Skill:\s*/i, '').trim() || 'unknown';
+}
+
+function restoreTextWithSkillPlaceholders(
+	buffer: {
+		insertRestoredText: (t: string) => void;
+		insertTextPlaceholder: (c: string, p: string) => void;
+	},
+	text: string,
+) {
+	if (!text) return;
+
+	const lines = text.split('\n');
+	let plain = '';
+
+	const flushPlain = () => {
+		if (plain) {
+			buffer.insertRestoredText(plain);
+			plain = '';
+		}
+	};
+
+	let i = 0;
+	while (i < lines.length) {
+		const line = lines[i] ?? '';
+		if (!line.startsWith('# Skill:')) {
+			plain += line;
+			if (i < lines.length - 1) plain += '\n';
+			i++;
+			continue;
+		}
+
+		// Consume a full skill injection block and rebuild it as a TextBuffer text placeholder.
+		flushPlain();
+		const skillId = parseSkillIdFromHeaderLine(line);
+		const rawLines: string[] = [line];
+		let endFound = false;
+		i++;
+
+		while (i < lines.length) {
+			const next = lines[i] ?? '';
+			if (next.startsWith('# Skill:')) break;
+
+			// Compat: old messages may have "# Skill End<user text>" glued together.
+			const trimmedStart = next.trimStart();
+			if (trimmedStart.startsWith('# Skill End')) {
+				const remainder = trimmedStart.slice('# Skill End'.length);
+				rawLines.push('# Skill End');
+				endFound = true;
+				i++;
+
+				if (remainder.length > 0) {
+					// Keep user text after end marker in the plain stream.
+					plain += remainder.replace(/^\s+/, '');
+					if (i < lines.length) plain += '\n';
+				}
+				break;
+			}
+
+			rawLines.push(next);
+			i++;
+		}
+
+		let raw = rawLines.join('\n');
+		// Ensure end marker doesn't glue to subsequent user text during masking/rendering.
+		if (endFound && !raw.endsWith('\n')) raw += '\n';
+
+		buffer.insertTextPlaceholder(raw, `[Skill:${skillId}] `);
+	}
+
+	flushPlain();
+}
 
 /**
  * Calculate context usage percentage
@@ -172,7 +248,7 @@ export default function ChatInput({
 	const {theme} = useTheme();
 
 	// Use bash mode hook for command detection
-	const {parseBashCommands} = useBashMode();
+	const {parseBashCommands, parsePureBashCommands} = useBashMode();
 
 	// Use terminal size hook to listen for resize events
 	const {columns: terminalWidth} = useTerminalSize();
@@ -197,6 +273,7 @@ export default function ChatInput({
 
 	// Track bash mode state with debounce to avoid high-frequency updates
 	const [isBashMode, setIsBashMode] = React.useState(false);
+	const [isPureBashMode, setIsPureBashMode] = React.useState(false);
 	const bashModeDebounceTimer = useRef<NodeJS.Timeout | null>(null);
 
 	// Use command panel hook
@@ -208,6 +285,7 @@ export default function ChatInput({
 		getFilteredCommands,
 		updateCommandPanelState,
 		isProcessing: commandPanelIsProcessing,
+		getAllCommands,
 	} = useCommandPanel(buffer, isProcessing);
 
 	// Use file picker hook
@@ -273,6 +351,24 @@ export default function ChatInput({
 		totalTodoCount,
 	} = useTodoPicker(buffer, triggerUpdate, process.cwd());
 
+	// Use skills picker hook
+	const {
+		showSkillsPicker,
+		setShowSkillsPicker,
+		skillsSelectedIndex,
+		setSkillsSelectedIndex,
+		skills,
+		isLoading: skillsIsLoading,
+		searchQuery: skillsSearchQuery,
+		appendText: skillsAppendText,
+		focus: skillsFocus,
+		toggleFocus: toggleSkillsFocus,
+		appendChar: appendSkillsChar,
+		backspace: backspaceSkillsField,
+		confirmSelection: confirmSkillsSelection,
+		closeSkillsPicker,
+	} = useSkillsPicker(buffer, triggerUpdate);
+
 	// Use clipboard hook
 	const {pasteFromClipboard} = useClipboard(
 		buffer,
@@ -281,11 +377,16 @@ export default function ChatInput({
 		triggerUpdate,
 	);
 
+	const pasteShortcutTimeoutMs = 800;
+	const pasteFlushDebounceMs = 250;
+	const pasteIndicatorThreshold = 300;
+
 	// Use keyboard input hook
 	useKeyboardInput({
 		buffer,
 		disabled,
 		disableKeyboardNavigation,
+		isProcessing,
 		triggerUpdate,
 		forceUpdate,
 		yoloMode,
@@ -298,6 +399,7 @@ export default function ChatInput({
 		getFilteredCommands,
 		updateCommandPanelState,
 		onCommand,
+		getAllCommands,
 		showFilePicker,
 		setShowFilePicker,
 		fileSelectedIndex,
@@ -325,6 +427,9 @@ export default function ChatInput({
 		resetHistoryNavigation,
 		saveToHistory,
 		pasteFromClipboard,
+		pasteShortcutTimeoutMs,
+		pasteFlushDebounceMs,
+		pasteIndicatorThreshold,
 		onSubmit,
 		ensureFocus,
 		showAgentPicker,
@@ -344,6 +449,21 @@ export default function ChatInput({
 		confirmTodoSelection,
 		todoSearchQuery,
 		setTodoSearchQuery,
+		// Skills picker
+		showSkillsPicker,
+		setShowSkillsPicker,
+		skillsSelectedIndex,
+		setSkillsSelectedIndex,
+		skills,
+		skillsIsLoading,
+		skillsSearchQuery,
+		skillsAppendText,
+		skillsFocus,
+		toggleSkillsFocus,
+		appendSkillsChar,
+		backspaceSkillsField,
+		confirmSkillsSelection,
+		closeSkillsPicker,
 		showProfilePicker,
 		setShowProfilePicker: setShowProfilePicker || (() => {}),
 		profileSelectedIndex,
@@ -376,9 +496,12 @@ export default function ChatInput({
 			const images = initialContent.images || [];
 
 			if (images.length === 0) {
-				// No images, just set the text
+				// No images, just set the text.
+				// Use restoreTextWithSkillPlaceholders() so rollback restore:
+				// - doesn't get treated as a "paste" placeholder
+				// - rebuilds Skill injection blocks back into [Skill:id] placeholders
 				if (text) {
-					buffer.insert(text);
+					restoreTextWithSkillPlaceholders(buffer, text);
 				}
 			} else {
 				// Split text by image placeholders and reconstruct with actual images
@@ -391,7 +514,7 @@ export default function ChatInput({
 					// Insert text part
 					const part = parts[i];
 					if (part) {
-						buffer.insert(part);
+						restoreTextWithSkillPlaceholders(buffer, part);
 					}
 
 					// Insert image after this text part (if exists)
@@ -468,10 +591,19 @@ export default function ChatInput({
 		// Set new timer
 		bashModeDebounceTimer.current = setTimeout(() => {
 			const text = buffer.getFullText();
-			const commands = parseBashCommands(text);
-			const hasBashCommands = commands.length > 0;
+
+			// 先检查纯 Bash 模式（双感叹号）
+			const pureBashCommands = parsePureBashCommands(text);
+			const hasPureBashCommands = pureBashCommands.length > 0;
+
+			// 再检查命令注入模式（单感叹号）
+			const bashCommands = parseBashCommands(text);
+			const hasBashCommands = bashCommands.length > 0;
 
 			// Only update state if changed
+			if (hasPureBashCommands !== isPureBashMode) {
+				setIsPureBashMode(hasPureBashCommands);
+			}
 			if (hasBashCommands !== isBashMode) {
 				setIsBashMode(hasBashCommands);
 			}
@@ -483,7 +615,13 @@ export default function ChatInput({
 				clearTimeout(bashModeDebounceTimer.current);
 			}
 		};
-	}, [buffer.text, parseBashCommands, isBashMode]);
+	}, [
+		buffer.text,
+		parseBashCommands,
+		parsePureBashCommands,
+		isBashMode,
+		isPureBashMode,
+	]);
 
 	// Render cursor based on focus state
 	const renderCursor = useCallback(
@@ -663,7 +801,11 @@ export default function ChatInput({
 					<Box flexDirection="column" width={terminalWidth - 2}>
 						<Text
 							color={
-								isBashMode ? theme.colors.success : theme.colors.menuSecondary
+								isPureBashMode
+									? theme.colors.cyan
+									: isBashMode
+									? theme.colors.success
+									: theme.colors.menuSecondary
 							}
 						>
 							{'─'.repeat(terminalWidth - 2)}
@@ -671,17 +813,25 @@ export default function ChatInput({
 						<Box flexDirection="row">
 							<Text
 								color={
-									isBashMode ? theme.colors.success : theme.colors.menuInfo
+									isPureBashMode
+										? theme.colors.cyan
+										: isBashMode
+										? theme.colors.success
+										: theme.colors.menuInfo
 								}
 								bold
 							>
-								{isBashMode ? '>_' : '❯'}{' '}
+								{isPureBashMode ? '!!' : isBashMode ? '>_' : '❯'}{' '}
 							</Text>
 							<Box flexGrow={1}>{renderContent()}</Box>
 						</Box>
 						<Text
 							color={
-								isBashMode ? theme.colors.success : theme.colors.menuSecondary
+								isPureBashMode
+									? theme.colors.cyan
+									: isBashMode
+									? theme.colors.success
+									: theme.colors.menuSecondary
 							}
 						>
 							{'─'.repeat(terminalWidth - 2)}
@@ -744,6 +894,23 @@ export default function ChatInput({
 							isLoading={todoIsLoading}
 							searchQuery={todoSearchQuery}
 							totalCount={totalTodoCount}
+						/>
+					</Suspense>
+					<Suspense fallback={null}>
+						<SkillsPickerPanel
+							skills={skills.map(s => ({
+								id: s.id,
+								name: s.name,
+								description: s.description,
+								location: s.location,
+							}))}
+							selectedIndex={skillsSelectedIndex}
+							visible={showSkillsPicker}
+							maxHeight={5}
+							isLoading={skillsIsLoading}
+							searchQuery={skillsSearchQuery}
+							appendText={skillsAppendText}
+							focus={skillsFocus}
 						/>
 					</Suspense>
 					<Suspense fallback={null}>
