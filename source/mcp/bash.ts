@@ -240,10 +240,9 @@ export class TerminalCommandService {
 				windowsHide: true,
 				env: {
 					...process.env,
-					...(process.platform !== 'win32' && {
-						LANG: 'en_US.UTF-8',
-						LC_ALL: 'en_US.UTF-8',
-					}),
+					// 所有平台都设置 UTF-8 环境变量
+					LANG: 'en_US.UTF-8',
+					LC_ALL: 'en_US.UTF-8',
 				},
 			});
 

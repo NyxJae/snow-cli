@@ -1,20 +1,16 @@
-import React from 'react';
-import {Box, Text} from 'ink';
+import React, {useEffect, useMemo, useState, useRef} from 'react';
+import {Box, Text, useInput} from 'ink';
+import {useI18n} from '../../../i18n/index.js';
 import {useTheme} from '../../contexts/ThemeContext.js';
 import type {TodoItem} from '../../../mcp/types/todo.types.js';
+
 /**
  * TodoTree 组件属性接口
  * @property todos - TODO 列表
- * @property scrollOffset - 滚动偏移量，从第几条开始显示（可选，默认 0）
  */
 interface TodoTreeProps {
 	todos: TodoItem[];
-	scrollOffset?: number;
 }
-
-/**
- * TODO Tree 组件 - 显示紧凑任务列表
- */
 
 /**
  * 树节点接口 - 表示树状结构中的节点
@@ -130,8 +126,103 @@ export function flattenTree(nodes: TreeNode[]): FlattenedTodo[] {
 	return result;
 }
 
-export default function TodoTree({todos, scrollOffset = 0}: TodoTreeProps) {
+/**
+ * TODO Tree 组件 - 显示紧凑任务列表
+ */
+export default function TodoTree({todos}: TodoTreeProps) {
 	const {theme} = useTheme();
+	const {t} = useI18n();
+	const autoRollbackTimerRef = useRef<NodeJS.Timeout>();
+
+	const PAGE_SIZE = 5;
+
+	// 构建树状结构并扁平化（保持原始顺序，不排序）
+	const flattenedTodos = useMemo(() => {
+		const treeNodes = buildTodoTree(todos);
+		return flattenTree(treeNodes);
+	}, [todos]);
+
+	const totalCount = flattenedTodos.length;
+	const completedCount = flattenedTodos.reduce(
+		(acc, t) => acc + (t.status === 'completed' ? 1 : 0),
+		0,
+	);
+
+	// 找到第一条未完成todo的索引
+	const firstPendingIndex = useMemo(() => {
+		return flattenedTodos.findIndex(t => t.status !== 'completed');
+	}, [flattenedTodos]);
+
+	const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+	const [pageIndex, setPageIndex] = useState(0);
+
+	// 使用 ref 保存最新的 pageIndex 和 firstPendingIndex，避免闭包问题
+	const latestPageIndexRef = useRef(pageIndex);
+	const latestFirstPendingIndexRef = useRef(firstPendingIndex);
+
+	// 同步 ref 到最新值
+	useEffect(() => {
+		latestPageIndexRef.current = pageIndex;
+	}, [pageIndex]);
+
+	useEffect(() => {
+		latestFirstPendingIndexRef.current = firstPendingIndex;
+	}, [firstPendingIndex]);
+
+	// 获取第一条未完成todo所在页码
+	const getTargetPageIndex = (pendingIndex: number) => {
+		if (pendingIndex === -1) return 0; // 全部完成，从第1页开始
+		return Math.floor(pendingIndex / PAGE_SIZE);
+	};
+
+	// 数据变化或初次加载时，自动定位到第一条未完成todo
+	useEffect(() => {
+		setPageIndex(getTargetPageIndex(firstPendingIndex));
+	}, [todos, firstPendingIndex]);
+
+	// 重置自动回滚定时器
+	const resetAutoRollbackTimer = () => {
+		if (autoRollbackTimerRef.current) {
+			clearTimeout(autoRollbackTimerRef.current);
+		}
+		autoRollbackTimerRef.current = setTimeout(() => {
+			// 3秒无操作，自动回滚到第一条未完成todo
+			// 使用 ref 获取最新值，避免闭包读到旧值
+			const targetPage = getTargetPageIndex(latestFirstPendingIndexRef.current);
+			const currentPage = latestPageIndexRef.current;
+			if (targetPage !== currentPage) {
+				setPageIndex(targetPage);
+			}
+		}, 3000);
+	};
+
+	// 初始启动定时器
+	useEffect(() => {
+		resetAutoRollbackTimer();
+		return () => {
+			if (autoRollbackTimerRef.current) {
+				clearTimeout(autoRollbackTimerRef.current);
+			}
+		};
+	}, [pageIndex, firstPendingIndex]);
+
+	// Tab键翻页
+	useInput((_input, key) => {
+		if (!key.tab || pageCount <= 1) return;
+
+		// 重置定时器（用户有交互）
+		resetAutoRollbackTimer();
+
+		// 下一页，循环翻页
+		setPageIndex(p => (p + 1) % pageCount);
+	});
+
+	const visibleTodos = flattenedTodos.slice(
+		pageIndex * PAGE_SIZE,
+		pageIndex * PAGE_SIZE + PAGE_SIZE,
+	);
+	const hiddenCount = Math.max(0, totalCount - visibleTodos.length);
+
 	if (todos.length === 0) {
 		return (
 			<Box flexDirection="column" paddingLeft={2}>
@@ -141,46 +232,6 @@ export default function TodoTree({todos, scrollOffset = 0}: TodoTreeProps) {
 				</Text>
 			</Box>
 		);
-	}
-
-	// 构建树状结构并扁平化
-	const treeNodes = buildTodoTree(todos);
-	const flattenedTodos = flattenTree(treeNodes);
-
-	const MAX_VISIBLE = 5;
-	const totalCount = flattenedTodos.length;
-	const completedCount = flattenedTodos.reduce(
-		(acc, t) => acc + (t.status === 'completed' ? 1 : 0),
-		0,
-	);
-
-	// 应用滚动偏移（在整个列表上滚动）
-	let visibleTodos: FlattenedTodo[];
-
-	if (totalCount <= MAX_VISIBLE) {
-		// 列表很短，全部显示
-		visibleTodos = flattenedTodos;
-	} else {
-		// 列表很长，应用滚动
-		const maxOffset = Math.max(0, totalCount - MAX_VISIBLE);
-		const validOffset = Math.min(Math.max(scrollOffset, 0), maxOffset);
-		visibleTodos = flattenedTodos.slice(validOffset, validOffset + MAX_VISIBLE);
-	}
-
-	// 计算滚动提示
-	const hasMoreAbove = scrollOffset > 0;
-	const hasMoreBelow = scrollOffset + visibleTodos.length < totalCount;
-	const needsScroll = totalCount > MAX_VISIBLE;
-
-	let scrollHint = '';
-	if (needsScroll) {
-		if (hasMoreAbove && hasMoreBelow) {
-			scrollHint = ' ⬆/⬇';
-		} else if (hasMoreAbove) {
-			scrollHint = ' ⬆';
-		} else if (hasMoreBelow) {
-			scrollHint = ' ⬇';
-		}
 	}
 
 	const getStatusIcon = (status: string) => {
@@ -201,7 +252,7 @@ export default function TodoTree({todos, scrollOffset = 0}: TodoTreeProps) {
 		const statusColor = getStatusColor(todo.status);
 
 		return (
-			<Text key={`${todo.id}:${index}`}>
+			<Text key={`${todo.id}:${pageIndex}:${index}`}>
 				{todo.prefix}
 				<Text color={statusColor}>
 					{statusIcon} {todo.content}
@@ -217,8 +268,11 @@ export default function TodoTree({todos, scrollOffset = 0}: TodoTreeProps) {
 				<Text color={theme.colors.menuInfo}>
 					({completedCount}/{totalCount})
 				</Text>
-				{scrollHint && <Text dimColor>{scrollHint}</Text>}
-				<Text dimColor> alt+u/d</Text>
+				<Text dimColor>
+					{' '}
+					[{pageIndex + 1}/{pageCount}] {t.toolConfirmation.commandPagerHint}
+				</Text>
+				{hiddenCount > 0 && <Text dimColor> +{hiddenCount} more</Text>}
 			</Text>
 			{visibleTodos.map((todo, index) => renderTodoLine(todo, index))}
 		</Box>

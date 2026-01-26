@@ -1,11 +1,4 @@
-import React, {
-	useState,
-	useEffect,
-	useRef,
-	useMemo,
-	Suspense,
-	lazy,
-} from 'react';
+import React, {useState, useEffect, Suspense, lazy} from 'react';
 import {Box, Text} from 'ink';
 import Spinner from 'ink-spinner';
 import ChatInput from './ChatInput.js';
@@ -15,18 +8,12 @@ import type {Message} from './MessageList.js';
 import {BackgroundProcessPanel} from '../bash/BackgroundProcessPanel.js';
 import type {BackgroundProcess} from '../../../hooks/execution/useBackgroundProcesses.js';
 import TodoTree from '../special/TodoTree.js';
-import {buildTodoTree, flattenTree} from '../special/TodoTree.js';
 import type {TodoItem} from '../../../mcp/types/todo.types.js';
 import {sessionManager} from '../../../utils/session/sessionManager.js';
 import {todoEvents} from '../../../utils/events/todoEvents.js';
 
 const ReviewCommitPanel = lazy(() => import('../panels/ReviewCommitPanel.js'));
 import type {ReviewCommitSelection} from '../panels/ReviewCommitPanel.js';
-
-// TODO 滚动相关常量
-const AUTO_SCROLL_DELAY_MS = 7000; // 自动滚动延迟（毫秒）
-const AUTO_SCROLL_CHECK_INTERVAL_MS = 1000; // 自动滚动检查间隔（毫秒）
-const MAX_VISIBLE_TODOS = 5; // 最大可见 TODO 数量
 
 type ChatFooterProps = {
 	onSubmit: (
@@ -133,12 +120,6 @@ type ChatFooterProps = {
 export default function ChatFooter(props: ChatFooterProps) {
 	const {t} = useI18n();
 	const [todos, setTodos] = useState<TodoItem[]>([]);
-	const [todoScrollOffset, setTodoScrollOffset] = useState<number>(0);
-	const userLastScrollTime = useRef<number>(Date.now());
-
-	// 缓存树状结构和扁平化列表，避免重复计算
-	const treeNodes = useMemo(() => buildTodoTree(todos), [todos]);
-	const flattenedTodos = useMemo(() => flattenTree(treeNodes), [treeNodes]);
 
 	// 使用事件监听 TODO 更新，替代轮询
 	useEffect(() => {
@@ -164,66 +145,6 @@ export default function ChatFooter(props: ChatFooterProps) {
 			todoEvents.offTodoUpdate(handleTodoUpdate);
 		};
 	}, []);
-
-	// 自动滚动定时器
-	useEffect(() => {
-		// 自动滚动定时器 - 每秒检查一次
-		const timer = setInterval(() => {
-			// 检查用户最近是否操作过
-			const timeSinceLastScroll = Date.now() - userLastScrollTime.current;
-			if (timeSinceLastScroll < AUTO_SCROLL_DELAY_MS) {
-				return; // 用户最近操作过，不自动滚动
-			}
-
-			// 不操作后自动滚动到默认位置
-			if (flattenedTodos.length === 0) {
-				setTodoScrollOffset(0);
-				return;
-			}
-
-			// 计算第一条未完成的索引
-			const firstPendingIndex = flattenedTodos.findIndex(
-				t => t.status !== 'completed',
-			);
-			let targetOffset = 0;
-
-			if (firstPendingIndex === -1) {
-				// 全部已完成：显示最后几条
-				targetOffset = Math.max(0, flattenedTodos.length - MAX_VISIBLE_TODOS);
-			} else if (firstPendingIndex > 0) {
-				// 第一条未完成不是第一条：确保第一条未完成可见
-				targetOffset = Math.max(0, firstPendingIndex - 1);
-			}
-			// 否则 firstPendingIndex === 0，从第一条开始显示
-
-			// 确保不超过边界
-			const maxOffset = Math.max(0, flattenedTodos.length - MAX_VISIBLE_TODOS);
-			targetOffset = Math.min(targetOffset, maxOffset);
-
-			setTodoScrollOffset(targetOffset);
-
-			// 更新 userLastScrollTime，避免重复自动滚动
-			userLastScrollTime.current = Date.now();
-		}, AUTO_SCROLL_CHECK_INTERVAL_MS);
-
-		return () => clearInterval(timer);
-	}, [flattenedTodos]); // 依赖 flattenedTodos，当列表变化时重置定时器
-
-	// 滚动处理函数
-	const handleTodoScrollUp = () => {
-		if (flattenedTodos.length <= MAX_VISIBLE_TODOS) return;
-		const newOffset = Math.max(0, todoScrollOffset - 1);
-		setTodoScrollOffset(newOffset);
-		userLastScrollTime.current = Date.now();
-	};
-
-	const handleTodoScrollDown = () => {
-		if (flattenedTodos.length <= MAX_VISIBLE_TODOS) return;
-		const maxOffset = Math.max(0, flattenedTodos.length - MAX_VISIBLE_TODOS);
-		const newOffset = Math.min(todoScrollOffset + 1, maxOffset);
-		setTodoScrollOffset(newOffset);
-		userLastScrollTime.current = Date.now();
-	};
 
 	return (
 		<>
@@ -260,13 +181,10 @@ export default function ChatFooter(props: ChatFooterProps) {
 						setMainAgentSearchQuery={props.setMainAgentSearchQuery}
 						getFilteredMainAgents={props.getFilteredMainAgents}
 						onSwitchMainAgent={props.onSwitchMainAgent}
-						onMainAgentSelect={props.onMainAgentSelect}
-						onTodoScrollUp={handleTodoScrollUp}
-						onTodoScrollDown={handleTodoScrollDown}
 					/>
 
 					<Box marginTop={1}>
-						<TodoTree todos={todos} scrollOffset={todoScrollOffset} />
+						<TodoTree todos={todos} />
 					</Box>
 
 					<StatusLine

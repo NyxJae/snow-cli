@@ -1015,6 +1015,9 @@ export type TranslationKeys = {
 		reason: string;
 		requiresConfirmation: string;
 		arguments: string;
+		commandPagerTitle: string;
+		commandPagerStatus: string;
+		commandPagerHint: string;
 		selectAction: string;
 		enterRejectionReason: string;
 		pressEnterToSubmit: string;
