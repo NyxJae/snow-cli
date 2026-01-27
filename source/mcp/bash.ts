@@ -7,12 +7,12 @@ import {
 	truncateOutput,
 } from './utils/bash/security.utils.js';
 import {processManager} from '../utils/core/processManager.js';
-import {detectWindowsPowerShell} from '../prompt/shared/promptHelpers.js';
 import {
 	appendTerminalOutput,
 	setTerminalNeedsInput,
 	registerInputCallback,
 } from '../hooks/execution/useTerminalExecutionState.js';
+import {selectShellForExecution} from '../utils/execution/shellSelector.js';
 import {logger} from '../utils/core/logger.js';
 // SSH support
 import {SSHClient, parseSSHUrl} from '../utils/ssh/sshClient.js';
@@ -209,27 +209,33 @@ export class TerminalCommandService {
 			// Local execution: Execute command using system default shell and register the process.
 			// Using spawn (instead of exec) avoids relying on inherited stdio and is
 			// more resilient in some terminals where `exec` can fail with `spawn EBADF`.
-			const isWindows = process.platform === 'win32';
+
+			// 本地分支修改:智能 shell 选择：优先使用用户当前 shell（如 Git Bash）
+			const selectedShell = selectShellForExecution();
 
 			// 根据 shell 类型确定参数格式
 			let shell: string;
 			let shellArgs: string[];
 
-			if (isWindows) {
-				// Use upstream's PowerShell detection with UTF-8 encoding
-				const psType = detectWindowsPowerShell();
-				if (psType) {
-					// Use PowerShell (pwsh for 7.x, powershell for 5.x)
-					shell = psType === 'pwsh' ? 'pwsh' : 'powershell';
+			if (selectedShell) {
+				// 使用 selectShellForExecution() 返回的用户当前 shell
+				shell = selectedShell;
+				// 检测 shell 类型来确定参数
+				const shellName = selectedShell.toLowerCase();
+				if (shellName.includes('powershell') || shellName.includes('pwsh')) {
+					// PowerShell 使用 -Command 参数
 					const utf8WrappedCommand = `& { $OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); ${command} }`;
 					shellArgs = ['-NoProfile', '-Command', utf8WrappedCommand];
-				} else {
-					// Fallback to cmd if not in PowerShell environment
-					shell = 'cmd';
+				} else if (shellName.includes('cmd.exe') || shellName === 'cmd') {
+					// cmd.exe 使用 /c 参数
 					const utf8Command = `chcp 65001>nul && ${command}`;
 					shellArgs = ['/c', utf8Command];
+				} else {
+					// bash (包括 Git Bash)、sh、zsh、fish 等 Unix shell 都使用 -c 参数
+					shellArgs = ['-c', command];
 				}
 			} else {
+				// 非 Windows 或无法检测时使用系统默认 shell
 				shell = 'sh';
 				shellArgs = ['-c', command];
 			}
