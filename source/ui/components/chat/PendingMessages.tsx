@@ -1,6 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
 import {useTheme} from '../../contexts/ThemeContext.js';
+import {useI18n} from '../../../i18n/index.js';
 
 interface PendingMessage {
 	text: string;
@@ -19,6 +20,7 @@ export default function PendingMessages({
 	expectedTargetName,
 }: Props) {
 	const {theme} = useTheme();
+	const {t} = useI18n();
 	const targetLabel =
 		expectedTarget === 'subagent'
 			? `子代理${expectedTargetName ? ` (${expectedTargetName})` : ''}`
@@ -36,7 +38,7 @@ export default function PendingMessages({
 			paddingX={1}
 		>
 			<Text color={theme.colors.warning} bold>
-				⬑ 待发送消息 ({pendingMessages.length})
+				{t.chatScreen.pendingMessagesTitle} ({pendingMessages.length})
 			</Text>
 			<Text color={theme.colors.warning} dimColor>
 				预计目标: {targetLabel}
@@ -58,7 +60,11 @@ export default function PendingMessages({
 					{message.images && message.images.length > 0 && (
 						<Box marginLeft={3}>
 							<Text color={theme.colors.menuSecondary} dimColor>
-								└─ 已附加 {message.images.length} 张图片
+								└─{' '}
+								{t.chatScreen.pendingMessagesImagesAttached.replace(
+									'{count}',
+									String(message.images.length),
+								)}
 							</Text>
 						</Box>
 					)}
@@ -66,7 +72,10 @@ export default function PendingMessages({
 			))}
 
 			<Text color={theme.colors.warning} dimColor>
-				按 ESC 可撤回到输入框,不会打断当前流程
+				{t.chatScreen.pendingMessagesFooter}
+			</Text>
+			<Text color={theme.colors.warning} dimColor>
+				{t.chatScreen.pendingMessagesEscHint}
 			</Text>
 		</Box>
 	);

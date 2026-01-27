@@ -9,6 +9,13 @@ interface ToolResultPreviewProps {
 }
 
 /**
+ * Remove ANSI escape codes from text to prevent style leakage
+ */
+function removeAnsiCodes(text: string): string {
+	return text.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+/**
  * Display a compact preview of tool execution results
  * Shows a tree-like structure with limited content
  */
@@ -26,7 +33,7 @@ export default function ToolResultPreview({
 		if (toolName.startsWith('subagent-')) {
 			return renderSubAgentPreview(data, maxLines);
 		} else if (toolName === 'terminal-execute') {
-			return renderTerminalExecutePreview(data, isSubAgentInternal);
+			return renderTerminalExecutePreview(data, maxLines, isSubAgentInternal);
 		} else if (toolName === 'filesystem-read') {
 			return renderReadPreview(data, isSubAgentInternal);
 		} else if (toolName === 'filesystem-create') {
@@ -41,6 +48,8 @@ export default function ToolResultPreview({
 			return renderACEPreview(toolName, data, maxLines);
 		} else if (toolName.startsWith('todo-')) {
 			return renderTodoPreview(toolName, data, maxLines);
+		} else if (toolName === 'ide-get_diagnostics') {
+			return renderIdeDiagnosticsPreview(data);
 		} else if (toolName === 'skill-execute') {
 			// skill-execute returns a string message, no preview needed
 			// (the skill content is displayed elsewhere)
@@ -72,22 +81,83 @@ function renderSubAgentPreview(data: any, _maxLines: number) {
 	);
 }
 
-function renderTerminalExecutePreview(data: any, isSubAgentInternal: boolean) {
+function renderTerminalExecutePreview(
+	data: any,
+	maxLines: number,
+	isSubAgentInternal: boolean,
+) {
 	const hasError = data.exitCode !== 0;
 	const hasStdout = data.stdout && data.stdout.trim();
 	const hasStderr = data.stderr && data.stderr.trim();
 
-	// For sub-agent internal tools, show minimal info
+	const sliceLines = (text: string | undefined, limit: number) => {
+		if (!text) return {lines: [] as string[], truncated: false};
+		const lines = text.split('\n');
+		if (lines.length <= limit) return {lines, truncated: false};
+		return {lines: lines.slice(0, limit), truncated: true};
+	};
+
+	// 对于子代理内部的 terminal-execute：需要展示可读的执行结果（stdout/stderr/exitCode）
+	// 但要限制行数，避免刷屏
 	if (isSubAgentInternal) {
+		const stdoutPreview = sliceLines(data.stdout, maxLines);
+		const stderrPreview = sliceLines(data.stderr, maxLines);
+
 		return (
-			<Box marginLeft={2}>
+			<Box flexDirection="column" marginLeft={2}>
+				{data.command && (
+					<Box flexDirection="column">
+						<Text color="gray" dimColor>
+							├─ command:
+						</Text>
+						<Box marginLeft={2}>
+							<Text color="gray">{data.command}</Text>
+						</Box>
+					</Box>
+				)}
 				<Text color={hasError ? 'red' : 'gray'} dimColor>
-					└─ Exit code: {data.exitCode}
-					{hasStdout &&
-						` (${data.stdout.trim().split('\n').length} lines output)`}
-					{hasStderr &&
-						` (${data.stderr.trim().split('\n').length} lines stderr)`}
+					├─ exitCode: {data.exitCode}
 				</Text>
+
+				{hasStdout && (
+					<Box flexDirection="column">
+						<Text color="gray" dimColor>
+							├─ stdout:
+						</Text>
+						<Box marginLeft={2} flexDirection="column">
+							{stdoutPreview.lines.map((line: string, idx: number) => (
+								<Text key={idx} color="white">
+									{removeAnsiCodes(line)}
+								</Text>
+							))}
+							{stdoutPreview.truncated && (
+								<Text color="gray" dimColor>
+									…
+								</Text>
+							)}
+						</Box>
+					</Box>
+				)}
+
+				{hasStderr && (
+					<Box flexDirection="column">
+						<Text color={hasError ? 'red' : 'gray'} dimColor>
+							└─ stderr:
+						</Text>
+						<Box marginLeft={2} flexDirection="column">
+							{stderrPreview.lines.map((line: string, idx: number) => (
+								<Text key={idx} color={hasError ? 'red' : 'gray'}>
+									{removeAnsiCodes(line)}
+								</Text>
+							))}
+							{stderrPreview.truncated && (
+								<Text color="gray" dimColor>
+									…
+								</Text>
+							)}
+						</Box>
+					</Box>
+				)}
 			</Box>
 		);
 	}
@@ -127,7 +197,7 @@ function renderTerminalExecutePreview(data: any, isSubAgentInternal: boolean) {
 					<Box marginLeft={2} flexDirection="column">
 						{data.stdout.split('\n').map((line: string, idx: number) => (
 							<Text key={idx} color="white">
-								{line}
+								{removeAnsiCodes(line)}
 							</Text>
 						))}
 					</Box>
@@ -166,7 +236,7 @@ function renderTerminalExecutePreview(data: any, isSubAgentInternal: boolean) {
 					<Box marginLeft={2} flexDirection="column">
 						{data.stdout.split('\n').map((line: string, idx: number) => (
 							<Text key={idx} color="yellow">
-								{line}
+								{removeAnsiCodes(line)}
 							</Text>
 						))}
 					</Box>
@@ -182,7 +252,7 @@ function renderTerminalExecutePreview(data: any, isSubAgentInternal: boolean) {
 					<Box marginLeft={2} flexDirection="column">
 						{data.stderr.split('\n').map((line: string, idx: number) => (
 							<Text key={idx} color="red">
-								{line}
+								{removeAnsiCodes(line)}
 							</Text>
 						))}
 					</Box>
@@ -549,6 +619,58 @@ function renderTodoPreview(_toolName: string, data: any, _maxLines: number) {
 			<Text color="gray" dimColor>
 				└─ TODO: {pendingTodos} pending, {completedTodos} completed (total:{' '}
 				{totalTodos})
+			</Text>
+		</Box>
+	);
+}
+
+function renderIdeDiagnosticsPreview(data: any) {
+	// Handle ide-get_diagnostics result
+	// Data format: { diagnostics: Diagnostic[], formatted: string, summary: string }
+	if (!data.diagnostics || !Array.isArray(data.diagnostics)) {
+		return (
+			<Box marginLeft={2}>
+				<Text color="gray" dimColor>
+					└─ No diagnostics data
+				</Text>
+			</Box>
+		);
+	}
+
+	const diagnosticsCount = data.diagnostics.length;
+	if (diagnosticsCount === 0) {
+		return (
+			<Box marginLeft={2}>
+				<Text color="gray" dimColor>
+					└─ No diagnostics found
+				</Text>
+			</Box>
+		);
+	}
+
+	// Count by severity
+	const errorCount = data.diagnostics.filter(
+		(d: any) => d.severity === 'error',
+	).length;
+	const warningCount = data.diagnostics.filter(
+		(d: any) => d.severity === 'warning',
+	).length;
+	const infoCount = data.diagnostics.filter(
+		(d: any) => d.severity === 'info',
+	).length;
+	const hintCount = data.diagnostics.filter(
+		(d: any) => d.severity === 'hint',
+	).length;
+
+	return (
+		<Box marginLeft={2}>
+			<Text color="gray" dimColor>
+				└─ Found {diagnosticsCount} diagnostic(s)
+				{errorCount > 0 && ` (${errorCount} error${errorCount > 1 ? 's' : ''})`}
+				{warningCount > 0 &&
+					` (${warningCount} warning${warningCount > 1 ? 's' : ''})`}
+				{infoCount > 0 && ` (${infoCount} info)`}
+				{hintCount > 0 && ` (${hintCount} hint${hintCount > 1 ? 's' : ''})`}
 			</Text>
 		</Box>
 	);

@@ -854,6 +854,10 @@ export type TranslationKeys = {
 		// Pending
 		pendingMessageWaiting: string;
 		pendingToolConfirmation: string;
+		pendingMessagesTitle: string;
+		pendingMessagesFooter: string;
+		pendingMessagesEscHint: string;
+		pendingMessagesImagesAttached: string;
 		// Press keys hints
 		pressEscToClose: string;
 		pressEnterToToggle: string;

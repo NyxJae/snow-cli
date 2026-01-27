@@ -49,6 +49,7 @@ import {useSnapshotState} from '../../hooks/session/useSnapshotState.js';
 import {useStreamingState} from '../../hooks/conversation/useStreamingState.js';
 import {useCommandHandler} from '../../hooks/conversation/useCommandHandler.js';
 import {useTerminalSize} from '../../hooks/ui/useTerminalSize.js';
+import {useTerminalFocus} from '../../hooks/ui/useTerminalFocus.js';
 import {useBashMode} from '../../hooks/input/useBashMode.js';
 import {usePanelState} from '../../hooks/ui/usePanelState.js';
 
@@ -170,6 +171,12 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		text: string;
 		images?: Array<{type: 'image'; data: string; mimeType: string}>;
 	} | null>(null);
+
+	// 输入框草稿：用于输入区域被条件隐藏后恢复时，保持输入内容
+	const [inputDraftContent, setInputDraftContent] = useState<{
+		text: string;
+		images?: Array<{type: 'image'; data: string; mimeType: string}>;
+	} | null>(null);
 	// BashMode sensitive command confirmation state
 	const [bashSensitiveCommand, setBashSensitiveCommand] = useState<{
 		command: string;
@@ -238,6 +245,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const bashMode = useBashMode();
 	const terminalExecutionState = useTerminalExecutionState();
 	const backgroundProcesses = useBackgroundProcesses();
+	const {hasFocus} = useTerminalFocus();
 
 	// Background process panel state
 	const [selectedProcessIndex, setSelectedProcessIndex] = useState(0);
@@ -511,7 +519,10 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		(global as any).__stopCodebaseIndexing = async () => {
 			if (codebaseAgentRef.current) {
 				await codebaseAgentRef.current.stop();
+				codebaseAgentRef.current.stopWatching();
 				setCodebaseIndexing(false);
+				setWatcherEnabled(false);
+				setCodebaseProgress(null);
 			}
 		};
 
@@ -1125,9 +1136,37 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			return;
 		}
 
-		// 仅在终端聚焦时处理 ESC 中断
-		const abortController = streamingState.abortController;
-		if (key.escape && streamingState.isStreaming && abortController) {
+		// Only handle ESC interrupt if terminal has focus
+		if (
+			key.escape &&
+			streamingState.isStreaming &&
+			streamingState.abortController &&
+			hasFocus
+		) {
+			// 当 AI 正在生成且存在 pending 消息：优先撤回 pending，合并写回输入框。
+			// 该按键仅做撤回，不触发中断；下一次按 ESC 再进入中断流程。
+			if (pendingMessages.length > 0) {
+				const mergedText = pendingMessages
+					.map(m => (m.text || '').trim())
+					.filter(Boolean)
+					.join('\n\n');
+				const mergedImages = pendingMessages.flatMap(m => m.images ?? []);
+
+				setRestoreInputContent({
+					text: mergedText,
+					images:
+						mergedImages.length > 0
+							? mergedImages.map(img => ({
+									type: 'image' as const,
+									data: img.data,
+									mimeType: img.mimeType,
+							  }))
+							: undefined,
+				});
+				setPendingMessages([]);
+				return;
+			}
+
 			userInterruptedRef.current = true;
 
 			// 设置 stopping 状态,显示停止中的提示
@@ -1137,7 +1176,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			streamingState.setRetryStatus(null);
 			streamingState.setCodebaseSearchStatus(null);
 			// 中断 controller
-			abortController.abort();
+			streamingState.abortController.abort();
 
 			// 立即清理重试状态
 			streamingState.setRetryStatus(null);
@@ -1145,24 +1184,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			// 移除所有待处理的工具调用消息
 			setMessages(prev => prev.filter(msg => !msg.toolPending));
 
-			// 恢复全部 pendingMessages 到输入框,而不是只恢复第一条
-			if (pendingMessages.length > 0) {
-				const combinedText = pendingMessages
-					.map(message => message.text)
-					.join('\n\n');
-				const combinedImages = pendingMessages.flatMap(message =>
-					(message.images || []).map(img => ({
-						type: 'image' as const,
-						data: img.data,
-						mimeType: img.mimeType,
-					})),
-				);
-				setRestoreInputContent({
-					text: combinedText,
-					images: combinedImages.length > 0 ? combinedImages : undefined,
-				});
-			}
-			// 清空 pendingMessages,避免中断后自动发送
+			// Clear pending messages to prevent auto-send after abort
 			setPendingMessages([]);
 
 			// 注意:不要手动清空 isStopping
@@ -1624,6 +1646,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 								: undefined
 						}
 						initialContent={restoreInputContent}
+						draftContent={inputDraftContent}
+						onDraftChange={setInputDraftContent}
 						onContextPercentageChange={setCurrentContextPercentage}
 						showProfilePicker={showProfilePanel}
 						setShowProfilePicker={setShowProfilePanel}

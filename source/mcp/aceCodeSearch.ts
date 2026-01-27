@@ -736,7 +736,7 @@ export class ACECodeSearchService {
 		pattern: string,
 		fileGlob?: string,
 		maxResults: number = 100,
-		isRegex: boolean = false,
+		isRegex: boolean = true,
 	): Promise<
 		Array<{filePath: string; line: number; column: number; content: string}>
 	> {
@@ -956,7 +956,7 @@ export class ACECodeSearchService {
 	private async jsTextSearch(
 		pattern: string,
 		fileGlob?: string,
-		isRegex: boolean = false,
+		isRegex: boolean = true,
 		maxResults: number = 100,
 	): Promise<
 		Array<{filePath: string; line: number; column: number; content: string}>
@@ -1114,7 +1114,7 @@ export class ACECodeSearchService {
 	async textSearch(
 		pattern: string,
 		fileGlob?: string,
-		isRegex: boolean = false,
+		isRegex: boolean = true,
 		maxResults: number = 100,
 	): Promise<
 		Array<{filePath: string; line: number; column: number; content: string}>
@@ -1557,7 +1557,7 @@ export const mcpTools = [
 				pattern: {
 					type: 'string',
 					description:
-						'Text pattern or regex to search for (e.g., "TODO:", "import.*from", "throw new Error")',
+						'Text pattern or regex to search for. Examples: "TODO:" (literal), "import.*from" (regex), "tool_call|toolCall" (regex with OR). By default, pattern is treated as regex. Set isRegex to false for literal string search.',
 				},
 				fileGlob: {
 					type: 'string',
@@ -1567,8 +1567,8 @@ export const mcpTools = [
 				isRegex: {
 					type: 'boolean',
 					description:
-						'Whether the pattern is a regular expression (default: false for literal text search)',
-					default: false,
+						'Whether to force regex mode. If not specified, the tool defaults to regex mode. Set to false to use literal string search.',
+					default: true,
 				},
 				maxResults: {
 					type: 'number',
