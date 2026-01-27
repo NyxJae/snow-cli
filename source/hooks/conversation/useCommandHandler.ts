@@ -450,14 +450,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						// Hook passed, now clear session
 						resetTerminal(stdout);
 						const currentSession = sessionManager.getCurrentSession();
-						if (currentSession) {
-							try {
-								await getTodoService().deleteTodoList(currentSession.id);
-								todoEvents.emitTodoUpdate(currentSession.id, []);
-							} catch (error) {
-								console.warn('Failed to clear TODO list:', error);
-							}
-						}
+						todoEvents.emitTodoUpdate(currentSession?.id ?? '', []);
 						sessionManager.clearCurrentSession();
 						options.clearSavedMessages();
 						options.setMessages([]);

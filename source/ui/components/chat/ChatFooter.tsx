@@ -181,6 +181,7 @@ export default function ChatFooter(props: ChatFooterProps) {
 						setMainAgentSearchQuery={props.setMainAgentSearchQuery}
 						getFilteredMainAgents={props.getFilteredMainAgents}
 						onSwitchMainAgent={props.onSwitchMainAgent}
+						onMainAgentSelect={props.onMainAgentSelect}
 					/>
 
 					<Box marginTop={1}>
