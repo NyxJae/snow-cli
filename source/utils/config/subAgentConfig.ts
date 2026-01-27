@@ -16,7 +16,7 @@ export interface SubAgent {
 	description: string;
 	systemPrompt?: string;
 	tools?: string[];
-	role?: string;
+	subAgentRole?: string;
 	createdAt?: string;
 	updatedAt?: string;
 	builtin?: boolean;
@@ -61,7 +61,7 @@ const BUILTIN_AGENTS: SubAgent[] = [
 		name: 'Explore Agent',
 		description:
 			'Specialized for quickly exploring and understanding codebases. Excels at searching code, finding definitions, analyzing code structure and dependencies. Read-only operations.',
-		role: `# Code Exploration Specialist
+		subAgentRole: `# Code Exploration Specialist
 
 ## Core Mission
 You are a specialized code exploration agent focused on rapidly understanding codebases, locating implementations, and analyzing code relationships. Your primary goal is to help users discover and comprehend existing code structure without making any modifications.
@@ -156,7 +156,7 @@ You are a specialized code exploration agent focused on rapidly understanding co
 		name: 'Plan Agent',
 		description:
 			'Specialized for planning complex tasks. Analyzes requirements, explores code, identifies relevant files, and creates detailed implementation plans. Read-only operations.',
-		role: `# Task Planning Specialist
+		subAgentRole: `# Task Planning Specialist
 
 ## Core Mission
 You are a specialized planning agent focused on analyzing requirements, exploring codebases, and creating detailed implementation plans. Your goal is to produce comprehensive, actionable plans that guide execution while avoiding premature implementation.
@@ -308,7 +308,7 @@ ALTERNATIVE APPROACHES:
 		name: 'General Purpose Agent',
 		description:
 			'General-purpose multi-step task execution agent. Has complete tool access for searching, modifying files, and executing commands. Best for complex tasks requiring actual operations.',
-		role: `# General Purpose Task Executor
+		subAgentRole: `# General Purpose Task Executor
 
 ## Core Mission
 You are a versatile task execution agent with full tool access, capable of handling complex multi-step implementations. Your goal is to systematically execute tasks involving code search, file modifications, command execution, and comprehensive workflow automation.
@@ -701,7 +701,7 @@ export function createSubAgent(
 	name: string,
 	description: string,
 	tools: string[],
-	role?: string,
+	subAgentRole?: string,
 	configProfile?: string,
 ): SubAgent {
 	const userAgents = getUserSubAgents();
@@ -711,7 +711,7 @@ export function createSubAgent(
 		id: generateId(),
 		name,
 		description,
-		role,
+		subAgentRole,
 		tools,
 		createdAt: now,
 		updatedAt: now,
@@ -735,7 +735,7 @@ export function updateSubAgent(
 	updates: {
 		name?: string;
 		description?: string;
-		role?: string;
+		subAgentRole?: string;
 		tools?: string[];
 		configProfile?: string;
 		customSystemPrompt?: string;
@@ -763,7 +763,10 @@ export function updateSubAgent(
 				updates.description ??
 				existingUserCopy?.description ??
 				agent.description,
-			role: updates.role ?? existingUserCopy?.role ?? agent.role,
+			subAgentRole:
+				updates.subAgentRole ??
+				existingUserCopy?.subAgentRole ??
+				agent.subAgentRole,
 			tools: updates.tools ?? existingUserCopy?.tools ?? agent.tools,
 			createdAt: existingUserCopy?.createdAt ?? agent.createdAt ?? now,
 			updatedAt: now,
@@ -799,7 +802,7 @@ export function updateSubAgent(
 		id: existingAgent.id,
 		name: updates.name ?? existingAgent.name,
 		description: updates.description ?? existingAgent.description,
-		role: updates.role ?? existingAgent.role,
+		subAgentRole: updates.subAgentRole ?? existingAgent.subAgentRole,
 		tools: updates.tools ?? existingAgent.tools,
 		createdAt: existingAgent.createdAt,
 		updatedAt: now,
@@ -878,6 +881,7 @@ export function resetBuiltinAgent(id: string): boolean {
 export function validateSubAgent(data: {
 	name: string;
 	description: string;
+	subAgentRole?: string;
 	tools: string[];
 }): string[] {
 	const errors: string[] = [];
@@ -892,6 +896,10 @@ export function validateSubAgent(data: {
 
 	if (data.description && data.description.length > 500) {
 		errors.push('Description must be less than 500 characters');
+	}
+
+	if (data.subAgentRole && data.subAgentRole.length > 5000) {
+		errors.push('Role definition must be less than 5000 characters');
 	}
 
 	if (!data.tools || data.tools.length === 0) {

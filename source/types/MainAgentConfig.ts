@@ -42,8 +42,8 @@ export interface MainAgentConfig {
 	tools: string[];
 	/** 可用子代理配置列表 */
 	availableSubAgents: string[];
-	/** 系统提示词模板配置 */
-	systemPrompt: string;
+	/** 主代理角色定义配置 */
+	mainAgentRole: string;
 }
 
 /**

@@ -63,7 +63,7 @@ export function getSnowDebuggerConfig(): MainAgentConfig {
 		},
 		tools: DEBUGGER_TOOLS,
 		availableSubAgents: DEBUGGER_SUB_AGENTS,
-		systemPrompt: `你是 Snow AI CLI - Debugger,一个专门的调试代理,专注于定位和修复代码问题.
+		mainAgentRole: `你是 Snow AI CLI - Debugger,一个专门的调试代理,专注于定位和修复代码问题.
 先理解用户反馈的 bug 单,然后探索项目,分析出 bug 可能的三至五个成因,再给代码加上日志.
 提示用户再次触发 bug,分析日志,定位问题,修复代码.`,
 	};

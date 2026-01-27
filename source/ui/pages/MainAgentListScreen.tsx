@@ -97,7 +97,7 @@ export default function MainAgentListScreen({
 							config.basicInfo.description ===
 							builtinConfig.basicInfo.description;
 						const promptMatch =
-							config.systemPrompt === builtinConfig.systemPrompt;
+							config.mainAgentRole === builtinConfig.mainAgentRole;
 
 						// 确保tools和availableSubAgents是数组并且长度相同
 						const configTools = Array.isArray(config.tools) ? config.tools : [];

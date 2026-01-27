@@ -828,12 +828,12 @@ OPEN QUESTIONS:
 		// Build conversation history for sub-agent
 		const messages: ChatMessage[] = [];
 
-		// Build final prompt with 子代理配置role + AGENTS.md + 系统环境 + 平台指导
+		// Build final prompt with 子代理配置subAgentRole + AGENTS.md + 系统环境 + 平台指导
 		let finalPrompt = prompt;
 
 		// Append agent-specific role if configured
-		if (agent.role) {
-			finalPrompt = `${finalPrompt}\n\n${agent.role}`;
+		if (agent.subAgentRole) {
+			finalPrompt = `${finalPrompt}\n\n${agent.subAgentRole}`;
 		}
 		// Append AGENTS.md content if available
 		const agentsPrompt = getAgentsPrompt();

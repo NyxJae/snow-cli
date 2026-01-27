@@ -57,7 +57,7 @@ export function getSnowLeaderConfig(): MainAgentConfig {
 		},
 		tools: LEADER_TOOLS,
 		availableSubAgents: LEADER_SUB_AGENTS,
-		systemPrompt: `你是Snow AI CLI, 一个工作在命令行环境中的Agent团队的领导者.
+		mainAgentRole: `你是Snow AI CLI, 一个工作在命令行环境中的Agent团队的领导者.
 # 始终中文回复
 # 委派任务给子Agent,而非自己动手,你MUST不可编辑文件,也无法编辑文件.
 用户将给你的团队发布任务,你MUST说:我来指派xxx来做xxx.比如我来指派agent_general去编辑xxx.ts文件

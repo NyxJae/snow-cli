@@ -303,10 +303,10 @@ export class MainAgentManager {
 	 * @returns 纯净的系统提示词
 	 */
 	private generateCleanSystemPrompt(config: MainAgentConfig): string {
-		const {systemPrompt} = config;
+		const {mainAgentRole} = config;
 
 		// 创建基础提示词
-		let prompt = systemPrompt;
+		let prompt = mainAgentRole;
 
 		// 添加 AGENTS.md 内容
 		const agentsPrompt = getAgentsPrompt();

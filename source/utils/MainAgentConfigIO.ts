@@ -476,8 +476,18 @@ export function validateConfigFile(configFile: MainAgentConfigFile): {
 			warnings.push(`代理 "${agentId}" 缺少名称`);
 		}
 
-		if (!['general', 'team'].includes(agentConfig.basicInfo.type)) {
-			errors.push(`代理 "${agentId}" 的类型必须是general或team`);
+		if (
+			![
+				'general',
+				'leader',
+				'requirement_analyzer',
+				'debugger',
+				'vulnerability_hunter',
+			].includes(agentConfig.basicInfo.type)
+		) {
+			errors.push(
+				`代理 "${agentId}" 的类型必须是general、leader、requirement_analyzer、debugger或vulnerability_hunter`,
+			);
 		}
 
 		// 工具配置验证
@@ -488,6 +498,16 @@ export function validateConfigFile(configFile: MainAgentConfigFile): {
 		// 子代理配置验证
 		if (!Array.isArray(agentConfig.availableSubAgents)) {
 			errors.push(`代理 "${agentId}" 的availableSubAgents字段必须是数组`);
+		}
+
+		// 主代理角色定义验证
+		if (
+			!agentConfig.mainAgentRole ||
+			agentConfig.mainAgentRole.trim().length === 0
+		) {
+			warnings.push(
+				`代理 "${agentId}" 的主代理角色定义为空，将使用默认角色定义`,
+			);
 		}
 	}
 

@@ -50,8 +50,10 @@ export function createDefaultMainAgentConfigFile() {
 export function validateMainAgentConfig(config: MainAgentConfig): {
 	valid: boolean;
 	errors: string[];
+	warnings: string[];
 } {
 	const errors: string[] = [];
+	const warnings: string[] = [];
 
 	// 验证基本信息
 	if (!config.basicInfo?.id) {
@@ -86,8 +88,14 @@ export function validateMainAgentConfig(config: MainAgentConfig): {
 		});
 	}
 
+	// 验证主代理角色定义
+	if (!config.mainAgentRole || config.mainAgentRole.trim().length === 0) {
+		warnings.push('主代理角色定义为空，将使用默认角色定义');
+	}
+
 	return {
 		valid: errors.length === 0,
 		errors,
+		warnings,
 	};
 }

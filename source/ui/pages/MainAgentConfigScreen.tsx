@@ -75,7 +75,7 @@ type ToolCategory = {
 type FormField =
 	| 'name'
 	| 'description'
-	| 'systemPrompt'
+	| 'mainAgentRole'
 	| 'tools'
 	| 'subAgents';
 
@@ -89,8 +89,8 @@ export default function MainAgentConfigScreen({
 	const {t} = useI18n();
 	const [agentName, setAgentName] = useState('');
 	const [description, setDescription] = useState('');
-	const [systemPrompt, setSystemPrompt] = useState('');
-	const [systemPromptExpanded, setSystemPromptExpanded] = useState(false);
+	const [mainAgentRole, setMainAgentRole] = useState('');
+	const [mainAgentRoleExpanded, setMainAgentRoleExpanded] = useState(false);
 	const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
 	const [selectedSubAgents, setSelectedSubAgents] = useState<Set<string>>(
 		new Set(),
@@ -186,7 +186,7 @@ export default function MainAgentConfigScreen({
 			// 设置默认值
 			setAgentName('');
 			setDescription('');
-			setSystemPrompt(
+			setMainAgentRole(
 				'你是Snow AI CLI自定义主代理。\n\n请根据用户需求提供帮助。',
 			);
 			setSelectedTools(new Set());
@@ -217,7 +217,7 @@ export default function MainAgentConfigScreen({
 		if (agent) {
 			setAgentName(agent.basicInfo.name);
 			setDescription(agent.basicInfo.description);
-			setSystemPrompt(agent.systemPrompt || '');
+			setMainAgentRole(agent.mainAgentRole || '');
 			// 处理工具配置：MainAgentConfig的tools已经是string[]类型
 			const tools = Array.isArray(agent.tools) ? agent.tools : [];
 			// 注意：这里不进行反向映射，因为主代理配置界面需要等待MCP服务加载
@@ -476,7 +476,7 @@ export default function MainAgentConfigScreen({
 				builtinAgent &&
 				agentName.trim() === builtinAgent.basicInfo.name &&
 				description.trim() === builtinAgent.basicInfo.description &&
-				systemPrompt.trim() === builtinAgent.systemPrompt.trim() &&
+				mainAgentRole.trim() === builtinAgent.mainAgentRole.trim() &&
 				JSON.stringify(Array.from(selectedTools).sort()) ===
 					JSON.stringify((builtinAgent.tools || []).sort()) &&
 				JSON.stringify(Array.from(selectedSubAgents).sort()) ===
@@ -641,7 +641,7 @@ export default function MainAgentConfigScreen({
 						},
 						tools: [],
 						availableSubAgents: [],
-						systemPrompt: '',
+						mainAgentRole: '',
 					};
 
 				const updatedAgent: MainAgentConfig = {
@@ -658,7 +658,7 @@ export default function MainAgentConfigScreen({
 					},
 					tools: validTools,
 					availableSubAgents: validSubAgents,
-					systemPrompt: systemPrompt,
+					mainAgentRole: mainAgentRole,
 				};
 
 				configFile.agents[finalAgentId] = updatedAgent;
@@ -678,7 +678,7 @@ export default function MainAgentConfigScreen({
 	}, [
 		agentName,
 		description,
-		systemPrompt,
+		mainAgentRole,
 		selectedTools,
 		selectedSubAgents,
 		agentId,
@@ -706,14 +706,14 @@ export default function MainAgentConfigScreen({
 		const mainFields: FormField[] = [
 			'name',
 			'description',
-			'systemPrompt',
+			'mainAgentRole',
 			'tools',
 			'subAgents',
 		];
 		const currentFieldIndex = mainFields.indexOf(currentField);
 
 		if (key.upArrow) {
-			if (currentField === 'systemPrompt') {
+			if (currentField === 'mainAgentRole') {
 				// Jump to previous main field
 				setCurrentField('description');
 				return;
@@ -729,7 +729,7 @@ export default function MainAgentConfigScreen({
 					);
 				} else {
 					// At top of tools, jump to previous field
-					setCurrentField('systemPrompt');
+					setCurrentField('mainAgentRole');
 				}
 				return;
 			} else if (currentField === 'subAgents') {
@@ -751,7 +751,7 @@ export default function MainAgentConfigScreen({
 		}
 
 		if (key.downArrow) {
-			if (currentField === 'systemPrompt') {
+			if (currentField === 'mainAgentRole') {
 				// Jump to next main field
 				setCurrentField('tools');
 				setSelectedCategoryIndex(0);
@@ -791,9 +791,9 @@ export default function MainAgentConfigScreen({
 			}
 		}
 
-		// System prompt field controls - Space to toggle expansion
-		if (currentField === 'systemPrompt' && input === ' ') {
-			setSystemPromptExpanded(prev => !prev);
+		// Main agent role field controls - Space to toggle expansion
+		if (currentField === 'mainAgentRole' && input === ' ') {
+			setMainAgentRoleExpanded(prev => !prev);
 			return;
 		}
 
@@ -1165,23 +1165,23 @@ export default function MainAgentConfigScreen({
 					</Box>
 				</Box>
 
-				{/* System Prompt */}
+				{/* Main Agent Role */}
 				<Box flexDirection="column">
 					<Text
 						bold
 						color={
-							currentField === 'systemPrompt'
+							currentField === 'mainAgentRole'
 								? theme.colors.menuSelected
 								: theme.colors.menuNormal
 						}
 					>
-						System Prompt
-						{systemPrompt && systemPrompt.length > 100 && (
+						Main Agent Role
+						{mainAgentRole && mainAgentRole.length > 100 && (
 							<Text color={theme.colors.menuSecondary} dimColor>
 								{' '}
 								{t.subAgentConfig.roleExpandHint.replace(
 									'{status}',
-									systemPromptExpanded
+									mainAgentRoleExpanded
 										? t.subAgentConfig.roleExpanded
 										: t.subAgentConfig.roleCollapsed,
 								)}
@@ -1189,11 +1189,11 @@ export default function MainAgentConfigScreen({
 						)}
 					</Text>
 					<Box marginLeft={2} flexDirection="column">
-						{systemPrompt &&
-						systemPrompt.length > 100 &&
-						!systemPromptExpanded ? (
+						{mainAgentRole &&
+						mainAgentRole.length > 100 &&
+						!mainAgentRoleExpanded ? (
 							<Text color={theme.colors.menuNormal}>
-								{systemPrompt.substring(0, 100)}...
+								{mainAgentRole.substring(0, 100)}...
 								<Text color={theme.colors.menuSecondary} dimColor>
 									{' '}
 									{t.subAgentConfig.roleViewFull}
@@ -1201,10 +1201,10 @@ export default function MainAgentConfigScreen({
 							</Text>
 						) : (
 							<TextInput
-								value={systemPrompt}
-								onChange={value => setSystemPrompt(stripFocusArtifacts(value))}
-								placeholder="Enter system prompt"
-								focus={currentField === 'systemPrompt'}
+								value={mainAgentRole}
+								onChange={value => setMainAgentRole(stripFocusArtifacts(value))}
+								placeholder="Enter main agent role"
+								focus={currentField === 'mainAgentRole'}
 							/>
 						)}
 					</Box>

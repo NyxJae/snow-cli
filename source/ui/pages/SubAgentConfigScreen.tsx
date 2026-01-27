@@ -73,7 +73,12 @@ type ToolCategory = {
 	tools: string[];
 };
 
-type FormField = 'name' | 'description' | 'role' | 'configProfile' | 'tools';
+type FormField =
+	| 'name'
+	| 'description'
+	| 'subAgentRole'
+	| 'configProfile'
+	| 'tools';
 
 export default function SubAgentConfigScreen({
 	onBack,
@@ -85,8 +90,8 @@ export default function SubAgentConfigScreen({
 	const {t} = useI18n();
 	const [agentName, setAgentName] = useState('');
 	const [description, setDescription] = useState('');
-	const [role, setRole] = useState('');
-	const [roleExpanded, setRoleExpanded] = useState(false);
+	const [subAgentRole, setSubAgentRole] = useState('');
+	const [subAgentRoleExpanded, setSubAgentRoleExpanded] = useState(false);
 	const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
 	const [currentField, setCurrentField] = useState<FormField>('name');
 	const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
@@ -214,7 +219,7 @@ export default function SubAgentConfigScreen({
 
 		setAgentName(agent.name);
 		setDescription(agent.description);
-		setRole(agent.role || '');
+		setSubAgentRole(agent.subAgentRole || '');
 		setSelectedTools(new Set(agent.tools || []));
 
 		// 加载配置文件索引
@@ -420,6 +425,7 @@ export default function SubAgentConfigScreen({
 		const errors = validateSubAgent({
 			name: agentName,
 			description: description,
+			subAgentRole: subAgentRole || undefined,
 			tools: Array.from(selectedTools),
 		});
 		if (errors.length > 0) {
@@ -440,7 +446,7 @@ export default function SubAgentConfigScreen({
 				const updateData: any = {
 					name: agentName,
 					description: description,
-					role: role || undefined,
+					subAgentRole: subAgentRole || undefined,
 					tools: Array.from(selectedTools),
 					configProfile: selectedProfile || undefined,
 				};
@@ -452,7 +458,7 @@ export default function SubAgentConfigScreen({
 					agentName,
 					description,
 					Array.from(selectedTools),
-					role || undefined,
+					subAgentRole || undefined,
 					selectedProfile || undefined,
 				);
 			}
@@ -470,16 +476,14 @@ export default function SubAgentConfigScreen({
 	}, [
 		agentName,
 		description,
-		role,
+		subAgentRole,
 		selectedTools,
 		confirmedConfigProfileIndex,
 		availableProfiles,
-
 		isEditMode,
 		agentId,
 		t,
 	]);
-
 	useInput((rawInput, key) => {
 		const input = stripFocusArtifacts(rawInput);
 
@@ -496,21 +500,12 @@ export default function SubAgentConfigScreen({
 			onBack();
 			return;
 		}
-		// ========================================
-		// 导航逻辑说明:
-		// ↑↓键: 在主字段间导航 (name → description → role → configProfile → tools)
-
-		//       在配置列表字段内导航，到达边界时跳到相邻主字段
-		//       在 tools 字段内导航工具列表，到达边界时跳到相邻主字段
-		// ←→键: 在所有主字段之间切换 (除了 tools 字段中用于切换工具分类)
-		// Space: 切换选中状态
-		// ========================================
 
 		// 定义主字段顺序（用于导航）
 		const mainFields: FormField[] = [
 			'name',
 			'description',
-			'role',
+			'subAgentRole',
 			'configProfile',
 			'tools',
 		];
@@ -524,7 +519,7 @@ export default function SubAgentConfigScreen({
 					selectedConfigProfileIndex === 0
 				) {
 					// 跳到上一个主字段
-					setCurrentField('role');
+					setCurrentField('subAgentRole');
 				} else {
 					setSelectedConfigProfileIndex(prev => prev - 1);
 				}
@@ -591,9 +586,9 @@ export default function SubAgentConfigScreen({
 			return;
 		}
 
-		// Role field controls - Space to toggle expansion
-		if (currentField === 'role' && input === ' ') {
-			setRoleExpanded(prev => !prev);
+		// SubAgent role field controls - Space to toggle expansion
+		if (currentField === 'subAgentRole' && input === ' ') {
+			setSubAgentRoleExpanded(prev => !prev);
 			return;
 		}
 
@@ -962,23 +957,23 @@ export default function SubAgentConfigScreen({
 					</Box>
 				</Box>
 
-				{/* Role */}
+				{/* SubAgent Role */}
 				<Box flexDirection="column">
 					<Text
 						bold
 						color={
-							currentField === 'role'
+							currentField === 'subAgentRole'
 								? theme.colors.menuSelected
 								: theme.colors.menuNormal
 						}
 					>
 						{t.subAgentConfig.roleOptional}
-						{role && role.length > 100 && (
+						{subAgentRole && subAgentRole.length > 100 && (
 							<Text color={theme.colors.menuSecondary} dimColor>
 								{' '}
 								{t.subAgentConfig.roleExpandHint.replace(
 									'{status}',
-									roleExpanded
+									subAgentRoleExpanded
 										? t.subAgentConfig.roleExpanded
 										: t.subAgentConfig.roleCollapsed,
 								)}
@@ -986,9 +981,11 @@ export default function SubAgentConfigScreen({
 						)}
 					</Text>
 					<Box marginLeft={2} flexDirection="column">
-						{role && role.length > 100 && !roleExpanded ? (
+						{subAgentRole &&
+						subAgentRole.length > 100 &&
+						!subAgentRoleExpanded ? (
 							<Text color={theme.colors.menuNormal}>
-								{role.substring(0, 100)}...
+								{subAgentRole.substring(0, 100)}...
 								<Text color={theme.colors.menuSecondary} dimColor>
 									{' '}
 									{t.subAgentConfig.roleViewFull}
@@ -996,10 +993,10 @@ export default function SubAgentConfigScreen({
 							</Text>
 						) : (
 							<TextInput
-								value={role}
-								onChange={value => setRole(stripFocusArtifacts(value))}
+								value={subAgentRole}
+								onChange={value => setSubAgentRole(stripFocusArtifacts(value))}
 								placeholder={t.subAgentConfig.rolePlaceholder}
-								focus={currentField === 'role'}
+								focus={currentField === 'subAgentRole'}
 								// 内置代理也可以编辑,修改后会保存到用户配置覆盖内置配置
 							/>
 						)}
