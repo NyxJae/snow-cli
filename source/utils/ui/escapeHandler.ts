@@ -173,7 +173,7 @@ export function trimPairIfPossible(
 	if (trimmedOccurrences === expectedOccurrences) {
 		return {
 			target: trimmedTarget,
-			paired: pairedString.trim(),
+			paired: pairedString,
 		};
 	}
 
