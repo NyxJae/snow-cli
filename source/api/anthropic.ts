@@ -153,12 +153,12 @@ function convertToolsToAnthropic(
 }
 
 /**
- * Convert our ChatMessage format to Anthropic's message format
- * Adds cache_control to system prompt and last user message for prompt caching
- * @param messages - The messages to convert
- * @param includeBuiltinSystemPrompt - Whether to include builtin system prompt (default true)
- * @param customSystemPromptOverride - Allow override for sub-agents
- * @param cacheTTL - Cache TTL for prompt caching (default: '5m')
+ * 将我们的ChatMessage格式转换为Anthropic格式
+ * 为系统提示词和最后一条user消息添加cache_control以支持提示词缓存
+ * @param messages - 要转换的消息数组
+ * @param includeBuiltinSystemPrompt - 是否包含内置系统提示词(默认true)
+ * @param customSystemPromptOverride - 允许子代理覆盖
+ * @param cacheTTL - 提示词缓存的TTL(默认: '5m')
  */
 function convertToAnthropicMessages(
 	messages: ChatMessage[],
@@ -444,16 +444,8 @@ function convertToAnthropicMessages(
 	} else if (isSubAgentCall && subAgentSystemPrompt) {
 		// 子代理调用且没有自定义系统提示词：将子代理组装提示词作为系统提示词
 		systemContent = subAgentSystemPrompt;
-		// 从 messages 中移除第一条（subAgentSystemPrompt），因为它已经提升为系统提示词
-		const firstUserMsg = anthropicMessages.find(
-			msg => msg.role === 'user' && typeof msg.content === 'string',
-		);
-		if (firstUserMsg) {
-			const idx = anthropicMessages.indexOf(firstUserMsg);
-			if (idx === 0) {
-				anthropicMessages.shift();
-			}
-		}
+		// 不再从messages中移除第一条，因为finalPrompt现在作为特殊user存在
+		// finalPrompt会同时在system和user中存在
 	} else if (!systemContent && effectiveIncludeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
 		systemContent = mainAgentManager.getSystemPrompt();

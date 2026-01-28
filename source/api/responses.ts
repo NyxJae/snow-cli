@@ -386,16 +386,8 @@ function convertToResponseInput(
 	} else if (isSubAgentCall && subAgentSystemPrompt) {
 		// 子代理调用且没有自定义系统提示词：将子代理组装提示词作为系统提示词
 		systemInstructions = subAgentSystemPrompt;
-		// 从 messages 中移除第一条（subAgentSystemPrompt），因为它已经提升为系统提示词
-		const firstUserMsg = result.find(
-			msg => msg.type === 'message' && msg.role === 'user',
-		);
-		if (firstUserMsg) {
-			const idx = result.indexOf(firstUserMsg);
-			if (idx === 0) {
-				result.shift();
-			}
-		}
+		// 不再从messages中移除第一条，因为finalPrompt现在作为特殊user存在
+		// finalPrompt会同时在system和user中存在
 	} else if (effectiveIncludeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
 		systemInstructions = mainAgentManager.getSystemPrompt();
@@ -408,7 +400,7 @@ function convertToResponseInput(
 }
 
 /**
- * Parse Server-Sent Events (SSE) stream
+ * 解析服务器发送事件(SSE)流
  */
 async function* parseSSEStream(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -480,7 +472,12 @@ async function* parseSSEStream(
 }
 
 /**
- * 使用 Responses API 创建流式响应（带自动工具调用）
+ * 使用Responses API创建流式聊天补全
+ *
+ * @param options - Responses API调用选项
+ * @param abortSignal - 中断信号，用于取消请求
+ * @param onRetry - 重试回调函数，在重试时调用
+ * @returns 流式响应生成器
  */
 export async function* createStreamingResponse(
 	options: ResponseOptions,

@@ -1,1128 +1,809 @@
-# 角色定义命名规范调整 - 实施计划
+# 发送前添加的特殊user实际发送顺序修改 - 实施计划
 
 ## 项目概述
 
-统一主代理和子代理的角色定义变量命名，提升代码可读性与可维护性，避免与全局系统提示词 `systemPrompt` 混淆。
+将主代理和子代理发送给API的消息序列中的特殊user消息(角色定义、TODO、有用信息、文件夹笔记)从固定位置(紧跟system消息之后)改为动态插入到倒数第5条位置,以提高模型注意力和KV缓存命中率。
 
-### 目标
+### 核心目标
 
-- 主代理角色定义: `systemPrompt` → `mainAgentRole`
-- 子代理角色定义: `role` → `subAgentRole`
-- 保留全局系统提示词的 `systemPrompt` 命名不变
+1. **动态插入位置**: 以倒数第5条附近为目标插入点,遇到工具调用块时向前移动,保证块完整
+2. **统一主代理与子代理**: 子代理需补上文件夹笔记,两者都插入4类特殊user,顺序一致
+3. **保持角色定义差异**: 主代理与子代理仍使用各自的角色定义配置,只统一插入策略与顺序
+4. **不改system消息位置**: system消息仍保持首条
 
-### 实施策略
+### 特殊user清单与顺序
 
-**破坏性更新**: 不提供向后兼容，旧字段名直接报错，用户需重新配置。
+1. Agent角色定义(主代理: mainAgentRole, 子代理: subAgentRole)
+2. TODO列表
+3. 有用信息
+4. 文件夹笔记
+
+---
+
+## 技术架构设计
+
+### 核心概念
+
+#### 1. 工具调用块(Tool Call Block)
+
+工具调用块是指一组连续的消息,包含:
+- **assistant消息**: 包含`tool_calls`数组
+- **tool消息**: 一个或多个,每个`tool消息`的`tool_call_id`对应assistant消息中某个`tool_call`的`id`
+
+**重要**: 工具调用块必须保持完整性,不能被其他消息打断。
+
+#### 2. 倒数第5条插入策略
+
+- 目标位置: 消息数组长度减去5的位置索引
+- 安全检查: 如果目标位置落在工具调用块内,向前移动到该块之前
+- 边缘情况: 如果消息总数少于5条,则直接追加到末尾
+
+#### 3. 特殊user连续块插入
+
+根据用户确认的方案A,将所有4类特殊user作为一个连续块插入到计算出的安全位置。
+
+### 数据流设计
+
+```
+主代理流程:
+sessionInitializer.ts
+  ├─ 构建基础消息(包括system)
+  ├─ 收集历史消息
+  ├─ 调用动态插入逻辑
+  │   ├─ 收集4类特殊user
+  │   ├─ 识别工具调用块
+  │   ├─ 计算安全插入位置
+  │   └─ 插入特殊user块
+  └─ 返回最终消息数组
+
+子代理流程:
+subAgentExecutor.ts
+  ├─ 构建finalPrompt(包含subAgentRole)
+  ├─ 收集历史消息
+  ├─ 调用动态插入逻辑
+  │   ├─ 收集4类特殊user(包括文件夹笔记)
+  │   ├─ 识别工具调用块
+  │   ├─ 计算安全插入位置
+  │   └─ 插入特殊user块
+  └─ 返回最终消息数组
+```
 
 ---
 
 ## 实施阶段详解
 
-### 阶段 1: 修改类型定义
+### 阶段1: 工具调用块识别和处理
 
-**目标**: 修改 TypeScript 接口定义，为后续代码变更提供类型支持。
+**目标**: 创建通用的工具函数,用于识别工具调用块和计算安全的插入位置。
 
-#### 1.1 修改主代理配置接口
+#### 1.1 创建工具函数模块
 
-**文件**: `source/types/MainAgentConfig.ts`
+**文件**: `source/utils/message/messageUtils.ts` (新建)
 
-**位置**: Line 46
+**位置**: 创建新文件
 
 **修改内容**:
+
 ```typescript
-// 修改前
-export interface MainAgentConfig {
-  basicInfo: MainAgentBasicInfo;
-  tools: string[];
-  availableSubAgents: string[];
-  systemPrompt: string;  // ← 改为 mainAgentRole
+import type {ChatMessage} from '../../api/chat.js';
+
+/**
+ * 工具调用块信息
+ */
+export interface ToolCallBlock {
+  /** 块起始索引(assistant消息) */
+  startIndex: number;
+  /** 块结束索引(最后一个tool消息) */
+  endIndex: number;
+  /** 包含的工具调用ID集合 */
+  toolCallIds: Set<string>;
 }
 
-// 修改后
-export interface MainAgentConfig {
-  basicInfo: MainAgentBasicInfo;
-  tools: string[];
-  availableSubAgents: string[];
-  mainAgentRole: string;  // ← 新命名
+/**
+ * 识别消息序列中的工具调用块
+ * @param messages 消息数组
+ * @returns 工具调用块列表
+ */
+export function identifyToolCallBlocks(messages: ChatMessage[]): ToolCallBlock[] {
+  const blocks: ToolCallBlock[] = [];
+  
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    
+    // 找到包含tool_calls的assistant消息
+    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+      const toolCallIds = new Set(msg.tool_calls.map(tc => tc.id));
+      
+      // 查找紧随其后的tool消息
+      let endIndex = i;
+      for (let j = i + 1; j < messages.length; j++) {
+        const followingMsg = messages[j];
+        if (followingMsg.role === 'tool' && followingMsg.tool_call_id) {
+          if (toolCallIds.has(followingMsg.tool_call_id)) {
+            endIndex = j;
+          } else {
+            // 遇到不属于当前块的工具消息,停止
+            break;
+          }
+        } else if (followingMsg.role === 'assistant' && followingMsg.tool_calls) {
+          // 遇到下一个assistant消息,停止
+          break;
+        } else if (followingMsg.role === 'tool') {
+          // 遇到不属于当前块的工具消息,停止
+          break;
+        } else {
+          // 其他类型的消息,继续检查
+          continue;
+        }
+      }
+      
+      blocks.push({
+        startIndex: i,
+        endIndex,
+        toolCallIds,
+      });
+      
+      // 跳过已处理的块
+      i = endIndex;
+    }
+  }
+  
+  return blocks;
+}
+
+/**
+ * 计算安全的插入位置,避开工具调用块
+ * @param messages 消息数组
+ * @param targetIndex 目标插入位置索引
+ * @returns 安全的插入位置索引
+ */
+export function findSafeInsertPosition(
+  messages: ChatMessage[],
+  targetIndex: number,
+): number {
+  const blocks = identifyToolCallBlocks(messages);
+  
+  // 检查目标位置是否在某个工具调用块内
+  for (const block of blocks) {
+    if (targetIndex >= block.startIndex && targetIndex <= block.endIndex) {
+      // 目标位置在块内,返回块起始位置
+      return block.startIndex;
+    }
+  }
+  
+  // 目标位置安全,直接返回
+  return targetIndex;
+}
+
+/**
+ * 在指定位置安全地插入消息块
+ * @param messages 原始消息数组
+ * @param messagesToInsert 要插入的消息块
+ * @param insertIndex 插入位置索引
+ * @returns 新的消息数组
+ */
+export function insertMessagesAtPosition(
+  messages: ChatMessage[],
+  messagesToInsert: ChatMessage[],
+  insertIndex: number,
+): ChatMessage[] {
+  if (messagesToInsert.length === 0) {
+    return messages;
+  }
+  
+  // 确保插入位置在有效范围内
+  const safeIndex = Math.max(0, Math.min(insertIndex, messages.length));
+  
+  // 构建新数组
+  const result = [...messages.slice(0, safeIndex), ...messagesToInsert, ...messages.slice(safeIndex)];
+  
+  return result;
+}
+
+/**
+ * 计算倒数第N条的位置
+ * @param messages 消息数组
+ * @param count 倒数第几条(默认5)
+ * @returns 插入位置索引
+ */
+export function calculateReversePosition(
+  messages: ChatMessage[],
+  count: number = 5,
+): number {
+  const targetIndex = messages.length - count;
+  return Math.max(0, targetIndex);
 }
 ```
 
-#### 1.2 修改子代理配置接口
+#### 1.2 添加单元测试
 
-**文件**: `source/utils/config/subAgentConfig.ts`
+**文件**: `source/utils/message/__tests__/messageUtils.test.ts` (新建)
 
-**位置**: Line 19
+**位置**: 创建新文件
 
-**修改内容**:
+**测试用例**:
+
+1. 测试`identifyToolCallBlocks`:
+   - 无工具调用块的空消息数组
+   - 单个工具调用块
+   - 多个工具调用块
+   - 工具调用块不完整(缺少tool消息)
+   - 并行工具调用块
+
+2. 测试`findSafeInsertPosition`:
+   - 目标位置不在工具调用块内
+   - 目标位置在工具调用块起始
+   - 目标位置在工具调用块中间
+   - 目标位置在工具调用块结束
+
+3. 测试`insertMessagesAtPosition`:
+   - 在开头插入
+   - 在中间插入
+   - 在末尾插入
+   - 插入空消息数组
+
+4. 测试`calculateReversePosition`:
+   - 消息数组长度大于count
+   - 消息数组长度等于count
+   - 消息数组长度小于count
+   - 空消息数组
+
+---
+
+### 阶段2: 修改主代理消息构建逻辑
+
+**目标**: 修改主代理的消息构建流程,实现动态插入4类特殊user到倒数第5条位置。
+
+**文件**: `source/hooks/conversation/core/sessionInitializer.ts`
+
+**位置**: Lines 34-87
+
+**当前实现**:
 ```typescript
-// 修改前
-export interface SubAgent {
-  id: string;
-  name: string;
-  description: string;
-  systemPrompt?: string;
-  tools?: string[];
-  role?: string;  // ← 改为 subAgentRole
-  createdAt?: string;
-  updatedAt?: string;
-  builtin?: boolean;
-  configProfile?: string;
-}
-
-// 修改后
-export interface SubAgent {
-  id: string;
-  name: string;
-  description: string;
-  systemPrompt?: string;
-  tools?: string[];
-  subAgentRole?: string;  // ← 新命名
-  createdAt?: string;
-  updatedAt?: string;
-  builtin?: boolean;
-  configProfile?: string;
-}
-```
-
-#### 1.3 修改 updateSubAgent 函数参数类型
-
-**文件**: `source/utils/config/subAgentConfig.ts`
-
-**位置**: Line 738
-
-**修改内容**:
-```typescript
-// 修改前
-export function updateSubAgent(
-  id: string,
-  updates: {
-    name?: string;
-    description?: string;
-    role?: string;  // ← 改为 subAgentRole
-    tools?: string[];
-    configProfile?: string;
-    customSystemPrompt?: string;
-    customHeaders?: Record<string, string>;
+// Build conversation history with system prompt from mainAgentManager
+const conversationMessages: ChatMessage[] = [
+  {
+    role: 'system',
+    content: mainAgentManager.getSystemPrompt(),
   },
-): SubAgent | null
+];
 
-// 修改后
-export function updateSubAgent(
-  id: string,
-  updates: {
-    name?: string;
-    description?: string;
-    subAgentRole?: string;  // ← 新命名
-    tools?: string[];
-    configProfile?: string;
-    customSystemPrompt?: string;
-    customHeaders?: Record<string, string>;
+// If there are TODOs, add pinned context message at the front
+if (existingTodoList && existingTodoList.todos.length > 0) {
+  const todoContext = formatTodoContext(existingTodoList.todos);
+  conversationMessages.push({
+    role: 'user',
+    content: todoContext,
+  });
+}
+
+// Add useful information context if available
+const usefulInfoService = getUsefulInfoService();
+const usefulInfoList = await usefulInfoService.getUsefulInfoList(
+  currentSession.id,
+);
+
+if (usefulInfoList && usefulInfoList.items.length > 0) {
+  const usefulInfoContext = await formatUsefulInfoContext(
+    usefulInfoList.items,
+  );
+  conversationMessages.push({
+    role: 'user',
+    content: usefulInfoContext,
+  });
+}
+
+// Add folder notebook context if available (notes from folders of read files)
+const folderNotebookContext = formatFolderNotebookContext();
+if (folderNotebookContext) {
+  conversationMessages.push({
+    role: 'user',
+    content: folderNotebookContext,
+  });
+}
+
+// Add history messages from session (includes tool_calls and tool results)
+// Filter out internal sub-agent messages (marked with subAgentInternal: true)
+const session = sessionManager.getCurrentSession();
+if (session && session.messages.length > 0) {
+  const filteredMessages = session.messages.filter(
+    msg => !msg.subAgentInternal,
+  );
+  conversationMessages.push(...filteredMessages);
+}
+
+return {conversationMessages, currentSession, existingTodoList};
+```
+
+**修改后的实现**:
+
+```typescript
+import {
+  calculateReversePosition,
+  findSafeInsertPosition,
+  insertMessagesAtPosition,
+} from '../../../utils/message/messageUtils.js';
+
+// Build conversation history with system prompt from mainAgentManager
+const conversationMessages: ChatMessage[] = [
+  {
+    role: 'system',
+    content: mainAgentManager.getSystemPrompt(),
   },
-): SubAgent | null
+];
+
+// Add history messages from session (includes tool_calls and tool results)
+// Filter out internal sub-agent messages (marked with subAgentInternal: true)
+const session = sessionManager.getCurrentSession();
+if (session && session.messages.length > 0) {
+  const filteredMessages = session.messages.filter(
+    msg => !msg.subAgentInternal,
+  );
+  conversationMessages.push(...filteredMessages);
+}
+
+// 收集4类特殊user消息
+const specialUserMessages: ChatMessage[] = [];
+
+// 1. Agent角色定义(mainAgentRole)
+const currentConfig = mainAgentManager.getCurrentConfig();
+if (currentConfig && currentConfig.mainAgentRole) {
+  specialUserMessages.push({
+    role: 'user',
+    content: `## Agent Role Definition\n\n${currentConfig.mainAgentRole}`,
+  });
+}
+
+// 2. TODO列表
+if (existingTodoList && existingTodoList.todos.length > 0) {
+  const todoContext = formatTodoContext(existingTodoList.todos);
+  specialUserMessages.push({
+    role: 'user',
+    content: todoContext,
+  });
+}
+
+// 3. 有用信息
+const usefulInfoService = getUsefulInfoService();
+const usefulInfoList = await usefulInfoService.getUsefulInfoList(
+  currentSession.id,
+);
+
+if (usefulInfoList && usefulInfoList.items.length > 0) {
+  const usefulInfoContext = await formatUsefulInfoContext(
+    usefulInfoList.items,
+  );
+  specialUserMessages.push({
+    role: 'user',
+    content: usefulInfoContext,
+  });
+}
+
+// 4. 文件夹笔记
+const folderNotebookContext = formatFolderNotebookContext();
+if (folderNotebookContext) {
+  specialUserMessages.push({
+    role: 'user',
+    content: folderNotebookContext,
+  });
+}
+
+// 如果没有特殊user消息,直接返回
+if (specialUserMessages.length === 0) {
+  return {conversationMessages, currentSession, existingTodoList};
+}
+
+// 计算安全的插入位置
+// 跳过system消息(索引0),只在历史消息中计算
+const historyMessagesOnly = conversationMessages.filter(
+  (msg, index) => index > 0,
+);
+const targetIndex = calculateReversePosition(historyMessagesOnly, 5);
+const safeIndex = findSafeInsertPosition(historyMessagesOnly, targetIndex);
+
+// 插入特殊user块(注意要加上system消息的偏移量+1)
+const finalMessages = insertMessagesAtPosition(
+  conversationMessages,
+  specialUserMessages,
+  safeIndex + 1, // +1 because we filtered out system message
+);
+
+return {
+  conversationMessages: finalMessages,
+  currentSession,
+  existingTodoList,
+};
 ```
+
+**关键改动点**:
+
+1. **调整顺序**: 先构建包含system和历史消息的基础数组,再收集特殊user
+2. **收集4类特殊user**: 包括主代理角色定义、TODO、有用信息、文件夹笔记
+3. **动态插入**: 使用工具函数计算安全位置并插入
+4. **边缘情况处理**: 如果没有特殊user消息,直接返回基础数组
 
 ---
 
-### 阶段 2: 修改内置主代理配置
+### 阶段3: 修改子代理消息构建逻辑
 
-**目标**: 更新 5 个内置主代理配置文件的字段名。
-
-#### 2.1 General 主代理配置
-
-**文件**: `source/config/mainAgents/generalConfig.ts`
-
-**位置**: Line 67
-
-**修改内容**:
-```typescript
-// 修改前
-export function getSnowGeneralConfig(): MainAgentConfig {
-  return {
-    basicInfo: { /* ... */ },
-    tools: GENERAL_TOOLS,
-    availableSubAgents: GENERAL_SUB_AGENTS,
-    systemPrompt: `你是Snow AI CLI,一个工作在命令行环境中的智能助手。...`,  // ← 改为 mainAgentRole
-  };
-}
-
-// 修改后
-export function getSnowGeneralConfig(): MainAgentConfig {
-  return {
-    basicInfo: { /* ... */ },
-    tools: GENERAL_TOOLS,
-    availableSubAgents: GENERAL_SUB_AGENTS,
-    mainAgentRole: `你是Snow AI CLI,一个工作在命令行环境中的智能助手。...`,  // ← 新命名
-  };
-}
-```
-
-#### 2.2 Leader 主代理配置
-
-**文件**: `source/config/mainAgents/leaderConfig.ts`
-
-**位置**: Line 60
-
-**修改内容**:
-```typescript
-systemPrompt: `你是Snow AI CLI, 一个工作在命令行环境中的Agent团队的领导者。...`
-// ↓
-mainAgentRole: `你是Snow AI CLI, 一个工作在命令行环境中的Agent团队的领导者。...`
-```
-
-#### 2.3 Debugger 主代理配置
-
-**文件**: `source/config/mainAgents/debuggerConfig.ts`
-
-**位置**: Line 66
-
-**修改内容**:
-```typescript
-systemPrompt: `你是 Snow AI CLI - Debugger,一个专门的调试代理,专注于定位和修复代码问题.`
-// ↓
-mainAgentRole: `你是 Snow AI CLI - Debugger,一个专门的调试代理,专注于定位和修复代码问题.`
-```
-
-#### 2.4 Requirement Analyzer 主代理配置
-
-**文件**: `source/config/mainAgents/requirementAnalyzerConfig.ts`
-
-**位置**: Line 67
-
-**修改内容**:
-```typescript
-systemPrompt: `你是 Snow AI CLI - Requirement Analyzer,一个专门的需求分析代理,...`
-// ↓
-mainAgentRole: `你是 Snow AI CLI - Requirement Analyzer,一个专门的需求分析代理,...`
-```
-
-#### 2.5 Vulnerability Hunter 主代理配置
-
-**文件**: `source/config/mainAgents/vulnerabilityHunterConfig.ts`
-
-**位置**: Line 68
-
-**修改内容**:
-```typescript
-systemPrompt: `你是 Snow AI CLI - Vulnerability Hunter,一个专门的安全分析代理,...`
-// ↓
-mainAgentRole: `你是 Snow AI CLI - Vulnerability Hunter,一个专门的安全分析代理,...`
-```
-
----
-
-### 阶段 3: 修改内置子代理配置
-
-**目标**: 更新 `BUILTIN_AGENTS` 数组中所有内置子代理的 `role` 字段。
-
-**文件**: `source/utils/config/subAgentConfig.ts`
-
-**位置**: Lines 58-514 (BUILTIN_AGENTS 数组)
-
-#### 3.1 agent_explore 配置
-
-**位置**: Line 64
-
-**修改内容**:
-```typescript
-{
-  id: 'agent_explore',
-  name: 'Explore Agent',
-  description: 'Specialized for quickly exploring and understanding codebases...',
-  role: `# Code Exploration Specialist...`,  // ← 改为 subAgentRole
-  tools: [/* ... */],
-  builtin: true,
-}
-// ↓
-{
-  id: 'agent_explore',
-  name: 'Explore Agent',
-  description: 'Specialized for quickly exploring and understanding codebases...',
-  subAgentRole: `# Code Exploration Specialist...`,  // ← 新命名
-  tools: [/* ... */],
-  builtin: true,
-}
-```
-
-#### 3.2 agent_plan 配置
-
-**位置**: Line 159
-
-**修改内容**:
-```typescript
-role: `# Task Planning Specialist...`
-// ↓
-subAgentRole: `# Task Planning Specialist...`
-```
-
-#### 3.3 agent_general 配置
-
-**位置**: Line 311
-
-**修改内容**:
-```typescript
-role: `# General Purpose Task Executor...`
-// ↓
-subAgentRole: `# General Purpose Task Executor...`
-```
-
----
-
-### 阶段 4: 修改核心使用逻辑
-
-**目标**: 更新运行时读取和使用角色定义的核心逻辑。
-
-#### 4.1 主代理管理器 - generateCleanSystemPrompt 函数
-
-**文件**: `source/utils/MainAgentManager.ts`
-
-**位置**: Lines 305-320
-
-**修改内容**:
-```typescript
-// 修改前
-private generateCleanSystemPrompt(config: MainAgentConfig): string {
-  const {systemPrompt} = config;  // ← 改为 mainAgentRole
-
-  // 创建基础提示词
-  let prompt = systemPrompt;  // ← 改为 mainAgentRole
-
-  // 添加 AGENTS.md 内容
-  const agentsPrompt = getAgentsPrompt();
-  if (agentsPrompt) {
-    prompt += '\n\n' + agentsPrompt;
-  }
-
-  // 添加环境上下文信息
-  const contextInfo = createSystemContext();
-  if (contextInfo) {
-    prompt += '\n\n' + contextInfo;
-  }
-
-  return prompt;
-}
-
-// 修改后
-private generateCleanSystemPrompt(config: MainAgentConfig): string {
-  const {mainAgentRole} = config;  // ← 新命名
-
-  // 创建基础提示词
-  let prompt = mainAgentRole;  // ← 新命名
-
-  // 添加 AGENTS.md 内容
-  const agentsPrompt = getAgentsPrompt();
-  if (agentsPrompt) {
-    prompt += '\n\n' + agentsPrompt;
-  }
-
-  // 添加环境上下文信息
-  const contextInfo = createSystemContext();
-  if (contextInfo) {
-    prompt += '\n\n' + contextInfo;
-  }
-
-  return prompt;
-}
-```
-
-#### 4.2 子代理执行器 - 提示词构建逻辑
+**目标**: 修改子代理的消息构建流程,补上文件夹笔记功能并实现动态插入4类特殊user。
 
 **文件**: `source/utils/execution/subAgentExecutor.ts`
 
-**位置**: Lines 831-837
+**位置**: Lines 827-893
 
-**修改内容**:
+**当前实现**:
 ```typescript
-// 修改前
-// Build final prompt with 子代理配置role + AGENTS.md + 系统环境 + 平台指导
-let finalPrompt = prompt;
+// Build conversation history for sub-agent
+const messages: ChatMessage[] = [];
 
-// Append agent-specific role if configured
-if (agent.role) {  // ← 改为 subAgentRole
-  finalPrompt = `${finalPrompt}\n\n${agent.role}`;  // ← 改为 subAgentRole
-}
-// Append AGENTS.md content if available
-const agentsPrompt = getAgentsPrompt();
-if (agentsPrompt) {
-  finalPrompt = `${finalPrompt}\n\n${agentsPrompt}`;
-}
-
-// 修改后
 // Build final prompt with 子代理配置subAgentRole + AGENTS.md + 系统环境 + 平台指导
 let finalPrompt = prompt;
 
 // Append agent-specific role if configured
-if (agent.subAgentRole) {  // ← 新命名
-  finalPrompt = `${finalPrompt}\n\n${agent.subAgentRole}`;  // ← 新命名
+if (agent.subAgentRole) {
+  finalPrompt = `${finalPrompt}\n\n${agent.subAgentRole}`;
 }
 // Append AGENTS.md content if available
 const agentsPrompt = getAgentsPrompt();
 if (agentsPrompt) {
   finalPrompt = `${finalPrompt}\n\n${agentsPrompt}`;
 }
+
+// Append system environment and platform guidance
+const systemContext = createSystemContext();
+if (systemContext) {
+  finalPrompt = `${finalPrompt}\n\n${systemContext}`;
+}
+
+// 添加任务完成标识提示词
+const taskCompletionPrompt = getTaskCompletionPrompt();
+if (taskCompletionPrompt) {
+  finalPrompt = `${finalPrompt}\n\n${taskCompletionPrompt}`;
+}
+
+// 子代理消息顺序必须为：提示词 → todo → useful
+messages.push({
+  role: 'user',
+  content: finalPrompt,
+});
+
+// Add TODO context if available
+const currentSession = sessionManager.getCurrentSession();
+if (currentSession) {
+  const todoService = getTodoService();
+  const existingTodoList = await todoService.getTodoList(currentSession.id);
+
+  if (existingTodoList && existingTodoList.todos.length > 0) {
+    const todoContext = formatTodoContext(existingTodoList.todos, true); // isSubAgent=true
+    messages.push({
+      role: 'user',
+      content: todoContext,
+    });
+  }
+}
+
+// Add useful information context if available
+if (currentSession) {
+  const usefulInfoService = getUsefulInfoService();
+  const usefulInfoList = await usefulInfoService.getUsefulInfoList(
+    currentSession.id,
+  );
+
+  if (usefulInfoList && usefulInfoList.items.length > 0) {
+    const usefulInfoContext = await formatUsefulInfoContext(
+      usefulInfoList.items,
+    );
+    messages.push({
+      role: 'user',
+      content: usefulInfoContext,
+    });
+  }
+}
 ```
 
----
+**修改后的实现**:
 
-### 阶段 5: 修改配置管理逻辑
-
-**目标**: 更新配置更新函数中的字段引用。
-
-**文件**: `source/utils/config/subAgentConfig.ts`
-
-**函数**: `updateSubAgent`
-
-#### 5.1 内置代理用户副本赋值逻辑
-
-**位置**: Line 766
-
-**修改内容**:
 ```typescript
-// 修改前
-const userCopy: SubAgent = {
-  id: agent.id,
-  name: updates.name ?? existingUserCopy?.name ?? agent.name,
-  description: updates.description ?? existingUserCopy?.description ?? agent.description,
-  role: updates.role ?? existingUserCopy?.role ?? agent.role,  // ← 改为 subAgentRole
-  tools: updates.tools ?? existingUserCopy?.tools ?? agent.tools,
-  createdAt: existingUserCopy?.createdAt ?? agent.createdAt ?? now,
-  updatedAt: now,
-  builtin: true,
-};
+import {
+  calculateReversePosition,
+  findSafeInsertPosition,
+  insertMessagesAtPosition,
+} from '../message/messageUtils.js';
+import {formatFolderNotebookContext} from '../core/folderNotebookPreprocessor.js';
 
-// 修改后
-const userCopy: SubAgent = {
-  id: agent.id,
-  name: updates.name ?? existingUserCopy?.name ?? agent.name,
-  description: updates.description ?? existingUserCopy?.description ?? agent.description,
-  subAgentRole: updates.subAgentRole ?? existingUserCopy?.subAgentRole ?? agent.subAgentRole,  // ← 新命名
-  tools: updates.tools ?? existingUserCopy?.tools ?? agent.tools,
-  createdAt: existingUserCopy?.createdAt ?? agent.createdAt ?? now,
-  updatedAt: now,
-  builtin: true,
-};
-```
+// Build conversation history for sub-agent
+const messages: ChatMessage[] = [];
 
-#### 5.2 普通代理更新逻辑
+// Build final prompt with 子代理配置subAgentRole + AGENTS.md + 系统环境 + 平台指导
+let finalPrompt = prompt;
 
-**位置**: Line 802
+// Append agent-specific role if configured
+if (agent.subAgentRole) {
+  finalPrompt = `${finalPrompt}\n\n${agent.subAgentRole}`;
+}
+// Append AGENTS.md content if available
+const agentsPrompt = getAgentsPrompt();
+if (agentsPrompt) {
+  finalPrompt = `${finalPrompt}\n\n${agentsPrompt}`;
+}
 
-**修改内容**:
-```typescript
-// 修改前
-const updatedAgent: SubAgent = {
-  id: existingAgent.id,
-  name: updates.name ?? existingAgent.name,
-  description: updates.description ?? existingAgent.description,
-  role: updates.role ?? existingAgent.role,  // ← 改为 subAgentRole
-  tools: updates.tools ?? existingAgent.tools,
-  createdAt: existingAgent.createdAt,
-  updatedAt: now,
-  builtin: existingAgent.builtin,
-};
+// Append system environment and platform guidance
+const systemContext = createSystemContext();
+if (systemContext) {
+  finalPrompt = `${finalPrompt}\n\n${systemContext}`;
+}
 
-// 修改后
-const updatedAgent: SubAgent = {
-  id: existingAgent.id,
-  name: updates.name ?? existingAgent.name,
-  description: updates.description ?? existingAgent.description,
-  subAgentRole: updates.subAgentRole ?? existingAgent.subAgentRole,  // ← 新命名
-  tools: updates.tools ?? existingAgent.tools,
-  createdAt: existingAgent.createdAt,
-  updatedAt: now,
-  builtin: existingAgent.builtin,
-};
-```
+// 添加任务完成标识提示词
+const taskCompletionPrompt = getTaskCompletionPrompt();
+if (taskCompletionPrompt) {
+  finalPrompt = `${finalPrompt}\n\n${taskCompletionPrompt}`;
+}
 
----
+// 子代理的第一条user消息(作为基础消息)
+messages.push({
+  role: 'user',
+  content: finalPrompt,
+});
 
-### 阶段 6: 修改 UI 界面
+// 检查子代理角色定义是否存在,如果不存在则抛出错误
+if (!agent.subAgentRole) {
+  throw new Error(
+    `子代理 ${agent.id} 缺少角色定义(subAgentRole),无法执行`,
+  );
+}
 
-**目标**: 更新两个配置界面的字段引用和状态管理。
+// 收集4类特殊user消息
+const specialUserMessages: ChatMessage[] = [];
 
-#### 6.1 主代理配置界面
+// 1. Agent角色定义(subAgentRole)
+specialUserMessages.push({
+  role: 'user',
+  content: `## Agent Role Definition\n\n${agent.subAgentRole}`,
+});
 
-**文件**: `source/ui/pages/MainAgentConfigScreen.tsx`
+// 2. TODO列表
+const currentSession = sessionManager.getCurrentSession();
+if (currentSession) {
+  const todoService = getTodoService();
+  const existingTodoList = await todoService.getTodoList(currentSession.id);
 
-##### 6.1.1 FormField 类型定义
+  if (existingTodoList && existingTodoList.todos.length > 0) {
+    const todoContext = formatTodoContext(existingTodoList.todos, true); // isSubAgent=true
+    specialUserMessages.push({
+      role: 'user',
+      content: todoContext,
+    });
+  }
+}
 
-**位置**: Lines 75-80
+// 3. 有用信息
+if (currentSession) {
+  const usefulInfoService = getUsefulInfoService();
+  const usefulInfoList = await usefulInfoService.getUsefulInfoList(
+    currentSession.id,
+  );
 
-**修改内容**:
-```typescript
-// 修改前
-type FormField =
-  | 'name'
-  | 'description'
-  | 'systemPrompt'  // ← 改为 mainAgentRole
-  | 'tools'
-  | 'subAgents';
+  if (usefulInfoList && usefulInfoList.items.length > 0) {
+    const usefulInfoContext = await formatUsefulInfoContext(
+      usefulInfoList.items,
+    );
+    specialUserMessages.push({
+      role: 'user',
+      content: usefulInfoContext,
+    });
+  }
+}
 
-// 修改后
-type FormField =
-  | 'name'
-  | 'description'
-  | 'mainAgentRole'  // ← 新命名
-  | 'tools'
-  | 'subAgents';
-```
+// 4. 文件夹笔记(新增)
+const folderNotebookContext = formatFolderNotebookContext();
+if (folderNotebookContext) {
+  specialUserMessages.push({
+    role: 'user',
+    content: folderNotebookContext,
+  });
+}
 
-##### 6.1.2 useState 状态声明
+// 如果没有特殊user消息(除了角色定义),直接使用基础消息
+if (specialUserMessages.length === 0) {
+  // 注意: 角色定义应该始终存在,这里只是防御性检查
+  return messages;
+}
 
-**位置**: Lines 92-93
+// 计算安全的插入位置
+// 跳过第一条finalPrompt消息,只在后续消息中计算
+const messagesWithoutFirst = messages.slice(1);
+const targetIndex = calculateReversePosition(messagesWithoutFirst, 5);
+const safeIndex = findSafeInsertPosition(messagesWithoutFirst, targetIndex);
 
-**修改内容**:
-```typescript
-// 修改前
-const [systemPrompt, setSystemPrompt] = useState('');
-const [systemPromptExpanded, setSystemPromptExpanded] = useState(false);
-
-// 修改后
-const [mainAgentRole, setMainAgentRole] = useState('');
-const [mainAgentRoleExpanded, setMainAgentRoleExpanded] = useState(false);
-```
-
-##### 6.1.3 loadAgent 函数 - 默认值设置
-
-**位置**: Lines 189-190
-
-**修改内容**:
-```typescript
-// 修改前
-setAgentName('');
-setDescription('');
-setSystemPrompt(
-  '你是Snow AI CLI自定义主代理。\n\n请根据用户需求提供帮助。',
+// 插入特殊user块
+const finalMessages = insertMessagesAtPosition(
+  messages,
+  specialUserMessages,
+  safeIndex + 1, // +1 because we filtered out first message
 );
-setSelectedTools(new Set());
-setSelectedSubAgents(new Set());
-
-// 修改后
-setAgentName('');
-setDescription('');
-setMainAgentRole(
-  '你是Snow AI CLI自定义主代理。\n\n请根据用户需求提供帮助。',
-);
-setSelectedTools(new Set());
-setSelectedSubAgents(new Set());
 ```
 
-##### 6.1.4 loadAgent 函数 - 加载现有配置
+**关键改动点**:
 
-**位置**: Line 220
+1. **补上文件夹笔记**: 添加`formatFolderNotebookContext`调用
+2. **错误处理**: 检查子代理角色定义是否存在
+3. **收集4类特殊user**: 包括subAgentRole、TODO、有用信息、文件夹笔记
+4. **动态插入**: 使用与主代理相同的工具函数
 
-**修改内容**:
-```typescript
-// 修改前
-setSystemPrompt(agent.systemPrompt || '');
+**注意事项**:
 
-// 修改后
-setMainAgentRole(agent.mainAgentRole || '');
-```
-
-##### 6.1.5 handleSave 函数 - baseAgent 初始化
-
-**位置**: Line 644
-
-**修改内容**:
-```typescript
-// 修改前
-const baseAgent: MainAgentConfig = {
-  basicInfo: {
-    name: '',
-    description: '',
-    type: 'general',
-    builtin: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  tools: [],
-  availableSubAgents: [],
-  systemPrompt: '',  // ← 改为 mainAgentRole
-};
-
-// 修改后
-const baseAgent: MainAgentConfig = {
-  basicInfo: {
-    name: '',
-    description: '',
-    type: 'general',
-    builtin: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  tools: [],
-  availableSubAgents: [],
-  mainAgentRole: '',  // ← 新命名
-};
-```
-
-##### 6.1.6 handleSave 函数 - updatedAgent 赋值
-
-**位置**: Lines 661, 681
-
-**修改内容**:
-```typescript
-// 修改前
-const updatedAgent: MainAgentConfig = {
-  basicInfo: { /* ... */ },
-  tools: validTools,
-  availableSubAgents: validSubAgents,
-  systemPrompt: systemPrompt,  // ← 改为 mainAgentRole
-};
-
-// 修改后
-const updatedAgent: MainAgentConfig = {
-  basicInfo: { /* ... */ },
-  tools: validTools,
-  availableSubAgents: validSubAgents,
-  mainAgentRole: mainAgentRole,  // ← 新命名
-};
-```
-
-##### 6.1.7 handleSave 函数 - useEffect 依赖数组
-
-**位置**: Lines 681
-
-**修改内容**:
-```typescript
-// 修改前
-}, [
-  agentName,
-  description,
-  systemPrompt,  // ← 改为 mainAgentRole
-  selectedTools,
-  selectedSubAgents,
-  agentId,
-  onSave,
-]);
-
-// 修改后
-}, [
-  agentName,
-  description,
-  mainAgentRole,  // ← 新命名
-  selectedTools,
-  selectedSubAgents,
-  agentId,
-  onSave,
-]);
-```
-
-##### 6.1.8 字段导航逻辑
-
-**位置**: Lines 709, 716, 732, 754
-
-**修改内容**:
-```typescript
-// 修改前
-// ↑↓键: 在主字段间导航
-if (input === 'ArrowDown') {
-  const fields: FormField[] = ['name', 'description', 'systemPrompt', 'subAgents', 'tools'];
-  const currentIndex = fields.indexOf(currentField);
-  if (currentIndex < fields.length - 1) {
-    setCurrentField(fields[currentIndex + 1]);
-  }
-}
-// ... 其他导航逻辑
-
-// 修改后
-// ↑↓键: 在主字段间导航
-if (input === 'ArrowDown') {
-  const fields: FormField[] = ['name', 'description', 'mainAgentRole', 'subAgents', 'tools'];
-  const currentIndex = fields.indexOf(currentField);
-  if (currentIndex < fields.length - 1) {
-    setCurrentField(fields[currentIndex + 1]);
-  }
-}
-// ... 其他导航逻辑
-```
-
-##### 6.1.9 展开切换逻辑
-
-**位置**: Lines 795-796
-
-**修改内容**:
-```typescript
-// 修改前
-if (currentField === 'systemPrompt' && input === ' ') {
-  setSystemPromptExpanded(prev => !prev);
-}
-
-// 修改后
-if (currentField === 'mainAgentRole' && input === ' ') {
-  setMainAgentRoleExpanded(prev => !prev);
-}
-```
-
-##### 6.1.10 UI 渲染 - 字段判断和显示
-
-**位置**: Lines 1173-1207
-
-**修改内容**:
-```typescript
-// 修改前
-{/* MainAgentRole / systemPrompt */}
-{currentField === 'systemPrompt' && (
-  <Box flexDirection="column">
-    <Box>
-      <Text color={theme.secondary}>
-        {t.mainAgentConfig.mainAgentRole}
-      </Text>
-      <Text color={theme.secondary} dimColor>
-        {t.mainAgentConfig.mainAgentRoleHint}
-      </Text>
-    </Box>
-    {systemPrompt && systemPrompt.length > 100 && (
-      <Box>
-        <Text color={theme.secondary}>
-          {systemPromptExpanded
-            ? t.mainAgentConfig.collapsed
-            : t.mainAgentConfig.expanded}
-        </Text>
-      </Box>
-    )}
-    {systemPrompt && systemPrompt.length > 100 && !systemPromptExpanded ? (
-      <Text>{systemPrompt.substring(0, 100)}...</Text>
-    ) : (
-      <TextInput
-        value={systemPrompt}
-        onChange={value => setSystemPrompt(stripFocusArtifacts(value))}
-        placeholder={t.mainAgentConfig.mainAgentRolePlaceholder}
-        focus={currentField === 'systemPrompt'}
-        multiline
-      />
-    )}
-  </Box>
-)}
-
-// 修改后
-{/* MainAgentRole */}
-{currentField === 'mainAgentRole' && (
-  <Box flexDirection="column">
-    <Box>
-      <Text color={theme.secondary}>
-        {t.mainAgentConfig.mainAgentRole}
-      </Text>
-      <Text color={theme.secondary} dimColor>
-        {t.mainAgentConfig.mainAgentRoleHint}
-      </Text>
-    </Box>
-    {mainAgentRole && mainAgentRole.length > 100 && (
-      <Box>
-        <Text color={theme.secondary}>
-          {mainAgentRoleExpanded
-            ? t.mainAgentConfig.collapsed
-            : t.mainAgentConfig.expanded}
-        </Text>
-      </Box>
-    )}
-    {mainAgentRole && mainAgentRole.length > 100 && !mainAgentRoleExpanded ? (
-      <Text>{mainAgentRole.substring(0, 100)}...</Text>
-    ) : (
-      <TextInput
-        value={mainAgentRole}
-        onChange={value => setMainAgentRole(stripFocusArtifacts(value))}
-        placeholder={t.mainAgentConfig.mainAgentRolePlaceholder}
-        focus={currentField === 'mainAgentRole'}
-        multiline
-      />
-    )}
-  </Box>
-)}
-```
-
-#### 6.2 子代理配置界面
-
-**文件**: `source/ui/pages/SubAgentConfigScreen.tsx`
-
-##### 6.2.1 FormField 类型定义
-
-**位置**: Line 76
-
-**修改内容**:
-```typescript
-// 修改前
-type FormField = 'name' | 'description' | 'role' | 'configProfile' | 'tools';
-
-// 修改后
-type FormField = 'name' | 'description' | 'subAgentRole' | 'configProfile' | 'tools';
-```
-
-##### 6.2.2 useState 状态声明
-
-**位置**: Lines 88-89
-
-**修改内容**:
-```typescript
-// 修改前
-const [role, setRole] = useState('');
-const [roleExpanded, setRoleExpanded] = useState(false);
-
-// 修改后
-const [subAgentRole, setSubAgentRole] = useState('');
-const [subAgentRoleExpanded, setSubAgentRoleExpanded] = useState(false);
-```
-
-##### 6.2.3 loadAgent 函数
-
-**位置**: Line 217
-
-**修改内容**:
-```typescript
-// 修改前
-setAgentName(agent.name);
-setDescription(agent.description);
-setRole(agent.role || '');
-
-// 修改后
-setAgentName(agent.name);
-setDescription(agent.description);
-setSubAgentRole(agent.subAgentRole || '');
-```
-
-##### 6.2.4 handleSave 函数 - createSubAgent 调用
-
-**位置**: Lines 443, 455
-
-**修改内容**:
-```typescript
-// 修改前
-createSubAgent({
-  name: agentName,
-  description,
-  role: role || undefined,  // ← 改为 subAgentRole
-  tools: Array.from(selectedTools),
-  configProfile: selectedConfigProfileIndex >= 0
-    ? availableProfiles[selectedConfigProfileIndex]
-    : undefined,
-});
-
-// 修改后
-createSubAgent({
-  name: agentName,
-  description,
-  subAgentRole: subAgentRole || undefined,  // ← 新命名
-  tools: Array.from(selectedTools),
-  configProfile: selectedConfigProfileIndex >= 0
-    ? availableProfiles[selectedConfigProfileIndex]
-    : undefined,
-});
-```
-
-##### 6.2.5 handleSave 函数 - updateSubAgent 调用
-
-**位置**: Line 473
-
-**修改内容**:
-```typescript
-// 修改前
-updateSubAgent(agentId, {
-  name: agentName,
-  description,
-  role: role || undefined,  // ← 改为 subAgentRole
-  tools: Array.from(selectedTools),
-  configProfile: selectedConfigProfileIndex >= 0
-    ? availableProfiles[selectedConfigProfileIndex]
-    : undefined,
-});
-
-// 修改后
-updateSubAgent(agentId, {
-  name: agentName,
-  description,
-  subAgentRole: subAgentRole || undefined,  // ← 新命名
-  tools: Array.from(selectedTools),
-  configProfile: selectedConfigProfileIndex >= 0
-    ? availableProfiles[selectedConfigProfileIndex]
-    : undefined,
-});
-```
-
-##### 6.2.6 字段导航逻辑
-
-**位置**: Lines 501, 513, 527
-
-**修改内容**:
-```typescript
-// 修改前
-// ↑↓键: 在主字段间导航 (name → description → role → configProfile → tools)
-if (input === 'ArrowDown') {
-  const fields: FormField[] = ['name', 'description', 'role', 'configProfile', 'tools'];
-  const currentIndex = fields.indexOf(currentField);
-  if (currentIndex < fields.length - 1) {
-    setCurrentField(fields[currentIndex + 1]);
-  }
-}
-// ... 其他导航逻辑
-
-// 修改后
-// ↑↓键: 在主字段间导航 (name → description → subAgentRole → configProfile → tools)
-if (input === 'ArrowDown') {
-  const fields: FormField[] = ['name', 'description', 'subAgentRole', 'configProfile', 'tools'];
-  const currentIndex = fields.indexOf(currentField);
-  if (currentIndex < fields.length - 1) {
-    setCurrentField(fields[currentIndex + 1]);
-  }
-}
-// ... 其他导航逻辑
-```
-
-##### 6.2.7 展开切换逻辑
-
-**位置**: Lines 594-596
-
-**修改内容**:
-```typescript
-// 修改前
-// Role field controls - Space to toggle expansion
-if (currentField === 'role' && input === ' ') {
-  setRoleExpanded(prev => !prev);
-}
-
-// 修改后
-// SubAgentRole field controls - Space to toggle expansion
-if (currentField === 'subAgentRole' && input === ' ') {
-  setSubAgentRoleExpanded(prev => !prev);
-}
-```
-
-##### 6.2.8 UI 渲染 - Role 字段
-
-**位置**: Lines 965-1002
-
-**修改内容**:
-```typescript
-// 修改前
-{/* Role */}
-{currentField === 'role' && (
-  <Box flexDirection="column">
-    <Box>
-      <Text color={theme.secondary}>
-        {t.subAgentConfig.roleOptional}
-      </Text>
-      {role && role.length > 100 && (
-        <Box>
-          <Text color={theme.secondary}>
-            {t.subAgentConfig.roleExpandHint.replace(
-              '{state}',
-              roleExpanded
-                ? t.subAgentConfig.roleExpanded
-                : t.subAgentConfig.roleCollapsed,
-            )}
-          </Text>
-        </Box>
-      )}
-    </Box>
-    {role && role.length > 100 && !roleExpanded ? (
-      <Box>
-        <Text>{role.substring(0, 100)}...</Text>
-        <Text color={theme.primary}>{t.subAgentConfig.roleViewFull}</Text>
-      </Box>
-    ) : (
-      <TextInput
-        value={role}
-        onChange={value => setRole(stripFocusArtifacts(value))}
-        placeholder={t.subAgentConfig.rolePlaceholder}
-        focus={currentField === 'role'}
-        multiline
-      />
-    )}
-  </Box>
-)}
-
-// 修改后
-{/* SubAgentRole */}
-{currentField === 'subAgentRole' && (
-  <Box flexDirection="column">
-    <Box>
-      <Text color={theme.secondary}>
-        {t.subAgentConfig.roleOptional}
-      </Text>
-      {subAgentRole && subAgentRole.length > 100 && (
-        <Box>
-          <Text color={theme.secondary}>
-            {t.subAgentConfig.roleExpandHint.replace(
-              '{state}',
-              subAgentRoleExpanded
-                ? t.subAgentConfig.roleExpanded
-                : t.subAgentConfig.roleCollapsed,
-            )}
-          </Text>
-        </Box>
-      )}
-    </Box>
-    {subAgentRole && subAgentRole.length > 100 && !subAgentRoleExpanded ? (
-      <Box>
-        <Text>{subAgentRole.substring(0, 100)}...</Text>
-        <Text color={theme.primary}>{t.subAgentConfig.roleViewFull}</Text>
-      </Box>
-    ) : (
-      <TextInput
-        value={subAgentRole}
-        onChange={value => setSubAgentRole(stripFocusArtifacts(value))}
-        placeholder={t.subAgentConfig.rolePlaceholder}
-        focus={currentField === 'subAgentRole'}
-        multiline
-      />
-    )}
-  </Box>
-)}
-```
+- 子代理的第一条消息(finalPrompt)保持不变
+- 特殊user插入在finalPrompt之后的合适位置
+- 如果缺少subAgentRole,抛出明确的错误信息
 
 ---
 
-### 阶段 7: 构建测试验证
+### 阶段4: 测试验证
 
-**目标**: 确保所有修改通过编译并正常运行。
+**目标**: 确保所有修改通过构建验证,并测试主代理和子代理的实际对话流程。
 
-#### 7.1 运行构建命令
+#### 4.1 构建验证
 
 ```bash
 npm run build
 ```
 
 **验证要点**:
-- TypeScript 类型检查通过
+- TypeScript类型检查通过
 - 没有编译错误
 - 没有类型不匹配警告
 
-#### 7.2 检查构建输出
+#### 4.2 手动测试步骤
 
-- 确认构建成功
-- 检查是否有 TypeScript 错误或警告
-- 验证输出文件生成正常
+**测试1: 会话开始(无历史)**
 
-#### 7.3 启动应用验证
+1. 启动应用,创建新会话
+2. 发送第一条消息
+3. 检查消息顺序应该是:
+   - system
+   - Agent角色定义
+   - TODO(如果有)
+   - 有用信息(如果有)
+   - 文件夹笔记(如果有)
+   - user
+   - assistant
 
-```bash
-# 启动应用进行手动测试
-npm start
-```
+**测试2: 多轮对话插入位置**
 
-**测试步骤**:
-1. 进入主代理配置界面
-   - 验证所有内置主代理配置加载正常
-   - 验证 `mainAgentRole` 字段显示正确
-   - 验证编辑和保存功能正常
+1. 进行多轮对话,积累历史消息
+2. 发送新消息
+3. 验证特殊user插入到倒数第5条附近
+4. 检查工具调用块是否保持完整
 
-2. 进入子代理配置界面
-   - 验证所有内置子代理配置加载正常
-   - 验证 `subAgentRole` 字段显示正确
-   - 验证编辑和保存功能正常
+**测试3: 工具调用块不被打断**
 
-3. 创建新代理测试
-   - 创建新的主代理，填写 `mainAgentRole`
-   - 创建新的子代理，填写 `subAgentRole`
-   - 验证保存和加载功能
+1. 触发工具调用,生成assistant(tool_calls) → tool消息
+2. 检查特殊user不会插入到工具调用块中间
+3. 验证assistant(tool_calls)和tool消息保持相邻
 
-4. 切换代理测试
-   - 切换不同主代理，验证角色定义正确应用
-   - 使用不同子代理，验证角色定义正确应用
+**测试4: 子代理功能**
 
----
+1. 主代理调用子代理
+2. 检查子代理消息中包含4类特殊user
+3. 验证文件夹笔记功能正常工作
+4. 检查子代理角色定义缺失时的错误处理
 
-## 重要注意事项
+**测试5: 边缘情况**
 
-### 1. 破坏性更新
-
-- **不提供向后兼容**: 旧字段名 `systemPrompt` 和 `role` 将直接报错
-- **用户需重新配置**: 如果用户有自定义配置文件，需要手动更新字段名
-- **旧配置文件失效**: 包含旧字段名的配置文件将无法加载
-
-### 2. 全局系统提示词
-
-- **保持不变**: `systemPrompt` 专指全局系统提示词系统
-- **不涉及修改**: `source/utils/config/apiConfig.ts` 中的系统提示词配置不受影响
-- **语义清晰**: 通过 `mainAgentRole` 和 `subAgentRole` 明确区分角色定义
-
-### 3. 修改顺序
-
-**必须严格按照以下顺序执行**:
-1. 类型定义 (阶段 1)
-2. 内置配置 (阶段 2-3)
-3. 核心逻辑 (阶段 4)
-4. 配置管理 (阶段 5)
-5. UI 界面 (阶段 6)
-6. 构建验证 (阶段 7)
-
-**原因**: 后续阶段依赖前面的类型和配置修改。
-
-### 4. 代码审核要点
-
-- [ ] 所有类型定义字段名修改完整
-- [ ] 所有内置配置字段名修改完整
-- [ ] 核心逻辑字段引用全部更新
-- [ ] UI 界面状态管理和渲染全部更新
-- [ ] 没有遗漏的旧字段名引用
-- [ ] 没有引入新的类型错误
-
-### 5. 国际化文件
-
-**本实施不涉及**: UI 界面的显示文本由国际化文件控制，字段内部变量名修改不影响显示文本。
-
-**涉及文件** (仅供参考,无需修改):
-- `source/i18n/lang/zh.ts`
-- `source/i18n/lang/en.ts`
-- `source/i18n/lang/zh-TW.ts`
+1. 特殊user列表为空(只有角色定义)
+2. 历史消息少于5条
+3. 倒数第5条正好是工具调用块的起始
+4. 倒数第5条正好是工具调用块的中间
 
 ---
 
 ## 文件修改清单
 
-### 类型定义文件 (2 个)
-- [ ] `source/types/MainAgentConfig.ts`
-- [ ] `source/utils/config/subAgentConfig.ts` (SubAgent 接口)
+### 新建文件 (2个)
 
-### 内置主代理配置文件 (5 个)
-- [ ] `source/config/mainAgents/generalConfig.ts`
-- [ ] `source/config/mainAgents/leaderConfig.ts`
-- [ ] `source/config/mainAgents/debuggerConfig.ts`
-- [ ] `source/config/mainAgents/requirementAnalyzerConfig.ts`
-- [ ] `source/config/mainAgents/vulnerabilityHunterConfig.ts`
+- [ ] `source/utils/message/messageUtils.ts` - 工具调用块识别和处理函数
+- [ ] `source/utils/message/__tests__/messageUtils.test.ts` - 单元测试
 
-### 核心逻辑文件 (3 个)
-- [ ] `source/utils/MainAgentManager.ts`
-- [ ] `source/utils/execution/subAgentExecutor.ts`
-- [ ] `source/utils/config/subAgentConfig.ts` (updateSubAgent 函数)
+### 修改文件 (2个)
 
-### UI 界面文件 (2 个)
-- [ ] `source/ui/pages/MainAgentConfigScreen.tsx`
-- [ ] `source/ui/pages/SubAgentConfigScreen.tsx`
+- [ ] `source/hooks/conversation/core/sessionInitializer.ts` - 主代理消息构建逻辑
+- [ ] `source/utils/execution/subAgentExecutor.ts` - 子代理消息构建逻辑
+
+---
+
+## 重要注意事项
+
+### 1. 工具调用块完整性
+
+- **必须保证**: assistant(tool_calls) 和 tool 消息必须相邻,不能被其他消息打断
+- **检测方法**: 使用`identifyToolCallBlocks`函数识别块
+- **安全插入**: 使用`findSafeInsertPosition`函数自动避开块
+
+### 2. 消息顺序一致性
+
+- **主代理**: system → 特殊user块(动态插入) → 历史消息
+- **子代理**: finalPrompt → 特殊user块(动态插入) → 历史消息
+- **特殊user块内部顺序**: 角色定义 → TODO → 有用信息 → 文件夹笔记
+
+### 3. 边缘情况处理
+
+- **会话开始**: 历史消息为空,特殊user追加到末尾
+- **消息总数不足5条**: 插入到末尾
+- **特殊user为空**: 不插入任何特殊user
+- **子代理角色定义缺失**: 抛出明确的错误
+
+### 4. 向后兼容性
+
+- **system消息位置**: 保持不变,仍为首条
+- **角色定义内容**: 不改变mainAgentRole和subAgentRole的内容
+- **格式化函数**: 不改变formatTodoContext、formatUsefulInfoContext、formatFolderNotebookContext的输出格式
+
+### 5. 性能考虑
+
+- **工具调用块识别**: O(n)时间复杂度,其中n是消息数量
+- **插入操作**: 使用数组切片和展开操作,避免频繁的push/shift
+- **缓存**: 消息数组较大时,可以考虑缓存识别结果
 
 ---
 
 ## 风险评估
 
 ### 高风险
-- **配置文件不兼容**: 用户现有自定义配置将失效
-  - **缓解措施**: 在文档中明确说明，用户需手动更新
+
+- **工具调用块被意外打断**: 可能导致API调用失败
+  - **缓解措施**: 完善的单元测试覆盖所有工具调用块场景
+  
+- **子代理角色定义缺失**: 可能导致子代理无法执行
+  - **缓解措施**: 在消息构建前检查并抛出明确错误
 
 ### 中风险
-- **UI 状态管理**: 状态变量名修改可能引入逻辑错误
-  - **缓解措施**: 仔细检查所有状态引用，逐个测试
+
+- **特殊user插入位置不合理**: 可能影响模型性能
+  - **缓解措施**: 通过实际对话测试验证效果
+  
+- **性能下降**: 消息数组较大时,工具调用块识别可能耗时
+  - **缓解措施**: 优化算法,避免重复识别
 
 ### 低风险
-- **类型错误**: TypeScript 编译时检查可提前发现
+
+- **TypeScript类型错误**: 编译时检查可提前发现
   - **缓解措施**: 必须通过构建验证
 
 ---
 
 ## 后续优化建议
 
-1. **配置迁移工具**: 未来可考虑提供自动迁移脚本，将旧配置文件转换为新格式
-2. **配置验证**: 在加载配置时验证字段名，提供更友好的错误提示
-3. **文档更新**: 更新项目文档，明确角色定义的命名规范
+1. **性能优化**: 
+   - 考虑缓存工具调用块识别结果
+   - 优化大消息数组的插入操作
+
+2. **可配置性**:
+   - 将倒数第5条改为可配置参数
+   - 支持自定义特殊user插入策略
+
+3. **监控和日志**:
+   - 添加特殊user插入位置的日志
+   - 监控工具调用块完整性
+
+4. **测试覆盖率**:
+   - 增加更多边缘情况的单元测试
+   - 添加集成测试验证完整流程
 
 ---
 
 ## 总结
 
-本实施计划通过 7 个阶段完成角色定义命名规范的统一:
+本实施计划通过4个阶段完成特殊user动态插入功能:
 
-- **修改文件数**: 12 个
-- **核心改动**: 字段重命名
-- **影响范围**: 类型定义、内置配置、核心逻辑、UI 界面
-- **兼容性**: 破坏性更新，用户需重新配置
-- **验证方式**: TypeScript 编译 + 手动测试
+- **新建文件**: 2个 (工具函数模块 + 单元测试)
+- **修改文件**: 2个 (主代理 + 子代理消息构建)
+- **核心改动**: 
+  - 创建工具调用块识别和处理函数
+  - 修改主代理和子代理的消息构建流程
+  - 补上子代理的文件夹笔记功能
+  - 实现动态插入到倒数第5条位置
 
-严格按照此计划执行，可确保修改的完整性和正确性。
+**验证方式**: TypeScript编译 + 手动测试
+
+严格按照此计划执行,可确保修改的完整性、正确性和可维护性。

@@ -6,23 +6,27 @@ import {mainAgentManager} from '../../../utils/MainAgentManager.js';
 import {getUsefulInfoService} from '../../../utils/execution/mcpToolsManager.js';
 import {formatUsefulInfoContext} from '../../../utils/core/usefulInfoPreprocessor.js';
 import {formatFolderNotebookContext} from '../../../utils/core/folderNotebookPreprocessor.js';
+import {
+	findSafeInsertPosition,
+	insertMessagesAtPosition,
+} from '../../../utils/message/messageUtils.js';
 
 /**
- * Initialize conversation session and TODO context
+ * 初始化会话和TODO上下文
  *
- * @returns Initialized conversation messages and session info
- * @deprecated planMode and vulnerabilityHuntingMode parameters are removed.
- * The agent states are now managed by mainAgentManager.
+ * @returns 初始化后的对话消息和会话信息
+ * @deprecated planMode 和 vulnerabilityHuntingMode 参数已移除。
+ * 现在由 mainAgentManager 管理代理状态。
  */
 export async function initializeConversationSession(): Promise<{
 	conversationMessages: ChatMessage[];
 	currentSession: any;
 	existingTodoList: any;
 }> {
-	// Step 1: Ensure session exists and get existing TODOs
+	// 步骤1: 确保会话存在并获取现有TODO
 	let currentSession = sessionManager.getCurrentSession();
 	if (!currentSession) {
-		// Check if running in task mode (temporary session)
+		// 检查是否在任务模式(临时会话)中运行
 		const isTaskMode = process.env['SNOW_TASK_MODE'] === 'true';
 
 		currentSession = await sessionManager.createNewSession(isTaskMode);
@@ -31,7 +35,8 @@ export async function initializeConversationSession(): Promise<{
 	const todoService = getTodoService();
 	const existingTodoList = await todoService.getTodoList(currentSession.id);
 
-	// Build conversation history with system prompt from mainAgentManager
+	// 步骤1: 构建对话历史，system消息始终为第一条
+	// 这样可以确保模型始终能看到系统提示词，定义角色和规则
 	const conversationMessages: ChatMessage[] = [
 		{
 			role: 'system',
@@ -39,16 +44,41 @@ export async function initializeConversationSession(): Promise<{
 		},
 	];
 
-	// If there are TODOs, add pinned context message at the front
+	// 添加会话历史消息（包含tool_calls和tool结果）
+	// 过滤掉内部子代理消息（标记为subAgentInternal: true）
+	// 只保留主代理和用户的消息，避免子代理内部逻辑干扰主代理上下文
+	const session = sessionManager.getCurrentSession();
+	if (session && session.messages.length > 0) {
+		const filteredMessages = session.messages.filter(
+			msg => !msg.subAgentInternal,
+		);
+		conversationMessages.push(...filteredMessages);
+	}
+
+	// 步骤2: 收集4类特殊用户消息
+	// 这些消息需要动态插入到倒数第5条位置，提高模型注意力和KV缓存命中率
+	const specialUserMessages: ChatMessage[] = [];
+
+	// 1. Agent角色定义(mainAgentRole)
+	// 确保主代理了解自己的角色和职责
+	const currentAgentConfig = mainAgentManager.getCurrentAgentConfig();
+	if (currentAgentConfig && currentAgentConfig.mainAgentRole) {
+		specialUserMessages.push({
+			role: 'user',
+			content: currentAgentConfig.mainAgentRole,
+		});
+	}
+
+	// 2. TODO list
 	if (existingTodoList && existingTodoList.todos.length > 0) {
 		const todoContext = formatTodoContext(existingTodoList.todos);
-		conversationMessages.push({
+		specialUserMessages.push({
 			role: 'user',
 			content: todoContext,
 		});
 	}
 
-	// Add useful information context if available
+	// 3. Useful information
 	const usefulInfoService = getUsefulInfoService();
 	const usefulInfoList = await usefulInfoService.getUsefulInfoList(
 		currentSession.id,
@@ -58,29 +88,39 @@ export async function initializeConversationSession(): Promise<{
 		const usefulInfoContext = await formatUsefulInfoContext(
 			usefulInfoList.items,
 		);
-		conversationMessages.push({
+		specialUserMessages.push({
 			role: 'user',
 			content: usefulInfoContext,
 		});
 	}
 
-	// Add folder notebook context if available (notes from folders of read files)
+	// 4. Folder notebook context
 	const folderNotebookContext = formatFolderNotebookContext();
 	if (folderNotebookContext) {
-		conversationMessages.push({
+		specialUserMessages.push({
 			role: 'user',
 			content: folderNotebookContext,
 		});
 	}
 
-	// Add history messages from session (includes tool_calls and tool results)
-	// Filter out internal sub-agent messages (marked with subAgentInternal: true)
-	const session = sessionManager.getCurrentSession();
-	if (session && session.messages.length > 0) {
-		const filteredMessages = session.messages.filter(
-			msg => !msg.subAgentInternal,
-		);
-		conversationMessages.push(...filteredMessages);
+	// 步骤3: 在安全位置动态插入特殊用户消息
+	if (specialUserMessages.length > 0) {
+		// 计算插入位置
+		const insertPosition = findSafeInsertPosition(conversationMessages, 5);
+
+		// 确保插入位置至少在system之后（system在第0位）
+		const safeInsertPosition = Math.max(1, insertPosition);
+
+		// 使用insertMessagesAtPosition进行插入
+		return {
+			conversationMessages: insertMessagesAtPosition(
+				conversationMessages,
+				specialUserMessages,
+				safeInsertPosition,
+			),
+			currentSession,
+			existingTodoList,
+		};
 	}
 
 	return {conversationMessages, currentSession, existingTodoList};

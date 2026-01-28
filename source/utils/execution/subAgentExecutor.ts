@@ -25,16 +25,21 @@ import type {ChatMessage} from '../../api/types.js';
 import {formatUsefulInfoContext} from '../core/usefulInfoPreprocessor.js';
 import {formatTodoContext} from '../core/todoPreprocessor.js';
 import {
+	formatFolderNotebookContext,
 	getReadFolders,
 	setReadFolders,
 	clearReadFolders,
 } from '../core/folderNotebookPreprocessor.js';
+import {
+	findSafeInsertPosition,
+	insertMessagesAtPosition,
+} from '../message/messageUtils.js';
 
 export interface SubAgentMessage {
 	type: 'sub_agent_message';
 	agentId: string;
 	agentName: string;
-	message: any; // Stream event from anthropic API
+	message: any; // 来自Anthropic API的流事件
 }
 
 export interface TokenUsage {
@@ -106,37 +111,36 @@ export async function executeSubAgent(
 	getPendingMessages?: () => PendingMessage[],
 	clearPendingMessages?: () => void,
 ): Promise<SubAgentResult> {
-	// Pending message callbacks - will be used after tool calls complete
+	// 待处理消息回调函数，在工具调用完成后使用
 	void getPendingMessages;
 	void clearPendingMessages;
 
-	// Save main agent's readFolders state BEFORE any operations
-	// This must be declared outside try block for finally to access it
+	// 保存主代理的readFolders状态，必须在try块外声明以便finally块访问
 	const mainAgentReadFolders = getReadFolders();
-	clearReadFolders(); // Sub-agent starts with empty readFolders state
+	clearReadFolders(); // 子代理以空的readFolders状态开始
 
 	try {
-		// Handle built-in agents (hardcoded or user copy)
+		// 处理内置代理（硬编码或用户复制的版本）
 		let agent: any;
 
-		// First check if user has a custom copy of builtin agent
+		// 首先检查用户是否有内置代理的自定义副本
 		if (
 			agentId === 'agent_explore' ||
 			agentId === 'agent_plan' ||
 			agentId === 'agent_general' ||
 			agentId === 'agent_analyze'
 		) {
-			// Check user agents directly (not through getSubAgent which might return builtin)
+			// 直接检查用户代理（不通过 getSubAgent，因为它可能返回内置代理）
 			const {getUserSubAgents} = await import('../config/subAgentConfig.js');
 			const userAgents = getUserSubAgents();
 			const userAgent = userAgents.find(a => a.id === agentId);
 			if (userAgent) {
-				// User has customized this builtin agent, use their version
+				// 用户已自定义此内置代理，使用用户的版本
 				agent = userAgent;
 			}
 		}
 
-		// If no user copy found, use builtin definition
+		// 如果未找到用户副本，使用内置定义
 		if (!agent && agentId === 'agent_explore') {
 			agent = {
 				id: 'agent_explore',
@@ -752,7 +756,7 @@ OPEN QUESTIONS:
 				],
 			};
 		} else {
-			// Get user-configured sub-agent
+			// 获取用户配置的子代理
 			agent = getSubAgent(agentId);
 			if (!agent) {
 				return {
@@ -763,10 +767,10 @@ OPEN QUESTIONS:
 			}
 		}
 
-		// Get all available tools
+		// 获取所有可用工具
 		const allTools = await collectAllMCPTools();
 
-		// Filter tools based on sub-agent's allowed tools
+		// 根据子代理允许的工具进行过滤
 		const allowedTools = allTools.filter((tool: MCPTool) => {
 			const toolName = tool.function.name;
 			const normalizedToolName = toolName.replace(/_/g, '-');
@@ -785,7 +789,7 @@ OPEN QUESTIONS:
 			]);
 
 			return agent.tools.some((allowedTool: string) => {
-				// Normalize both tool names: replace underscores with hyphens for comparison
+				// 标准化两个工具名称：将下划线替换为连字符进行比较
 				const normalizedAllowedTool = allowedTool.replace(/_/g, '-');
 				const isQualifiedAllowed =
 					normalizedAllowedTool.includes('-') ||
@@ -793,7 +797,7 @@ OPEN QUESTIONS:
 						normalizedAllowedTool.startsWith(prefix),
 					);
 
-				// Support both exact match and prefix match (e.g., "filesystem" matches "filesystem-read")
+				// 支持精确匹配和前缀匹配（例如，"filesystem" 匹配 "filesystem-read"）
 				if (
 					normalizedToolName === normalizedAllowedTool ||
 					normalizedToolName.startsWith(`${normalizedAllowedTool}-`)
@@ -801,7 +805,7 @@ OPEN QUESTIONS:
 					return true;
 				}
 
-				// Backward compatibility: allow unqualified external tool names (missing service prefix)
+				// 向后兼容：允许非限定的外部工具名称（缺少服务前缀）
 				const isExternalTool = !Array.from(builtInPrefixes).some(prefix =>
 					normalizedToolName.startsWith(prefix),
 				);
@@ -825,23 +829,32 @@ OPEN QUESTIONS:
 			};
 		}
 
-		// Build conversation history for sub-agent
-		const messages: ChatMessage[] = [];
+		// 构建子代理的对话历史
+		let messages: ChatMessage[] = [];
 
-		// Build final prompt with 子代理配置subAgentRole + AGENTS.md + 系统环境 + 平台指导
+		// 检查是否配置了 subAgentRole（必需）
+		if (!agent.subAgentRole) {
+			return {
+				success: false,
+				result: '',
+				error: `Sub-agent "${agent.name}" missing subAgentRole configuration`,
+			};
+		}
+
+		// 构建最终提示词: 子代理配置subAgentRole + AGENTS.md + 系统环境 + 平台指导
 		let finalPrompt = prompt;
 
-		// Append agent-specific role if configured
+		// 如果配置了代理特定角色，则追加
 		if (agent.subAgentRole) {
 			finalPrompt = `${finalPrompt}\n\n${agent.subAgentRole}`;
 		}
-		// Append AGENTS.md content if available
+		// 如果有 AGENTS.md 内容，则追加
 		const agentsPrompt = getAgentsPrompt();
 		if (agentsPrompt) {
 			finalPrompt = `${finalPrompt}\n\n${agentsPrompt}`;
 		}
 
-		// Append system environment and platform guidance
+		// 追加系统环境和平台指导
 		const systemContext = createSystemContext();
 		if (systemContext) {
 			finalPrompt = `${finalPrompt}\n\n${systemContext}`;
@@ -853,28 +866,32 @@ OPEN QUESTIONS:
 			finalPrompt = `${finalPrompt}\n\n${taskCompletionPrompt}`;
 		}
 
-		// 子代理消息顺序必须为：提示词 → todo → useful
+		// 先将finalPrompt作为user消息推入messages数组
+		// 这样messages就不会是空数组，可以正确计算倒数第5条位置
 		messages.push({
 			role: 'user',
 			content: finalPrompt,
 		});
 
-		// Add TODO context if available
+		// 收集其他3类特殊用户消息(TODO、有用信息、文件夹笔记)
+		const specialUserMessages: ChatMessage[] = [];
 		const currentSession = sessionManager.getCurrentSession();
+
+		// 2. 收集TODO列表作为第2类特殊user，确保子代理了解当前任务进度
 		if (currentSession) {
 			const todoService = getTodoService();
 			const existingTodoList = await todoService.getTodoList(currentSession.id);
 
 			if (existingTodoList && existingTodoList.todos.length > 0) {
 				const todoContext = formatTodoContext(existingTodoList.todos, true); // isSubAgent=true
-				messages.push({
+				specialUserMessages.push({
 					role: 'user',
 					content: todoContext,
 				});
 			}
 		}
 
-		// Add useful information context if available
+		// 3. 收集有用信息作为第3类特殊user，让子代理了解上下文中的重要信息
 		if (currentSession) {
 			const usefulInfoService = getUsefulInfoService();
 			const usefulInfoList = await usefulInfoService.getUsefulInfoList(
@@ -885,21 +902,42 @@ OPEN QUESTIONS:
 				const usefulInfoContext = await formatUsefulInfoContext(
 					usefulInfoList.items,
 				);
-				messages.push({
+				specialUserMessages.push({
 					role: 'user',
 					content: usefulInfoContext,
 				});
 			}
 		}
 
-		// Stream sub-agent execution
+		// 4. 收集文件夹笔记作为第4类特殊user，提供目录级别的指导信息
+		const folderNotebookContext = formatFolderNotebookContext();
+		if (folderNotebookContext) {
+			specialUserMessages.push({
+				role: 'user',
+				content: folderNotebookContext,
+			});
+		}
+
+		// 动态在倒数第5个位置插入特殊用户消息
+		// 同时避开工具调用块
+		// 使用insertMessagesAtPosition保持与主代理实现一致，避免原地splice的副作用
+		if (specialUserMessages.length > 0) {
+			const insertPosition = findSafeInsertPosition(messages, 5);
+			messages = insertMessagesAtPosition(
+				messages,
+				specialUserMessages,
+				insertPosition,
+			);
+		}
+
+		// 流式执行子代理
 		let finalResponse = '';
 		let hasError = false;
 		let errorMessage = '';
 		let totalUsage: TokenUsage | undefined;
 
-		// Local session-approved tools for this sub-agent execution
-		// This ensures tools approved during execution are immediately recognized
+		// 此子代理执行的本地会话批准工具列表
+		// 确保执行期间批准的工具立即被识别
 		const sessionApprovedTools = new Set<string>();
 
 		// 子代理内部空回复重试计数器
@@ -908,9 +946,9 @@ OPEN QUESTIONS:
 
 		// eslint-disable-next-line no-constant-condition
 		while (true) {
-			// Check abort signal before streaming
+			// 流式传输前检查中止信号
 			if (abortSignal?.aborted) {
-				// Send done message to mark completion (like normal tool abort)
+				// 发送 done 消息标记完成（类似正常工具中止）
 				if (onMessage) {
 					onMessage({
 						type: 'sub_agent_message',
@@ -928,11 +966,11 @@ OPEN QUESTIONS:
 				};
 			}
 
-			// Get current session
+			// 获取当前会话
 			const currentSession = sessionManager.getCurrentSession();
 
-			// Get sub-agent configuration
-			// If sub-agent has configProfile, load it; otherwise use main config
+			// 获取子代理配置
+			// 如果子代理有 configProfile，则加载；否则使用主配置
 			let config;
 			let model;
 			if (agent.configProfile) {
@@ -943,7 +981,7 @@ OPEN QUESTIONS:
 						config = profileConfig.snowcfg;
 						model = config.advancedModel || 'gpt-5';
 					} else {
-						// Profile not found, fallback to main config
+						// 未找到配置文件，回退到主配置
 						config = getOpenAiConfig();
 						model = config.advancedModel || 'gpt-5';
 						console.warn(
@@ -951,7 +989,7 @@ OPEN QUESTIONS:
 						);
 					}
 				} catch (error) {
-					// If loading profile fails, fallback to main config
+					// 如果加载配置文件失败，回退到主配置
 					config = getOpenAiConfig();
 					model = config.advancedModel || 'gpt-5';
 					console.warn(
@@ -960,7 +998,7 @@ OPEN QUESTIONS:
 					);
 				}
 			} else {
-				// No configProfile specified, use main config
+				// 未指定 configProfile，使用主配置
 				config = getOpenAiConfig();
 				model = config.advancedModel || 'gpt-5';
 			}
@@ -991,8 +1029,8 @@ OPEN QUESTIONS:
 				}
 			};
 
-			// Call API with sub-agent's tools - choose API based on config
-			// Apply sub-agent configuration overrides (model already loaded from configProfile above)
+			// 使用子代理的工具调用API - 根据配置选择API
+			// 应用子代理配置覆盖（模型已从上面的 configProfile 加载）
 			// 子代理遵循全局配置（通过 configProfile 继承或覆盖）
 			// API 层会根据 configProfile 自动获取自定义系统提示词和请求头
 
@@ -1070,7 +1108,7 @@ OPEN QUESTIONS:
 			let hasReceivedData = false; // 标记是否收到过任何数据
 
 			for await (const event of stream) {
-				// Check abort signal - 子代理需要检测中断并立即停止
+				// 检查中止信号 - 子代理需要检测中断并立即停止
 				if (abortSignal?.aborted) {
 					break;
 				}
@@ -1185,7 +1223,7 @@ OPEN QUESTIONS:
 				emptyResponseRetryCount = 0;
 			}
 
-			// Add assistant response to conversation
+			// 添加助手响应到对话
 			if (currentContent || toolCalls.length > 0) {
 				const assistantMessage: ChatMessage = {
 					role: 'assistant',
@@ -1435,7 +1473,7 @@ OPEN QUESTIONS:
 				toolCalls = remainingTools;
 			}
 
-			// Check tool approvals before execution
+			// 执行前检查工具批准
 			const approvedToolCalls: typeof toolCalls = [];
 			const rejectedToolCalls: typeof toolCalls = [];
 			const rejectionReasons = new Map<string, string>(); // Map tool_call_id to rejection reason
@@ -1449,7 +1487,7 @@ OPEN QUESTIONS:
 					args = {};
 				}
 
-				// Check if tool needs confirmation using the unified YOLO permission checker
+				// 使用统一的YOLO权限检查器检查工具是否需要确认
 				const permissionResult = await checkYoloPermission(
 					toolName,
 					args,
@@ -1457,8 +1495,8 @@ OPEN QUESTIONS:
 				);
 				let needsConfirmation = permissionResult.needsConfirmation;
 
-				// Check if tool is in auto-approved list (global or session)
-				// This should override the YOLO permission check result
+				// 检查工具是否在自动批准列表中(全局或会话)
+				// 这应该覆盖YOLO权限检查结果
 				if (
 					sessionApprovedTools.has(toolName) ||
 					(isToolAutoApproved && isToolAutoApproved(toolName))
@@ -1482,11 +1520,11 @@ OPEN QUESTIONS:
 						}
 						continue;
 					}
-					// If approve_always, add to both global and session lists
+					// 如果选择'始终批准',则添加到全局和会话列表
 					if (confirmation === 'approve_always') {
-						// Add to local session set (immediate effect)
+						// 添加到本地会话集合(立即生效)
 						sessionApprovedTools.add(toolName);
-						// Add to global list (persistent across sub-agent calls)
+						// 添加到全局列表(跨子代理调用持久化)
 						if (addToAlwaysApproved) {
 							addToAlwaysApproved(toolName);
 						}
@@ -1496,12 +1534,12 @@ OPEN QUESTIONS:
 				approvedToolCalls.push(toolCall);
 			}
 
-			// Handle rejected tools - add rejection results to conversation instead of stopping
+			// 处理被拒绝的工具 - 将拒绝结果添加到对话而不是停止
 			if (rejectedToolCalls.length > 0) {
 				const rejectionResults: ChatMessage[] = [];
 
 				for (const toolCall of rejectedToolCalls) {
-					// Get rejection reason if provided by user
+					// 如果用户提供了拒绝原因,则获取
 					const rejectionReason = rejectionReasons.get(toolCall.id);
 					const rejectMessage = rejectionReason
 						? `Tool execution rejected by user: ${rejectionReason}`
@@ -1530,7 +1568,7 @@ OPEN QUESTIONS:
 					}
 				}
 
-				// Add rejection results to conversation
+				// 将拒绝结果添加到对话
 				messages.push(...rejectionResults);
 
 				// If all tools were rejected and there are no approved tools, continue to next AI turn
@@ -1545,7 +1583,7 @@ OPEN QUESTIONS:
 			// Execute approved tool calls
 			const toolResults: ChatMessage[] = [];
 			for (const toolCall of approvedToolCalls) {
-				// Check abort signal before executing each tool
+				// 执行每个工具前检查中止信号
 				if (abortSignal?.aborted) {
 					// Send done message to mark completion
 					if (onMessage) {
@@ -1625,16 +1663,16 @@ OPEN QUESTIONS:
 				}
 			}
 
-			// Add tool results to conversation
+			// 将工具结果添加到对话
 			messages.push(...toolResults);
-			// Check and handle pending messages from user
+			// 检查并处理用户待发送消息
 			if (getPendingMessages && clearPendingMessages) {
 				const pendingMessages = getPendingMessages();
 				if (pendingMessages.length > 0) {
 					// Merge multiple pending messages with \n\n separator
 					const combinedMessage = pendingMessages.map(m => m.text).join('\n\n');
 
-					// Collect all images from all pending messages
+					// 收集所有待发送消息中的所有图片
 					const allPendingImages = pendingMessages
 						.flatMap(m => m.images || [])
 						.map(img => ({

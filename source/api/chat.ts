@@ -29,13 +29,16 @@ export type {
 	ImageContent,
 };
 
+/**
+ * Chat API调用选项
+ */
 export interface ChatCompletionOptions {
-	model: string;
-	messages: ChatMessage[];
-	stream?: boolean;
-	temperature?: number;
-	max_tokens?: number;
-	tools?: ChatCompletionTool[];
+	model: string; // 使用的模型名称
+	messages: ChatMessage[]; // 对话消息数组
+	stream?: boolean; // 是否使用流式输出
+	temperature?: number; // 采样温度，控制输出的随机性
+	max_tokens?: number; // 最大生成token数
+	tools?: ChatCompletionTool[]; // 可用的工具列表
 	tool_choice?:
 		| 'auto'
 		| 'none'
@@ -43,7 +46,7 @@ export interface ChatCompletionOptions {
 		| {type: 'function'; function: {name: string}};
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
 	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
-	// Sub-agent configuration overrides
+	// 子代理配置覆盖
 	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
 	customSystemPromptId?: string; // 自定义系统提示词 ID
 	customHeaders?: Record<string, string>; // 自定义请求头
@@ -88,14 +91,14 @@ export interface ChatCompletionMessageParam {
 }
 
 /**
- * Convert internal ChatMessage to OpenAI's message format
- * Supports both text-only and multimodal (text + images) messages
- * System prompt handling:
- * 1. If custom system prompt provided: place it as system message, default as user message
- * 2. If no custom system prompt: use default as system
- * @param messages - The messages to convert
- * @param includeBuiltinSystemPrompt - Whether to include builtin system prompt (default true)
- * @param customSystemPromptOverride - Optional custom system prompt content (for sub-agents)
+ * 将我们的ChatMessage格式转换为OpenAI格式
+ * 支持纯文本和多模态(文本+图片)消息
+ * 系统提示词处理:
+ * 1. 如果提供自定义系统提示词: 将其作为system消息,默认作为user消息
+ * 2. 如果没有自定义系统提示词: 使用默认作为system
+ * @param messages - 要转换的消息数组
+ * @param includeBuiltinSystemPrompt - 是否包含内置系统提示词(默认true)
+ * @param customSystemPromptOverride - 自定义系统提示词内容(用于子代理)
  */
 function convertToOpenAIMessages(
 	messages: ChatMessage[],
@@ -295,7 +298,7 @@ function convertToOpenAIMessages(
 			];
 		} else {
 			// 子代理调用：自定义系统提示词作为 system 消息
-			// subAgentSystemPrompt 已经在 messages 第一条，无需重复添加
+			// finalPrompt会同时在system和user中存在，确保子代理能够获取完整的角色定义
 			result = [
 				{
 					role: 'system',

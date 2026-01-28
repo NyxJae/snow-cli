@@ -30,6 +30,9 @@ export interface GeminiOptions {
 	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词（包含role等信息）
 }
 
+/**
+ * Gemini API流式响应块
+ */
 export interface GeminiStreamChunk {
 	type:
 		| 'content'
@@ -38,8 +41,8 @@ export interface GeminiStreamChunk {
 		| 'done'
 		| 'usage'
 		| 'reasoning_started'
-		| 'reasoning_delta';
-	content?: string;
+		| 'reasoning_delta'; // 响应类型：文本、工具调用、完成、使用量、推理开始、推理增量
+	content?: string; // 文本内容
 	tool_calls?: Array<{
 		id: string;
 		type: 'function';
@@ -47,7 +50,7 @@ export interface GeminiStreamChunk {
 			name: string;
 			arguments: string;
 		};
-	}>;
+	}>; // 工具调用列表
 	delta?: string;
 	usage?: UsageInfo;
 	thinking?: {
@@ -56,7 +59,7 @@ export interface GeminiStreamChunk {
 	};
 }
 
-// Deprecated: No longer used, kept for backward compatibility
+// 已弃用：不再使用，保留作为参考
 // @ts-ignore - Variable kept for backward compatibility with resetGeminiClient export
 let geminiConfig: {
 	apiKey: string;
@@ -105,9 +108,14 @@ function convertToolsToGemini(tools?: ChatCompletionTool[]): any[] | undefined {
 }
 
 /**
- * Convert our ChatMessage format to Gemini's format
- * @param messages - The messages to convert
- * @param includeBuiltinSystemPrompt - Whether to include builtin system prompt (default true)
+ * 将我们的ChatMessage格式转换为Gemini格式
+ *
+ * @param messages - 要转换的消息数组
+ * @param includeBuiltinSystemPrompt - 是否包含内置系统提示词（默认true）
+ * @param customSystemPromptOverride - 自定义系统提示词（用于子代理）
+ * @param isSubAgentCall - 是否为子代理调用
+ * @param subAgentSystemPrompt - 子代理组装好的完整提示词
+ * @returns 转换后的对象，包含systemInstruction和contents
  */
 function convertToGeminiMessages(
 	messages: ChatMessage[],
@@ -415,10 +423,8 @@ function convertToGeminiMessages(
 	} else if (isSubAgentCall && subAgentSystemPrompt) {
 		// 子代理调用且没有自定义系统提示词：将子代理组装提示词作为系统提示词
 		systemInstruction = subAgentSystemPrompt;
-		// 从 contents 中移除第一条（subAgentSystemPrompt），因为它已经提升为系统提示词
-		if (contents.length > 0 && contents[0].role === 'user') {
-			contents.shift();
-		}
+		// 不再从contents中移除第一条，因为finalPrompt现在作为特殊user存在
+		// finalPrompt会同时在system和user中存在
 	} else if (!systemInstruction && effectiveIncludeBuiltinSystemPrompt) {
 		// 没有自定义系统提示词，但需要添加默认系统提示词
 		systemInstruction = mainAgentManager.getSystemPrompt();
@@ -428,7 +434,12 @@ function convertToGeminiMessages(
 }
 
 /**
- * Create streaming chat completion using Gemini API
+ * 使用Gemini API创建流式聊天补全
+ *
+ * @param options - Gemini API调用选项
+ * @param abortSignal - 中断信号，用于取消请求
+ * @param onRetry - 重试回调函数，在重试时调用
+ * @returns 流式响应生成器
  */
 export async function* createStreamingGeminiCompletion(
 	options: GeminiOptions,
