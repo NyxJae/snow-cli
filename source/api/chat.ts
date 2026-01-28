@@ -120,6 +120,26 @@ function convertToOpenAIMessages(
 		? false
 		: includeBuiltinSystemPrompt;
 
+	const formatTimestamp = (timestamp?: number): string | undefined => {
+		if (!timestamp) {
+			return undefined;
+		}
+		const date = new Date(timestamp);
+		return (
+			date.getFullYear() +
+			'-' +
+			String(date.getMonth() + 1).padStart(2, '0') +
+			'-' +
+			String(date.getDate()).padStart(2, '0') +
+			'T' +
+			String(date.getHours()).padStart(2, '0') +
+			':' +
+			String(date.getMinutes()).padStart(2, '0') +
+			':' +
+			String(date.getSeconds()).padStart(2, '0')
+		);
+	};
+
 	let result = messages.map(msg => {
 		// 如果消息包含图片，使用 content 数组格式
 		if (msg.role === 'user' && msg.images && msg.images.length > 0) {
@@ -131,23 +151,10 @@ function convertToOpenAIMessages(
 
 			// 添加文本内容
 			if (msg.content) {
-				// 添加本地时间戳（到秒）
-				const date = new Date(msg.timestamp || Date.now());
-				const timestamp =
-					date.getFullYear() +
-					'-' +
-					String(date.getMonth() + 1).padStart(2, '0') +
-					'-' +
-					String(date.getDate()).padStart(2, '0') +
-					'T' +
-					String(date.getHours()).padStart(2, '0') +
-					':' +
-					String(date.getMinutes()).padStart(2, '0') +
-					':' +
-					String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
+				const timestamp = formatTimestamp(msg.timestamp);
 				contentParts.push({
 					type: 'text',
-					text: `[${timestamp}] ${msg.content}`,
+					text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
 				});
 			}
 
@@ -167,23 +174,14 @@ function convertToOpenAIMessages(
 			} as ChatCompletionMessageParam;
 		}
 
-		// 添加本地时间戳（到秒）
-		const date = new Date(msg.timestamp || Date.now());
-		const timestamp =
-			date.getFullYear() +
-			'-' +
-			String(date.getMonth() + 1).padStart(2, '0') +
-			'-' +
-			String(date.getDate()).padStart(2, '0') +
-			'T' +
-			String(date.getHours()).padStart(2, '0') +
-			':' +
-			String(date.getMinutes()).padStart(2, '0') +
-			':' +
-			String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
+		const timestamp = formatTimestamp(msg.timestamp);
 		const baseMessage = {
 			role: msg.role,
-			content: msg.content ? `[${timestamp}] ${msg.content}` : msg.content,
+			content: msg.content
+				? timestamp
+					? `[${timestamp}] ${msg.content}`
+					: msg.content
+				: msg.content,
 		};
 		if (msg.role === 'assistant' && msg.tool_calls) {
 			const result: any = {
@@ -208,23 +206,10 @@ function convertToOpenAIMessages(
 
 				// Add text content
 				if (msg.content) {
-					// 添加本地时间戳（到秒）
-					const date = new Date(msg.timestamp || Date.now());
-					const timestamp =
-						date.getFullYear() +
-						'-' +
-						String(date.getMonth() + 1).padStart(2, '0') +
-						'-' +
-						String(date.getDate()).padStart(2, '0') +
-						'T' +
-						String(date.getHours()).padStart(2, '0') +
-						':' +
-						String(date.getMinutes()).padStart(2, '0') +
-						':' +
-						String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
+					const timestamp = formatTimestamp(msg.timestamp);
 					content.push({
 						type: 'text',
-						text: `[${timestamp}] ${msg.content}`,
+						text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
 					});
 				}
 
@@ -245,23 +230,14 @@ function convertToOpenAIMessages(
 				} as ChatCompletionMessageParam;
 			}
 
-			// 添加本地时间戳（到秒）
-			const date = new Date(msg.timestamp || Date.now());
-			const timestamp =
-				date.getFullYear() +
-				'-' +
-				String(date.getMonth() + 1).padStart(2, '0') +
-				'-' +
-				String(date.getDate()).padStart(2, '0') +
-				'T' +
-				String(date.getHours()).padStart(2, '0') +
-				':' +
-				String(date.getMinutes()).padStart(2, '0') +
-				':' +
-				String(date.getSeconds()).padStart(2, '0'); // 2026-01-20T13:02:25 (本地时间)
+			const timestamp = formatTimestamp(msg.timestamp);
 			return {
 				role: 'tool',
-				content: msg.content ? `[${timestamp}] ${msg.content}` : msg.content,
+				content: msg.content
+					? timestamp
+						? `[${timestamp}] ${msg.content}`
+						: msg.content
+					: msg.content,
 				tool_call_id: msg.tool_call_id,
 			} as ChatCompletionMessageParam;
 		}

@@ -39,6 +39,7 @@ export async function processToolCallsAfterStream(
 
 	const assistantMessage: ChatMessage = {
 		role: 'assistant',
+		timestamp: Date.now(),
 		content: streamedContent || '',
 		tool_calls: receivedToolCalls.map(tc => ({
 			id: tc.id,

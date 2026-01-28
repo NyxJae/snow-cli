@@ -139,6 +139,25 @@ function convertToGeminiMessages(
 	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
 		? false
 		: includeBuiltinSystemPrompt;
+	const formatTimestamp = (timestamp?: number): string | undefined => {
+		if (!timestamp) {
+			return undefined;
+		}
+		const date = new Date(timestamp);
+		return (
+			date.getFullYear() +
+			'-' +
+			String(date.getMonth() + 1).padStart(2, '0') +
+			'-' +
+			String(date.getDate()).padStart(2, '0') +
+			'T' +
+			String(date.getHours()).padStart(2, '0') +
+			':' +
+			String(date.getMinutes()).padStart(2, '0') +
+			':' +
+			String(date.getSeconds()).padStart(2, '0')
+		);
+	};
 	let systemInstruction: string | undefined;
 	const contents: any[] = [];
 
@@ -171,25 +190,14 @@ function convertToGeminiMessages(
 				});
 			}
 
-			// Add text content if exists
+			// Add text content
 			if (msg.content) {
-				// 添加本地时间戳（到秒）
-				const date = new Date(msg.timestamp || Date.now());
-				const timestamp =
-					date.getFullYear() +
-					'-' +
-					String(date.getMonth() + 1).padStart(2, '0') +
-					'-' +
-					String(date.getDate()).padStart(2, '0') +
-					'T' +
-					String(date.getHours()).padStart(2, '0') +
-					':' +
-					String(date.getMinutes()).padStart(2, '0') +
-					':' +
-					String(date.getSeconds()).padStart(2, '0');
-				parts.push({text: `[${timestamp}] ${msg.content}`});
+				const timestamp = formatTimestamp(msg.timestamp);
+				parts.push({
+					text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+				});
 			}
-			// Add function calls and build mapping
+
 			for (const toolCall of msg.tool_calls) {
 				// Store tool_call_id -> function_name mapping
 				toolCallIdToFunctionName.set(toolCall.id, toolCall.function.name);
@@ -234,6 +242,7 @@ function convertToGeminiMessages(
 				tool_call_id: string;
 				content: string;
 				images?: any[];
+				timestamp?: number;
 			}> = [];
 
 			let j = i;
@@ -244,6 +253,7 @@ function convertToGeminiMessages(
 						tool_call_id: toolMsg.tool_call_id || '',
 						content: toolMsg.content || '',
 						images: toolMsg.images,
+						timestamp: toolMsg.timestamp,
 					});
 				}
 				j++;
@@ -267,20 +277,7 @@ function convertToGeminiMessages(
 				if (!toolResp.content) {
 					responseData = {};
 				} else {
-					// 添加本地时间戳（到秒）
-					const date = new Date(msg.timestamp || Date.now());
-					const timestamp =
-						date.getFullYear() +
-						'-' +
-						String(date.getMonth() + 1).padStart(2, '0') +
-						'-' +
-						String(date.getDate()).padStart(2, '0') +
-						'T' +
-						String(date.getHours()).padStart(2, '0') +
-						':' +
-						String(date.getMinutes()).padStart(2, '0') +
-						':' +
-						String(date.getSeconds()).padStart(2, '0');
+					const timestamp = formatTimestamp(toolResp.timestamp);
 
 					let contentToParse = toolResp.content;
 
@@ -315,21 +312,27 @@ function convertToGeminiMessages(
 							parsed !== null &&
 							!Array.isArray(parsed)
 						) {
-							// Add timestamp to the response object
-							responseData = {...parsed, _timestamp: timestamp};
+							// Add timestamp to the response object when available
+							responseData = timestamp
+								? {...parsed, _timestamp: timestamp}
+								: parsed;
 						} else {
 							// If it's a primitive, array, or null, wrap it
-							responseData = {
-								_timestamp: timestamp,
-								content: parsed,
-							};
+							responseData = timestamp
+								? {
+										_timestamp: timestamp,
+										content: parsed,
+								  }
+								: {content: parsed};
 						}
 					} else {
 						// Not valid JSON, wrap the raw string
-						responseData = {
-							_timestamp: timestamp,
-							content: contentToParse,
-						};
+						responseData = timestamp
+							? {
+									_timestamp: timestamp,
+									content: contentToParse,
+							  }
+							: {content: contentToParse};
 					}
 				}
 
@@ -365,23 +368,12 @@ function convertToGeminiMessages(
 		// Build message parts for regular user/assistant messages
 		const parts: any[] = [];
 
-		// Add text content
+		// Add text content if exists
 		if (msg.content) {
-			// 添加本地时间戳（到秒）
-			const date = new Date(msg.timestamp || Date.now());
-			const timestamp =
-				date.getFullYear() +
-				'-' +
-				String(date.getMonth() + 1).padStart(2, '0') +
-				'-' +
-				String(date.getDate()).padStart(2, '0') +
-				'T' +
-				String(date.getHours()).padStart(2, '0') +
-				':' +
-				String(date.getMinutes()).padStart(2, '0') +
-				':' +
-				String(date.getSeconds()).padStart(2, '0');
-			parts.push({text: `[${timestamp}] ${msg.content}`});
+			const timestamp = formatTimestamp(msg.timestamp);
+			parts.push({
+				text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+			});
 		}
 
 		// Add images for user messages

@@ -80,6 +80,7 @@ export interface ToolCall {
 export interface ToolResult {
 	tool_call_id: string;
 	role: 'tool';
+	timestamp?: number;
 	content: string;
 	images?: ImageContent[]; // Support multimodal content with images
 	hookFailed?: boolean; // Indicates if a hook failed and AI flow should be interrupted
@@ -350,6 +351,7 @@ export async function executeToolCall(
 			result = {
 				tool_call_id: toolCall.id,
 				role: 'tool',
+				timestamp: Date.now(),
 				content: JSON.stringify(subAgentResult),
 			};
 		} else {
@@ -367,6 +369,7 @@ export async function executeToolCall(
 			result = {
 				tool_call_id: toolCall.id,
 				role: 'tool',
+				timestamp: Date.now(),
 				content: textContent,
 				images,
 			};
