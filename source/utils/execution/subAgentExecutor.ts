@@ -841,29 +841,41 @@ OPEN QUESTIONS:
 			};
 		}
 
-		// 构建最终提示词: 子代理配置subAgentRole + AGENTS.md + 系统环境 + 平台指导
-		let finalPrompt = prompt;
+		// 构建最终提示词: 子代理配置subAgentRole + AGENTS.md + 系统环境 + 平台指导 + 任务提示词(最后)
+		let finalPrompt = '';
 
-		// 如果配置了代理特定角色，则追加
+		// 1. 如果配置了代理特定角色，则追加
 		if (agent.subAgentRole) {
-			finalPrompt = `${finalPrompt}\n\n${agent.subAgentRole}`;
+			finalPrompt = agent.subAgentRole;
 		}
-		// 如果有 AGENTS.md 内容，则追加
+
+		// 2. 如果有 AGENTS.md 内容，则追加
 		const agentsPrompt = getAgentsPrompt();
 		if (agentsPrompt) {
-			finalPrompt = `${finalPrompt}\n\n${agentsPrompt}`;
+			finalPrompt = finalPrompt
+				? `${finalPrompt}\n\n${agentsPrompt}`
+				: agentsPrompt;
 		}
 
-		// 追加系统环境和平台指导
+		// 3. 追加系统环境和平台指导
 		const systemContext = createSystemContext();
 		if (systemContext) {
-			finalPrompt = `${finalPrompt}\n\n${systemContext}`;
+			finalPrompt = finalPrompt
+				? `${finalPrompt}\n\n${systemContext}`
+				: systemContext;
 		}
 
-		// 添加任务完成标识提示词
+		// 4. 添加任务完成标识提示词
 		const taskCompletionPrompt = getTaskCompletionPrompt();
 		if (taskCompletionPrompt) {
-			finalPrompt = `${finalPrompt}\n\n${taskCompletionPrompt}`;
+			finalPrompt = finalPrompt
+				? `${finalPrompt}\n\n${taskCompletionPrompt}`
+				: taskCompletionPrompt;
+		}
+
+		// 5. 最后追加主代理传入的任务提示词
+		if (prompt) {
+			finalPrompt = finalPrompt ? `${finalPrompt}\n\n${prompt}` : prompt;
 		}
 
 		// 先将finalPrompt作为user消息推入messages数组
