@@ -1325,6 +1325,90 @@ export class FilesystemMCPService {
 							searchLines.length,
 							...normalizedSearch.split('\n'),
 						);
+
+						const didChangeTarget =
+							trimResult.target !== unescapeFix.correctedString;
+						if (didChangeTarget) {
+							const trimmedMatches: Array<{
+								startLine: number;
+								endLine: number;
+								similarity: number;
+							}> = [];
+							const trimmedSearchFirstLine =
+								searchLines[0]?.replace(/\s+/g, ' ').trim() || '';
+							const useTrimmedPreFilter = searchLines.length >= 5;
+
+							for (
+								let i = 0;
+								i <= contentLines.length - searchLines.length;
+								i++
+							) {
+								if (useTrimmedPreFilter) {
+									const firstLineCandidate =
+										contentLines[i]?.replace(/\s+/g, ' ').trim() || '';
+									const firstLineSimilarity = calculateSimilarity(
+										trimmedSearchFirstLine,
+										firstLineCandidate,
+										preFilterThreshold,
+									);
+
+									if (firstLineSimilarity < preFilterThreshold) {
+										continue;
+									}
+								}
+
+								const candidateLines = contentLines.slice(
+									i,
+									i + searchLines.length,
+								);
+								const candidateContent = candidateLines.join('\n');
+								const similarity = await calculateSimilarityAsync(
+									normalizedSearch,
+									candidateContent,
+									threshold,
+								);
+
+								if (similarity >= threshold) {
+									trimmedMatches.push({
+										startLine: i + 1,
+										endLine: i + searchLines.length,
+										similarity,
+									});
+
+									if (similarity >= 0.95) {
+										break;
+									}
+
+									if (trimmedMatches.length >= maxMatches) {
+										break;
+									}
+								}
+							}
+
+							trimmedMatches.sort((a, b) => b.similarity - a.similarity);
+							matches.splice(0, matches.length, ...trimmedMatches);
+							if (matches.length === 0) {
+								const trimmedSearchPreview = normalizedSearch
+									? normalizedSearch.split('\n').slice(0, 5)
+									: [];
+								const previewMessage = trimmedSearchPreview.length
+									? `\n\n📝 Trimmed search preview:\n${trimmedSearchPreview
+											.map(
+												(line, idx) =>
+													`${idx + 1}. ${JSON.stringify(
+														normalizeForDisplay(line),
+													)}`,
+											)
+											.join('\n')}`
+									: '';
+								throw new Error(
+									`❌ Search content not found after unescape + trim fix in file: ${filePath}` +
+										`\n` +
+										`🔍 Trimmed search length: ${searchLines.length} lines, threshold ${threshold}` +
+										previewMessage,
+								);
+							}
+						}
 					}
 				}
 
