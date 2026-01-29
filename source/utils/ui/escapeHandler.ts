@@ -171,9 +171,20 @@ export function trimPairIfPossible(
 	const trimmedOccurrences = countOccurrences(fileContent, trimmedTarget);
 
 	if (trimmedOccurrences === expectedOccurrences) {
+		const leadingWhitespace = targetString.match(/^\s+/)?.[0] ?? '';
+		const trailingWhitespace = targetString.match(/\s+$/)?.[0] ?? '';
+		let trimmedPaired = pairedString;
+
+		if (leadingWhitespace && trimmedPaired.startsWith(leadingWhitespace)) {
+			trimmedPaired = trimmedPaired.slice(leadingWhitespace.length);
+		}
+		if (trailingWhitespace && trimmedPaired.endsWith(trailingWhitespace)) {
+			trimmedPaired = trimmedPaired.slice(0, -trailingWhitespace.length);
+		}
+
 		return {
 			target: trimmedTarget,
-			paired: pairedString,
+			paired: trimmedPaired,
 		};
 	}
 

@@ -32,7 +32,7 @@ source/mcp/filesystem.ts:2294 -->
 
 已在 0971ea8555cf30e5436dc45fe6a6ccf29e2aa3e1 尝试修复 但
 
-"{\"filePath\":\"F:/UnityProject/SL/SL_402/Code/Assets/LuaScripts/Logics/ZhuHunMiJing/ZhuHunMiJingDialog.txt\",
+<!-- "{\"filePath\":\"F:/UnityProject/SL/SL_402/Code/Assets/LuaScripts/Logics/ZhuHunMiJing/ZhuHunMiJingDialog.txt\",
 
 \"replaceContent\":\"\\tUnityEngine.Debug.Log(\\\"[ZhuHunMiJing] UpdateRightPanel: 准备调用UpdateBossState, monsterId=\\\" .. bossInfo.monid)\\n\\n\\t-- 显示层名称 - 使用索引显示\\\"第1层\\\"、\\\"第2层\\\"等\\n\\tif self.LayerNameLabel then\\n\\t\\tself.LayerNameLabel.text = \\\"第\\\" .. self.selectLayerIndex .. \\\"层\\\"\\n\\tend\\n\\n\\tUnityEngine.Debug.Log(\\\"[ZhuHunMiJing] UpdateRightPanel: 显示Boss名称...\\\")\\n\\t-- 显示Boss名称\\n\\tlocal monDb = sGameDBData:GetMonsterBase(bossInfo.monid)\\n\\tif monDb then\\n\\t\\tif self.BossNameLabel then\\n\\t\\t\\tself.BossNameLabel.text = monDb.name\\n\\t\\tend\\n\\tend\\n\\n\\tUnityEngine.Debug.Log(\\\"[ZhuHunMiJing] UpdateRightPanel: 准备显示Boss模型...\\\")\\n\\t-- 显示所有Boss模型（每层可能有多个Boss）\\n\\tself:ShowAllBossModels(layerCfg.bossid)\\n\\n\\tUnityEngine.Debug.Log(\\\"[ZhuHunMiJing] UpdateRightPanel: 准备调用UpdateBossState...\\\")\\n\\t-- 显示Boss刷新时间和状态\\n\\tself:UpdateBossState(bossInfo.monid)\",
 
@@ -58,4 +58,47 @@ source/mcp/filesystem.ts:2294 -->
                                                                                |  187 +  self:UpdateBossState(bossInfo.monid)
     201                                                                        |  188
     202    -- 显示奖励预览                                                     |  189    -- 显示奖励预览
-    203    self:ShowRewardPreview(layerCfg.RewardsShow)                        |  190    self:ShowRewardPreview(layerCfg.RewardsShow)
+    203    self:ShowRewardPreview(layerCfg.RewardsShow)                        |  190    self:ShowRewardPreview(layerCfg.RewardsShow) -->
+
+
+再在95bc1507fe483f07c35151e1b8622beafe670aee 中尝试修复了,但
+
+
+    {
+  "name": "filesystem-edit_search",
+  "arguments": "{\"filePath\":\"F:\\\\UnityProject\\\\SL\\\\SL_402\\\\Code\\\\Assets\\\\Editor\\\\AgentCommands\\\\Utils\\\\SerializedObjectHelper.cs\",
+  
+  \"searchContent\":\"            using (SerializedObject serializedObj = new SerializedObject(obj))\\n            {\\n                SerializedProperty prop = serializedObj.GetIterator();\\n\\n                // 如果需要过滤私有字段, 建立字段映射\\n                Dictionary<string, System.Reflection.FieldInfo> fieldMap = null;\\n                if (!includePrivate)\\n                {\\n                    fieldMap = SerializedFieldFilter.GetFieldMap(obj.GetType());\\n                }\\n\\n                // 跳过根属性, 使用Next()以包含[HideInInspector]字段\\n                if (prop.Next(true))\\n                {\\n                    do\\n                    {\\n                        // 跳过脚本字段\\n                        if (prop.propertyPath == \\\"m_Script\\\")\\n                        {\\n                            continue;\\n                        }\\n\\n                        // 过滤私有字段\\n                        if (!includePrivate && fieldMap != null)\\n                        {\\n                            string baseFieldName = SerializedFieldFilter.ExtractBaseFieldName(prop.propertyPath);\\n                            if (fieldMap.TryGetValue(baseFieldName, out System.Reflection.FieldInfo field) && \\n                                field.IsPrivate)\\n                            {\\n                                continue;\\n                            }\\n                        }\\n\\n                        JsonData value = SerializedPropertyConverter.ConvertSerializedProperty(prop);\\n                        SerializedJsonTreeBuilder.InsertPropertyValue(\\n                            result, \\n                            PropertyPathParser.ParsePropertyPath(prop.propertyPath), \\n                            value);\\n                    }\\n                    while (prop.Next(false));\\n                }\\n            }\",
+  
+  \"replaceContent\":\"            using (SerializedObject serializedObj = new SerializedObject(obj))\\n            {\\n                SerializedProperty prop = serializedObj.GetIterator();\\n\\n                // 如果需要过滤私有字段, 建立字段映射\\n                Dictionary<string, System.Reflection.FieldInfo> fieldMap = null;\\n                if (!includePrivate)\\n                {\\n                    fieldMap = SerializedFieldFilter.GetFieldMap(obj.GetType());\\n                }\\n\\n                // 跳过根属性, 使用Next()以包含[HideInInspector]字段\\n                if (prop.Next(true))\\n                {\\n                    int propIndex = 0;\\n                    do\\n                    {\\n                        try\\n                        {\\n                            propIndex++;\\n                            Debug.Log($\\\"[SerializedObjectHelper] Processing property {propIndex}: {prop.propertyPath}, type: {prop.propertyType}\\\");\\n\\n                            // 跳过脚本字段\\n                            if (prop.propertyPath == \\\"m_Script\\\")\\n                            {\\n                                continue;\\n                            }\\n\\n                            // 过滤私有字段\\n                            if (!includePrivate && fieldMap != null)\\n                            {\\n                                string baseFieldName = SerializedFieldFilter.ExtractBaseFieldName(prop.propertyPath);\\n                                if (fieldMap.TryGetValue(baseFieldName, out System.Reflection.FieldInfo field) && \\n                                    field.IsPrivate)\\n                                {\\n                                    continue;\\n                                }\\n                            }\\n\\n                            JsonData value = SerializedPropertyConverter.ConvertSerializedProperty(prop);\\n                            SerializedJsonTreeBuilder.InsertPropertyValue(\\n                                result, \\n                                PropertyPathParser.ParsePropertyPath(prop.propertyPath), \\n                                value);\\n                        }\\n                        catch (System.Exception ex)\\n                        {\\n                            string propertyPathStr = \\\"unknown\\\";\\n                            try\\n                            {\\n                                propertyPathStr = prop.propertyPath;\\n                            }\\n                            catch { }\\n                            \\n                            Debug.LogError($\\\"[SerializedObjectHelper] Error processing property {propIndex}: {ex.Message}\\\\nPropertyPath: {propertyPathStr}\\\\nStack: {ex.StackTrace}\\\");\\n                        }\\n                    }\\n                    while (prop.Next(false));\\n                }\\n            }\"}"
+}
+
+
+   ------------------------------------------------------ OLD -------------------------------------------------------  |------------------------------------------------------ NEW -------------------------------------------------------
+
+     72    PropertyPathParser.ParsePropertyPath(prop.propertyPath),                                                    |  76    PropertyPathParser.ParsePropertyPath(prop.propertyPath),
+     73    value);                                                                                                     |  77    value);
+     74    }                                                                                                           |  78    }
+                                                                                                                       |  79 +  catch (System.Exception ex)
+                                                                                                                       |  80 +  {
+                                                                                                                       |  81 +  string propertyPathStr = "unknown";
+                                                                                                                       |  82 +  try
+                                                                                                                       |  83 +  {
+                                                                                                                       |  84 +  propertyPathStr = prop.propertyPath;
+                                                                                                                       |  85 +  }
+                                                                                                                       |  86 +  catch { }
+                                                                                                                       |  87 +
+                                                                                                                       |  88 +  Debug.LogError($"[SerializedObjectHelper] Error processing property {propIndex}:
+                                                                                                                        {ex.Message}\nPropertyPath: {propertyPathStr}\nStack: {ex.StackTrace}");
+                                                                                                                       |  89 +  }
+                                                                                                                       |  90 +  }
+     75    while (prop.Next(false));                                                                                   |  91    while (prop.Next(false));
+     76    }                                                                                                           |  92    }
+     77    }                                                                                                           |  93    }
+                                                                                                                       |  94 +  }
+                                                                                                                       |  95 +  }
+     78                                                                                                                |  96
+     79    return result;                                                                                              |  97    return result;
+     80    }                                                                                                           |  98    }
+
+又出现了 错误的添加了 94 95行的 大括号
