@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
-import {Box, Text, useInput, Static, useStdout, useApp} from 'ink';
+import {Box, Text, useInput, Static, useStdout} from 'ink';
 import ansiEscapes from 'ansi-escapes';
 import {useI18n} from '../../i18n/I18nContext.js';
 import {useTheme} from '../contexts/ThemeContext.js';
@@ -76,7 +76,6 @@ type Props = {
 export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const {t} = useI18n();
 	const {theme} = useTheme();
-	const app = useApp();
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [pendingMessages, setPendingMessages] = useState<
 		Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
@@ -843,7 +842,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		initializeFromSession,
 		setShowSessionPanel: panelState.setShowSessionPanel,
 		setShowReviewCommitPanel: panelState.setShowReviewCommitPanel,
-		exitApp: app.exit,
 		codebaseAgentRef,
 		setCodebaseIndexing,
 		setCodebaseProgress,

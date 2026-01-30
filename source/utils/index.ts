@@ -13,15 +13,16 @@ import './commands/home.js';
 import './commands/ide.js';
 import './commands/init.js';
 import './commands/mcp.js';
-import './commands/plan.js';
 import './commands/quit.js';
 import './commands/reindex.js';
 import './commands/resume.js';
 import './commands/review.js';
-import './commands/role.js';
 import './commands/skills.js';
 import './commands/skillsPicker.js';
 import './commands/todoPicker.js';
+import './commands/codebase.js';
+import './commands/backend.js';
+import './commands/models.js';
 import './commands/usage.js';
 import './commands/permissions.js';
 // Vulnerability Hunting Mode 已整合为 Debugger 主代理，不再需要独立命令
