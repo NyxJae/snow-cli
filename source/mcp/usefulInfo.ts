@@ -1,6 +1,7 @@
 import {Tool, type CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 // Type definitions
 import type {
 	UsefulInfoItem,
@@ -16,13 +17,19 @@ import {formatDateForFolder} from './utils/todo/date.utils.js';
 
 /**
  * 有用信息管理服务 - 支持文件内容的精确跟踪和共享
+ * 路径结构: ~/.snow/usefulInfo/项目名/YYYY-MM-DD/sessionId.json
  */
 export class UsefulInfoService {
 	private readonly infoDir: string;
+	private readonly legacyInfoDir: string; // 旧格式路径(向下兼容)
 	private getCurrentSessionId: GetCurrentSessionId;
 
 	constructor(baseDir: string, getCurrentSessionId: GetCurrentSessionId) {
-		this.infoDir = path.join(baseDir, 'usefulInfo');
+		// baseDir 现在已经包含了项目ID，直接使用
+		// 路径结构: baseDir/YYYY-MM-DD/sessionId.json
+		this.infoDir = baseDir;
+		// 保存旧格式路径用于向下兼容: ~/.snow/usefulInfo/
+		this.legacyInfoDir = path.join(os.homedir(), '.snow', 'usefulInfo');
 		this.getCurrentSessionId = getCurrentSessionId;
 	}
 
@@ -148,8 +155,9 @@ export class UsefulInfoService {
 	 */
 	async getUsefulInfoList(sessionId: string): Promise<UsefulInfoList | null> {
 		// 首先尝试从旧格式加载（向下兼容）
+		// 旧格式路径: ~/.snow/usefulInfo/sessionId.json
 		try {
-			const oldInfoPath = path.join(this.infoDir, `${sessionId}.json`);
+			const oldInfoPath = path.join(this.legacyInfoDir, `${sessionId}.json`);
 			const content = await fs.readFile(oldInfoPath, 'utf-8');
 			return JSON.parse(content);
 		} catch (error) {

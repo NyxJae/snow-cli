@@ -119,16 +119,18 @@ let usefulInfoService: UsefulInfoService | null = null;
 
 /**
  * Get the UsefulInfo service instance (lazy initialization)
+ * 有用信息路径与 Session 和 TODO 保持一致，按项目分类存储
  */
 export function getUsefulInfoService(): UsefulInfoService {
 	if (!usefulInfoService) {
-		usefulInfoService = new UsefulInfoService(
-			path.join(os.homedir(), '.snow'),
-			() => {
-				const session = sessionManager.getCurrentSession();
-				return session ? session.id : null;
-			},
-		);
+		// 获取当前项目ID，与 Session 和 TODO 路径结构保持一致
+		const projectId = sessionManager.getProjectId();
+		const basePath = path.join(os.homedir(), '.snow', 'usefulInfo', projectId);
+
+		usefulInfoService = new UsefulInfoService(basePath, () => {
+			const session = sessionManager.getCurrentSession();
+			return session ? session.id : null;
+		});
 	}
 	return usefulInfoService;
 }
