@@ -30,6 +30,11 @@ export async function initializeConversationSession(): Promise<{
 		// 检查是否在任务模式(临时会话)中运行
 		const isTaskMode = process.env['SNOW_TASK_MODE'] === 'true';
 
+		const {clearReadFolders} = await import(
+			'../../../utils/core/folderNotebookPreprocessor.js'
+		);
+		clearReadFolders();
+
 		currentSession = await sessionManager.createNewSession(isTaskMode);
 	}
 

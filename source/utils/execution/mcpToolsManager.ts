@@ -27,6 +27,10 @@ import {
 } from '../../mcp/skills.js';
 import {sessionManager} from '../session/sessionManager.js';
 import {logger} from '../core/logger.js';
+import {
+	updateReadFolders,
+	formatFolderNotebookContext,
+} from '../core/folderNotebookPreprocessor.js';
 import {resourceMonitor} from '../core/resourceMonitor.js';
 import os from 'os';
 import path from 'path';
@@ -1331,6 +1335,41 @@ export async function executeMCPTool(
 						args.startLine,
 						args.endLine,
 					);
+					// 仅在成功读取后更新已读文件夹集合,避免未读取文件污染 readFolders
+					// 收集需要显示的文件夹列表,确保即使笔记未变化也能显示
+					let foldersToShow: string[] = [];
+					try {
+						// 处理单文件(字符串)、多文件数组(字符串或对象格式)
+						const filePaths = Array.isArray(args.filePath)
+							? args.filePath.map((f: any) =>
+									// 对象格式提取path字段,字符串直接使用
+									typeof f === 'string' ? f : f?.path,
+							  )
+							: typeof args.filePath === 'string'
+							? [args.filePath]
+							: [];
+						// 过滤掉空值和非字符串路径,避免传入undefined导致后续异常
+						const validPaths = filePaths.filter(
+							(p: any) => typeof p === 'string' && p.trim(),
+						);
+						for (const path of validPaths) {
+							const updatedFolders = updateReadFolders(path);
+							// 收集需要显示的文件夹(包括新检测到或笔记有变化的文件夹)
+							foldersToShow = foldersToShow.concat(updatedFolders);
+						}
+					} catch (error) {
+						// 文件夹笔记追踪是可选功能,失败不应阻断主流程
+						// 但仍需记录warn以便追踪问题
+						logger.warn('Failed to update read folders:', error);
+					}
+					// 如果有需要显示的文件夹,则格式化并添加到结果中
+					if (foldersToShow.length > 0) {
+						const folderNotebookContext =
+							formatFolderNotebookContext(foldersToShow);
+						if (folderNotebookContext) {
+							result = result + '\n\n' + folderNotebookContext;
+						}
+					}
 					break;
 				case 'create':
 					// Validate required parameters

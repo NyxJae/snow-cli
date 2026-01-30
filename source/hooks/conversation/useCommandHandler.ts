@@ -451,13 +451,22 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						resetTerminal(stdout);
 						const currentSession = sessionManager.getCurrentSession();
 						todoEvents.emitTodoUpdate(currentSession?.id ?? '', []);
+						if (currentSession) {
+							const {deleteReadFolders} = await import(
+								'../../utils/core/folderNotebookPreprocessor.js'
+							);
+							await deleteReadFolders(
+								currentSession.id,
+								currentSession.projectId,
+							);
+						}
 						sessionManager.clearCurrentSession();
 						options.clearSavedMessages();
 						options.setMessages([]);
 						options.setRemountKey(prev => prev + 1);
 						options.setContextUsage(null);
 						options.setCurrentContextPercentage(0);
-						// CRITICAL: Also reset the ref immediately to prevent auto-compress trigger
+
 						// before useEffect syncs the state to ref
 						options.currentContextPercentageRef.current = 0;
 
@@ -485,6 +494,13 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 							} catch (error) {
 								console.warn('Failed to clear TODO list:', error);
 							}
+							const {deleteReadFolders} = await import(
+								'../../utils/core/folderNotebookPreprocessor.js'
+							);
+							await deleteReadFolders(
+								currentSession.id,
+								currentSession.projectId,
+							);
 						}
 						sessionManager.clearCurrentSession();
 						options.clearSavedMessages();
@@ -492,7 +508,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						options.setRemountKey(prev => prev + 1);
 						options.setContextUsage(null);
 						options.setCurrentContextPercentage(0);
-						// CRITICAL: Also reset the ref immediately to prevent auto-compress trigger
+
 						// before useEffect syncs the state to ref
 						options.currentContextPercentageRef.current = 0;
 
@@ -524,14 +540,6 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					commandName: commandName,
 				};
 				options.setMessages(prev => [...prev, commandMessage]);
-			} else if (result.success && result.action === 'showUsagePanel') {
-				options.setShowUsagePanel(true);
-				const commandMessage: Message = {
-					role: 'command',
-					content: '',
-					commandName: commandName,
-				};
-				options.setMessages(prev => [...prev, commandMessage]);
 			} else if (result.success && result.action === 'showModelsPanel') {
 				options.setShowModelsPanel(true);
 				const commandMessage: Message = {
@@ -549,24 +557,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				};
 				options.setMessages(prev => [...prev, commandMessage]);
 			} else if (result.success && result.action === 'showProfilePanel') {
-				// Open profile switching panel (same logic as shortcut)
 				options.onSwitchProfile();
-				// Don't add command message to keep UI clean
-			} else if (result.success && result.action === 'home') {
-				// Reset terminal before navigating to welcome screen
-				resetTerminal(stdout);
-				navigateTo('welcome');
-			} else if (result.success && result.action === 'showUsagePanel') {
-				options.setShowUsagePanel(true);
-				const commandMessage: Message = {
-					role: 'command',
-					content: '',
-					commandName: commandName,
-				};
-				options.setMessages(prev => [...prev, commandMessage]);
-			} else if (result.success && result.action === 'help') {
-				// Help uses a dedicated screen to avoid chat layout overflow.
-				navigateTo('help');
 				// Don't add command message to keep UI clean
 			} else if (
 				result.success &&
@@ -608,7 +599,6 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				result.action === 'executeCustomCommand' &&
 				result.prompt
 			) {
-				// Execute custom command (prompt type - send to AI)
 				const commandMessage: Message = {
 					role: 'command',
 					content: result.message || '',
@@ -733,9 +723,13 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 			} else if (result.success && result.action === 'home') {
 				// Reset terminal before navigating to welcome screen
 				resetTerminal(stdout);
+				void import('../../utils/core/folderNotebookPreprocessor.js').then(
+					({clearReadFolders}) => {
+						clearReadFolders();
+					},
+				);
 				navigateTo('welcome');
 			} else if (result.success && result.action === 'toggleYolo') {
-				// Toggle YOLO mode without adding command message
 				options.setYoloMode(prev => !prev);
 				// Don't add command message to keep UI clean
 			} else if (

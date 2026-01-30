@@ -35,6 +35,7 @@ export interface Session {
 	compressedFrom?: string; // 如果是压缩产生的会话，记录来源会话ID
 	compressedAt?: number; // 压缩时间戳
 	originalMessageIndex?: number; // 压缩点在原会话中的消息索引
+	readFolders?: Record<string, string[]>; // 文件夹笔记已读状态
 }
 
 export interface SessionListItem {
@@ -215,6 +216,11 @@ class SessionManager {
 		);
 		await fs.writeFile(sessionPath, JSON.stringify(session, null, 2));
 
+		const {saveReadFolders} = await import(
+			'../core/folderNotebookPreprocessor.js'
+		);
+		await saveReadFolders(session.id, session.projectId);
+
 		// 保存会话后使缓存失效
 		this.invalidateCache();
 	}
@@ -326,6 +332,10 @@ class SessionManager {
 			}
 
 			this.currentSession = session;
+			const {loadReadFolders} = await import(
+				'../core/folderNotebookPreprocessor.js'
+			);
+			await loadReadFolders(session.id, session.projectId);
 			return session;
 		} catch (error) {
 			// 旧格式不存在，搜索日期文件夹
@@ -351,6 +361,10 @@ class SessionManager {
 				}
 				// Set as current session before returning
 				this.currentSession = session;
+				const {loadReadFolders} = await import(
+					'../core/folderNotebookPreprocessor.js'
+				);
+				await loadReadFolders(session.id, session.projectId);
 				return session;
 			}
 		} catch (error) {
@@ -867,6 +881,14 @@ class SessionManager {
 
 	async deleteSession(sessionId: string): Promise<boolean> {
 		let sessionDeleted = false;
+		let sessionProjectId: string | undefined;
+
+		try {
+			const session = await this.findSessionInDateFolders(sessionId);
+			sessionProjectId = session?.projectId;
+		} catch (error) {
+			// 搜索失败不影响删除流程
+		}
 
 		// 1. 首先尝试删除旧格式（向下兼容）
 		try {
@@ -937,6 +959,20 @@ class SessionManager {
 				// TODO删除失败不影响会话删除结果
 				logger.warn(
 					`Failed to delete TODO list for session ${sessionId}:`,
+					error,
+				);
+			}
+		}
+
+		if (sessionDeleted) {
+			try {
+				const {deleteReadFolders} = await import(
+					'../core/folderNotebookPreprocessor.js'
+				);
+				await deleteReadFolders(sessionId, sessionProjectId);
+			} catch (error) {
+				logger.warn(
+					`Failed to delete folder notebook read state for session ${sessionId}:`,
 					error,
 				);
 			}

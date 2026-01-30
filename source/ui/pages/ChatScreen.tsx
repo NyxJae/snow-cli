@@ -629,6 +629,11 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			// Clear any residual session when entering chat without auto-resume
 			// This ensures a clean start when user hasn't sent first message yet
 			sessionManager.clearCurrentSession();
+			void import('../../utils/core/folderNotebookPreprocessor.js').then(
+				({clearReadFolders}) => {
+					clearReadFolders();
+				},
+			);
 			return;
 		}
 

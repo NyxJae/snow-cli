@@ -114,10 +114,9 @@ export async function executeSubAgent(
 	// 待处理消息回调函数，在工具调用完成后使用
 	void getPendingMessages;
 	void clearPendingMessages;
-
-	// 保存主代理的readFolders状态，必须在try块外声明以便finally块访问
+	// 保存主代理readFolders状态，子代理以空的readFolders状态开始
 	const mainAgentReadFolders = getReadFolders();
-	clearReadFolders(); // 子代理以空的readFolders状态开始
+	clearReadFolders();
 
 	try {
 		// 处理内置代理（硬编码或用户复制的版本）
@@ -1744,8 +1743,7 @@ OPEN QUESTIONS:
 			error: errorMessage,
 		};
 	} finally {
-		// Restore main agent's readFolders state after sub-agent execution
-		// This ensures main agent's state is not affected by sub-agent's file reads
+		// 恢复主代理readFolders,避免子代理读取影响主会话状态
 		setReadFolders(mainAgentReadFolders);
 	}
 }
