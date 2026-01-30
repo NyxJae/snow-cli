@@ -1630,12 +1630,15 @@ export class FilesystemMCPService {
 			// Get diagnostics from IDE (VSCode or JetBrains) - non-blocking, fire-and-forget
 			let diagnostics: Diagnostic[] = [];
 			try {
+				// Add a short delay to let IDE language service refresh after file edit
+				await new Promise(resolve => setTimeout(resolve, 300));
+
 				// Request diagnostics without blocking (with timeout protection)
 				const diagnosticsPromise = Promise.race([
 					vscodeConnection.requestDiagnostics(fullPath),
 					new Promise<Diagnostic[]>(resolve =>
-						setTimeout(() => resolve([]), 1000),
-					), // 1s max wait
+						setTimeout(() => resolve([]), 2500),
+					), // 2.5s max wait (unified with vscodeConnection.ts)
 				]);
 				diagnostics = await diagnosticsPromise;
 			} catch (error) {
@@ -2058,12 +2061,15 @@ export class FilesystemMCPService {
 			// Try to get diagnostics from IDE (VSCode or JetBrains) after editing (non-blocking)
 			let diagnostics: Diagnostic[] = [];
 			try {
+				// Add a short delay to let IDE language service refresh after file edit
+				await new Promise(resolve => setTimeout(resolve, 300));
+
 				// Request diagnostics without blocking (with timeout protection)
 				const diagnosticsPromise = Promise.race([
 					vscodeConnection.requestDiagnostics(fullPath),
 					new Promise<Diagnostic[]>(resolve =>
-						setTimeout(() => resolve([]), 1000),
-					), // 1s max wait
+						setTimeout(() => resolve([]), 2500),
+					), // 2.5s max wait (unified with vscodeConnection.ts)
 				]);
 				diagnostics = await diagnosticsPromise;
 			} catch (error) {

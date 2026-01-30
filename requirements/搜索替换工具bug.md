@@ -68,6 +68,7 @@ source/mcp/filesystem.ts:2294 -->
 
 
 再在95bc1507fe483f07c35151e1b8622beafe670aee 中尝试修复了,但
+<!-- 
     {
   "name": "filesystem-edit_search",
   "arguments": "{\"filePath\":\"F:\\\\UnityProject\\\\SL\\\\SL_402\\\\Code\\\\Assets\\\\Editor\\\\AgentCommands\\\\Utils\\\\SerializedObjectHelper.cs\",
@@ -104,4 +105,6 @@ source/mcp/filesystem.ts:2294 -->
      79    return result;                                                                                              |  97    return result;
      80    }                                                                                                           |  98    }
 
-又出现了 错误的添加了 94 95行的 大括号
+又出现了 错误的添加了 94 95行的 大括号 -->
+
+在54b48d6e645263aa9a88f99e20378d4550306562 又一次尝试修复  

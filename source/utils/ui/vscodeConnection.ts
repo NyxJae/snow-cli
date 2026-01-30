@@ -408,7 +408,11 @@ class VSCodeConnectionManager {
 
 			const cwd = this.normalizePath(this.currentWorkingDirectory);
 			for (const ws of this.connectedWorkspaceFolders) {
-				if (cwd === ws || cwd.startsWith(ws + '/') || ws.startsWith(cwd + '/')) {
+				if (
+					cwd === ws ||
+					cwd.startsWith(ws + '/') ||
+					ws.startsWith(cwd + '/')
+				) {
 					this.connectedPortHasCwdMatch = true;
 					break;
 				}
@@ -536,7 +540,7 @@ class VSCodeConnectionManager {
 					cleanup();
 					resolve([]); // Timeout, return empty array
 				}
-			}, 2000); // Reduce timeout from 5s to 2s to avoid long blocking
+			}, 2500); // Timeout unified to 2.5s to match filesystem.ts and allow IDE language service to refresh
 
 			const handler = (message: any) => {
 				try {
