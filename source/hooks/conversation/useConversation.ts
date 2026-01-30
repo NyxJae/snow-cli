@@ -35,7 +35,10 @@ import {
 	shouldAutoCompress,
 	performAutoCompression,
 } from '../../utils/core/autoCompress.js';
-import {cleanOrphanedToolCalls} from './utils/messageCleanup.js';
+import {
+	cleanOrphanedToolCalls,
+	simplifyOutdatedTerminalResults,
+} from './utils/messageCleanup.js';
 import {extractThinkingContent} from './utils/thinkingExtractor.js';
 import {buildEditorContextContent} from './core/editorContextBuilder.js';
 import {initializeConversationSession} from './core/sessionInitializer.js';
@@ -244,21 +247,19 @@ async function executeWithInternalRetry(
 	const {filteredTools} = filterToolsByMainAgent({tools: allMcpTools});
 	const mcpTools = filteredTools;
 
-	// LAYER 3 PROTECTION: Clean orphaned tool_calls before sending to API
-	// This prevents API errors if session has incomplete tool_calls due to force quit
-	cleanOrphanedToolCalls(conversationMessages);
-
 	// Add current user message (build editorContext if present)
 	const finalUserContent = buildEditorContextContent(
 		editorContext,
 		userContent,
 	);
 
-	conversationMessages.push({
+	// Add to stored history (will be included in apiMessages on next loop iteration)
+	const currentUserMessage: ChatMessage = {
 		role: 'user',
 		content: finalUserContent,
 		images: imageContents,
-	});
+	};
+	conversationMessages.push(currentUserMessage);
 
 	// NOTE: User message is saved in handleConversationWithTools BEFORE retry loop
 	// to prevent duplicate saves when network errors trigger retries
@@ -335,6 +336,16 @@ async function executeWithInternalRetry(
 				break;
 			}
 
+			// Build API messages for THIS round
+			// IMPORTANT: Rebuild on each iteration to include newly added tool results
+			// LAYER 3 PROTECTION: Clean orphaned tool_calls before sending to API
+			const apiMessages = [...conversationMessages];
+			cleanOrphanedToolCalls(apiMessages);
+
+			// Simplify outdated terminal command results to reduce context usage
+			// This only affects messages sent to API, not the stored history
+			simplifyOutdatedTerminalResults(apiMessages);
+
 			let streamedContent = '';
 			let receivedToolCalls: ToolCall[] | undefined;
 			let receivedReasoning:
@@ -380,7 +391,7 @@ async function executeWithInternalRetry(
 					? createStreamingAnthropicCompletion(
 							{
 								model,
-								messages: conversationMessages,
+								messages: apiMessages,
 								temperature: 0,
 								max_tokens: config.maxTokens || 4096,
 								tools: mcpTools.length > 0 ? mcpTools : undefined,
@@ -396,7 +407,7 @@ async function executeWithInternalRetry(
 					? createStreamingGeminiCompletion(
 							{
 								model,
-								messages: conversationMessages,
+								messages: apiMessages,
 								temperature: 0,
 								tools: mcpTools.length > 0 ? mcpTools : undefined,
 								// teamMode 已整合为 currentAgentName，API 直接从 MainAgentManager 获取状态
@@ -408,7 +419,7 @@ async function executeWithInternalRetry(
 					? createStreamingResponse(
 							{
 								model,
-								messages: conversationMessages,
+								messages: apiMessages,
 								temperature: 0,
 								tools: mcpTools.length > 0 ? mcpTools : undefined,
 								tool_choice: 'auto',
@@ -422,7 +433,7 @@ async function executeWithInternalRetry(
 					: createStreamingChatCompletion(
 							{
 								model,
-								messages: conversationMessages,
+								messages: apiMessages,
 								temperature: 0,
 								tools: mcpTools.length > 0 ? mcpTools : undefined,
 								// teamMode 已整合为 currentAgentName，API 直接从 MainAgentManager 获取状态
