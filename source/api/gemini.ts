@@ -396,29 +396,20 @@ function convertToGeminiMessages(
 		contents.push({role, parts});
 	}
 
-	// Handle system instruction
-	// 如果配置了自定义系统提示词（最高优先级，始终添加）
-	if (customSystemPrompt) {
-		systemInstruction = customSystemPrompt;
-		if (effectiveIncludeBuiltinSystemPrompt) {
-			// 主代理调用：将默认系统提示词作为第一条用户消息
-			contents.unshift({
-				role: 'user',
-				parts: [
-					{
-						text: mainAgentManager.getSystemPrompt(),
-					},
-				],
-			});
-		}
-		// 对于子代理调用，subAgentSystemPrompt 已经在 messages 第一条，无需重复添加
-	} else if (isSubAgentCall && subAgentSystemPrompt) {
-		// 子代理调用且没有自定义系统提示词：将子代理组装提示词作为系统提示词
+	// 统一的系统提示词逻辑
+	// 1. 子代理调用：使用子代理组装的提示词
+	if (isSubAgentCall && subAgentSystemPrompt) {
 		systemInstruction = subAgentSystemPrompt;
-		// 不再从contents中移除第一条，因为finalPrompt现在作为特殊user存在
-		// finalPrompt会同时在system和user中存在
-	} else if (!systemInstruction && effectiveIncludeBuiltinSystemPrompt) {
-		// 没有自定义系统提示词，但需要添加默认系统提示词
+		// finalPrompt 会同时在 system 和 user 中存在（已在 contents 第一条）
+	}
+	// 2. 主代理调用且有自定义系统提示词：使用自定义系统提示词，不添加主代理角色定义
+	else if (customSystemPrompt && !isSubAgentCall) {
+		systemInstruction = customSystemPrompt;
+		// 不再添加 mainAgentManager.getSystemPrompt()，让自定义系统提示词完全替代
+		// 主代理角色定义会在 sessionInitializer.ts 中作为特殊 user 消息动态插入
+	}
+	// 3. 主代理调用且没有自定义系统提示词：使用主代理角色定义
+	else if (effectiveIncludeBuiltinSystemPrompt) {
 		systemInstruction = mainAgentManager.getSystemPrompt();
 	}
 

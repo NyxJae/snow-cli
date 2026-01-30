@@ -10,6 +10,7 @@ import {
 	findSafeInsertPosition,
 	insertMessagesAtPosition,
 } from '../../../utils/message/messageUtils.js';
+import {getCustomSystemPrompt} from '../../../utils/config/apiConfig.js';
 
 /**
  * 初始化会话和TODO上下文
@@ -36,11 +37,14 @@ export async function initializeConversationSession(): Promise<{
 	const existingTodoList = await todoService.getTodoList(currentSession.id);
 
 	// 步骤1: 构建对话历史，system消息始终为第一条
-	// 这样可以确保模型始终能看到系统提示词，定义角色和规则
+	// 根据是否有自定义系统提示词来决定 system 消息的内容
+	const customSystemPrompt = getCustomSystemPrompt();
+	const systemPrompt = customSystemPrompt || mainAgentManager.getSystemPrompt();
+
 	const conversationMessages: ChatMessage[] = [
 		{
 			role: 'system',
-			content: mainAgentManager.getSystemPrompt(),
+			content: systemPrompt,
 		},
 	];
 
@@ -59,13 +63,13 @@ export async function initializeConversationSession(): Promise<{
 	// 这些消息需要动态插入到倒数第5条位置，提高模型注意力和KV缓存命中率
 	const specialUserMessages: ChatMessage[] = [];
 
-	// 1. Agent角色定义(mainAgentRole)
+	// 1. Agent角色定义(包含mainAgentRole + AGENTS.md + 环境上下文 + 任务完成标识)
 	// 确保主代理了解自己的角色和职责
 	const currentAgentConfig = mainAgentManager.getCurrentAgentConfig();
 	if (currentAgentConfig && currentAgentConfig.mainAgentRole) {
 		specialUserMessages.push({
 			role: 'user',
-			content: currentAgentConfig.mainAgentRole,
+			content: mainAgentManager.getSystemPrompt(),
 		});
 	}
 

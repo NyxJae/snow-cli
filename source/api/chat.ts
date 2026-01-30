@@ -257,34 +257,9 @@ function convertToOpenAIMessages(
 		return result;
 	}
 
-	// 如果配置了自定义系统提示词（最高优先级，始终添加）
-	if (customSystemPrompt) {
-		if (effectiveIncludeBuiltinSystemPrompt) {
-			// 主代理调用：自定义系统提示词作为 system 消息，默认系统提示词作为第一条 user 消息
-			result = [
-				{
-					role: 'system',
-					content: customSystemPrompt,
-				} as ChatCompletionMessageParam,
-				{
-					role: 'user',
-					content: mainAgentManager.getSystemPrompt(),
-				} as ChatCompletionMessageParam,
-				...result,
-			];
-		} else {
-			// 子代理调用：自定义系统提示词作为 system 消息
-			// finalPrompt会同时在system和user中存在，确保子代理能够获取完整的角色定义
-			result = [
-				{
-					role: 'system',
-					content: customSystemPrompt,
-				} as ChatCompletionMessageParam,
-				...result,
-			];
-		}
-	} else if (isSubAgentCall && subAgentSystemPrompt) {
-		// 子代理调用时，使用组装好的提示词作为系统提示词
+	// 统一的系统提示词逻辑
+	// 1. 子代理调用：使用子代理组装的提示词
+	if (isSubAgentCall && subAgentSystemPrompt) {
 		result = [
 			{
 				role: 'system',
@@ -292,8 +267,21 @@ function convertToOpenAIMessages(
 			} as ChatCompletionMessageParam,
 			...result,
 		];
-	} else if (effectiveIncludeBuiltinSystemPrompt) {
-		// 没有自定义系统提示词，但需要添加默认系统提示词
+	}
+	// 2. 主代理调用且有自定义系统提示词：使用自定义系统提示词，不添加主代理角色定义
+	else if (customSystemPrompt && !isSubAgentCall) {
+		result = [
+			{
+				role: 'system',
+				content: customSystemPrompt,
+			} as ChatCompletionMessageParam,
+			...result,
+		];
+		// 不再添加 mainAgentManager.getSystemPrompt()，让自定义系统提示词完全替代
+		// 主代理角色定义会在 sessionInitializer.ts 中作为特殊 user 消息动态插入
+	}
+	// 3. 主代理调用且没有自定义系统提示词：使用主代理角色定义
+	else if (effectiveIncludeBuiltinSystemPrompt) {
 		result = [
 			{
 				role: 'system',
