@@ -4,21 +4,31 @@ import type {Skill} from '../../mcp/skills.js';
 
 export type SkillsPickerFocus = 'search' | 'append';
 
-function buildInjectedSkillText(skill: Skill, appendText: string): string {
+// 构建注入的skill文本，包含skill-info信息块
+async function buildInjectedSkillText(
+	skill: Skill,
+	appendText: string,
+): Promise<string> {
 	const append = appendText.trim();
 	const skillBody = skill.content.trim();
 
-	// If the skill markdown provides an $ARGUMENTS placeholder, fill it in.
-	// Otherwise keep the legacy behavior (append a separate [User Append] block).
+	// 如果skill markdown提供了$ARGUMENTS占位符，填充它
+	// 否则保持遗留行为（追加单独的[User Append]块）
 	if (skillBody.includes('$ARGUMENTS')) {
 		const replaced = skillBody.split('$ARGUMENTS').join(append);
-		return `# Skill: ${skill.id}\n\n${replaced}`.trim();
+		// 导入并使用共享的generateSkillInfoBlock函数
+		const {generateSkillInfoBlock} = await import('../../mcp/skills.js');
+		const skillInfo = await generateSkillInfoBlock(skill);
+		return `# Skill: ${skill.id}\n\n${replaced}${skillInfo}`.trim();
 	}
 
 	const appendBlock = append ? `\n\n[User Append]\n${append}\n` : '';
+	// 导入并使用共享的generateSkillInfoBlock函数
+	const {generateSkillInfoBlock} = await import('../../mcp/skills.js');
+	const skillInfo = await generateSkillInfoBlock(skill);
 
-	// Keep it plain text; the actual skill prompt is markdown.
-	return `# Skill: ${skill.id}\n\n${skillBody}${appendBlock}`.trim();
+	// 保持纯文本格式；实际的skill prompt是markdown
+	return `# Skill: ${skill.id}\n\n${skillBody}${appendBlock}${skillInfo}`.trim();
 }
 
 export function useSkillsPicker(buffer: TextBuffer, triggerUpdate: () => void) {
@@ -121,7 +131,7 @@ export function useSkillsPicker(buffer: TextBuffer, triggerUpdate: () => void) {
 			return;
 		}
 
-		const injected = buildInjectedSkillText(selected, appendText);
+		const injected = await buildInjectedSkillText(selected, appendText);
 		// 结束标记：用于让 display-only mask 只折叠注入块本身。
 		// 注意：必须以换行结尾，否则用户在占位符后继续输入时会与 "# Skill End" 黏连，
 		// 导致 mask 无法识别 end marker，从而把用户输入也一并折叠掉。

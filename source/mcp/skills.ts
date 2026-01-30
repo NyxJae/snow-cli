@@ -258,7 +258,7 @@ export async function getMCPTools(projectRoot?: string) {
 /**
  * Detect scripts directory and script files in skill
  */
-async function detectSkillScripts(skillPath: string): Promise<{
+export async function detectSkillScripts(skillPath: string): Promise<{
 	hasScripts: boolean;
 	scriptsDir: string | null;
 	scripts: string[];
@@ -294,9 +294,59 @@ async function detectSkillScripts(skillPath: string): Promise<{
 }
 
 /**
+ * 生成skill-info信息块（共享函数）
+ * 用于用户斜杠命令调用和Agent调用skill-execute工具时统一显示skill信息
+ */
+export async function generateSkillInfoBlock(skill: Skill): Promise<string> {
+	try {
+		// 生成skill目录树
+		const directoryTree = await generateSkillTree(skill.path);
+
+		// 检测scripts目录
+		const {hasScripts, scriptsDir} = await detectSkillScripts(skill.path);
+
+		// 生成scripts信息区块（如果存在）
+		let scriptsInfo = '';
+		if (hasScripts && scriptsDir) {
+			scriptsInfo = `
+Scripts Directory: ${scriptsDir}
+
+⚠️ IMPORTANT: This skill provides scripts. Use the absolute path. Scripts can be referenced or executed as needed based on the skill's instructions.`;
+		}
+
+		// 构建skill-info块
+		return `
+
+<skill-info>
+Skill Name: ${skill.name}
+Absolute Path: ${skill.path}${scriptsInfo}
+
+Directory Structure:
+\`\`\`
+${skill.name}/
+${directoryTree}
+\`\`\`
+
+Note: You can use filesystem-read tool to read any file in this skill directory using the absolute path above.
+</skill-info>`;
+	} catch (error) {
+		// 失败时返回基本的skill-info信息，确保结构完整
+		console.error('Failed to generate skill info block:', error);
+		return `
+
+<skill-info>
+Skill Name: ${skill.name}
+Absolute Path: ${skill.path}
+
+Note: Unable to generate detailed skill information. You can use filesystem-read tool to explore this skill directory.
+</skill-info>`;
+	}
+}
+
+/**
  * Generate directory tree structure for skill
  */
-async function generateSkillTree(skillPath: string): Promise<string> {
+export async function generateSkillTree(skillPath: string): Promise<string> {
 	try {
 		const {readdirSync} = await import('fs');
 		const entries = readdirSync(skillPath, {withFileTypes: true});
@@ -385,14 +435,6 @@ export async function executeSkillTool(
 		);
 	}
 
-	// Generate directory tree for skill
-	const directoryTree = await generateSkillTree(skill.path);
-
-	// Detect scripts directory and scripts
-	const {hasScripts, scriptsDir} = await detectSkillScripts(
-		skill.path,
-	);
-
 	// Generate allowed tools restriction if specified
 	let toolRestriction = '';
 	if (skill.allowedTools && skill.allowedTools.length > 0) {
@@ -406,32 +448,11 @@ You MUST NOT use any other tools. Any tool not listed above is forbidden for thi
 </tool-restrictions>`;
 	}
 
-	// Generate scripts info section if scripts exist
-	let scriptsInfo = '';
-	if (hasScripts && scriptsDir) {
-		scriptsInfo = `
-Scripts Directory: ${scriptsDir}
-
-⚠️ IMPORTANT: This skill provides scripts. Use the absolute path. Scripts can be referenced or executed as needed based on the skill's instructions.`;
-	}
-
 	// Return the skill content (markdown instructions)
+	const skillInfo = await generateSkillInfoBlock(skill);
 	return `<command-message>The "${skill.name}" skill is loading</command-message>
 
-${skill.content}${toolRestriction}
-
-<skill-info>
-Skill Name: ${skill.name}
-Absolute Path: ${skill.path}${scriptsInfo}
-
-Directory Structure:
-\`\`\`
-${skill.name}/
-${directoryTree}
-\`\`\`
-
-Note: You can use filesystem-read tool to read any file in this skill directory using the absolute path above.
-</skill-info>`;
+${skill.content}${toolRestriction}${skillInfo}`;
 }
 
 export const mcpTools = [];
