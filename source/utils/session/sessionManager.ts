@@ -131,6 +131,31 @@ class SessionManager {
 	}
 
 	/**
+	 * 获取会话文件路径（公共方法）
+	 * 用于在系统提示词中显示 session 文件的绝对路径
+	 * @param sessionId 会话ID（可选，默认使用当前会话）
+	 * @returns 会话文件的绝对路径，如果会话不存在则返回空字符串
+	 */
+	getSessionFilePath(sessionId?: string): string {
+		const targetSessionId = sessionId || this.currentSession?.id;
+		if (!targetSessionId) {
+			return '';
+		}
+
+		// 如果提供了 sessionId 但不是当前会话，需要从会话中获取信息
+		// 这里简化处理：只处理当前会话的情况
+		if (!this.currentSession || this.currentSession.id !== targetSessionId) {
+			return '';
+		}
+
+		const sessionDate = new Date(this.currentSession.createdAt);
+		const dateFolder = formatDateCompact(sessionDate);
+		const projectId = this.currentSession.projectId || this.currentProjectId;
+		const sessionDir = path.join(this.sessionsDir, projectId, dateFolder);
+		return path.join(sessionDir, `${targetSessionId}.json`);
+	}
+
+	/**
 	 * Clean title by removing newlines and extra spaces
 	 */
 	private cleanTitle(title: string): string {
