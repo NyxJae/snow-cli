@@ -335,26 +335,34 @@ function convertToResponseInput(
 		}
 	}
 
-	// 确定系统提示词：参考 anthropic.ts 的逻辑
-	let systemInstructions: string;
+	// 确定系统提示词：与 anthropic.ts, chat.ts, gemini.ts 保持一致的优先级逻辑
+	let systemInstructions: string | undefined;
 	// 统一的系统提示词逻辑
-	// 1. 子代理调用：使用子代理组装的提示词
-	if (isSubAgentCall && subAgentSystemPrompt) {
+	// 1. 子代理调用且有自定义系统提示词：使用自定义系统提示词
+	if (isSubAgentCall && customSystemPrompt) {
+		systemInstructions = customSystemPrompt;
+		// subAgentSystemPrompt 会作为 user 消息保留在 messages 中（已在第一条或特殊user位置）
+	}
+	// 2. 子代理调用且没有自定义系统提示词：使用子代理组装的提示词
+	else if (isSubAgentCall && subAgentSystemPrompt) {
 		systemInstructions = subAgentSystemPrompt;
 		// finalPrompt 会同时在 system 和 user 中存在（已在 messages 第一条）
 	}
-	// 2. 主代理调用且有自定义系统提示词：使用自定义系统提示词，不添加主代理角色定义
+	// 3. 主代理调用且有自定义系统提示词：使用自定义系统提示词，不添加主代理角色定义
 	else if (customSystemPrompt && !isSubAgentCall) {
 		systemInstructions = customSystemPrompt;
 		// 不再添加 mainAgentManager.getSystemPrompt()，让自定义系统提示词完全替代
 		// 主代理角色定义会在 sessionInitializer.ts 中作为特殊 user 消息动态插入
 	}
-	// 3. 主代理调用且没有自定义系统提示词：使用主代理角色定义
+	// 4. 主代理调用且没有自定义系统提示词：使用主代理角色定义
 	else if (effectiveIncludeBuiltinSystemPrompt) {
 		systemInstructions = mainAgentManager.getSystemPrompt();
-	} else {
-		// 既没有自定义系统提示词，也不需要添加默认系统提示词
-		systemInstructions = 'You are a helpful assistant.';
+	}
+	// 5. 其他情况：不设置系统提示词（与 anthropic.ts, chat.ts, gemini.ts 保持一致）
+	else {
+		// Responses API 要求 systemInstructions 为 string 类型
+		// 使用空字符串表示未设置，与其他 API 的行为保持一致
+		systemInstructions = '';
 	}
 
 	return {input: result, systemInstructions};
