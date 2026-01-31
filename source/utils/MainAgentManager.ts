@@ -18,7 +18,6 @@ import {
 	getAgentsPrompt,
 	createSystemContext,
 	getTaskCompletionPrompt,
-	getSessionPathInfo,
 } from './agentsPromptUtils.js';
 
 /**
@@ -313,12 +312,6 @@ export class MainAgentManager {
 		const agentsPrompt = getAgentsPrompt();
 		if (agentsPrompt) {
 			prompt += '\n\n' + agentsPrompt;
-		}
-
-		// 添加会话路径信息
-		const sessionPathInfo = getSessionPathInfo();
-		if (sessionPathInfo) {
-			prompt += '\n\n' + sessionPathInfo;
 		}
 
 		// 添加环境上下文信息

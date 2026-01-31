@@ -6,7 +6,6 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import {sessionManager} from './session/sessionManager.js';
 
 /**
  * 读取指定路径的文件内容(如果存在)
@@ -208,21 +207,8 @@ export function getAgentsPrompt(): string {
 	return '';
 }
 /**
- * 获取会话路径信息提示词
- */
-export function getSessionPathInfo(): string {
-	const sessionPath = sessionManager.getSessionFilePath();
-
-	if (!sessionPath) {
-		return '';
-	}
-
-	return `本次会话记录全量存储在 \`${sessionPath}\` 中`;
-}
-
-/**
  * 获取任务完成标识提示词
- *
+ * 
  */
 export function getTaskCompletionPrompt(): string {
 	return `你要不停的使用工具直到完成任务,才可进行一般回复,且MUST在任务完成后的最终回复的最开头或最结尾中添加 \`[Mission_Accomplished!]\` 标记.若想提问必须使用\`askuser-ask_question\`工具提问(若你无此工具则说明你不可提问MUST自主决策)

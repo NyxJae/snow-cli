@@ -7,7 +7,6 @@ import {
 	getAgentsPrompt,
 	createSystemContext,
 	getTaskCompletionPrompt,
-	getSessionPathInfo,
 } from '../agentsPromptUtils.js';
 import {
 	collectAllMCPTools,
@@ -841,7 +840,7 @@ OPEN QUESTIONS:
 			};
 		}
 
-		// 构建最终提示词: 子代理配置subAgentRole + AGENTS.md + 会话路径 + 系统环境 + 平台指导 + 任务提示词(最后)
+		// 构建最终提示词: 子代理配置subAgentRole + AGENTS.md + 系统环境 + 平台指导 + 任务提示词(最后)
 		let finalPrompt = '';
 
 		// 1. 如果配置了代理特定角色，则追加
@@ -857,15 +856,7 @@ OPEN QUESTIONS:
 				: agentsPrompt;
 		}
 
-		// 3. 添加会话路径信息
-		const sessionPathInfo = getSessionPathInfo();
-		if (sessionPathInfo) {
-			finalPrompt = finalPrompt
-				? `${finalPrompt}\n\n${sessionPathInfo}`
-				: sessionPathInfo;
-		}
-
-		// 4. 追加系统环境和平台指导
+		// 3. 追加系统环境和平台指导
 		const systemContext = createSystemContext();
 		if (systemContext) {
 			finalPrompt = finalPrompt
@@ -873,7 +864,7 @@ OPEN QUESTIONS:
 				: systemContext;
 		}
 
-		// 5. 添加任务完成标识提示词
+		// 4. 添加任务完成标识提示词
 		const taskCompletionPrompt = getTaskCompletionPrompt();
 		if (taskCompletionPrompt) {
 			finalPrompt = finalPrompt
