@@ -39,6 +39,7 @@ import {
 	cleanOrphanedToolCalls,
 	simplifyOutdatedTerminalResults,
 	simplifyHistoricalFileReads,
+	simplifyTextSearchResults,
 } from './utils/messageCleanup.js';
 import {extractThinkingContent} from './utils/thinkingExtractor.js';
 import {buildEditorContextContent} from './core/editorContextBuilder.js';
@@ -350,6 +351,10 @@ async function executeWithInternalRetry(
 			// Simplify historical file read results to reduce context usage
 			// This only affects messages sent to API, not the stored history
 			simplifyHistoricalFileReads(apiMessages);
+
+			// Simplify text search results to reduce context usage
+			// This only affects messages sent to API, not the stored history
+			simplifyTextSearchResults(apiMessages);
 
 			let streamedContent = '';
 			let receivedToolCalls: ToolCall[] | undefined;
