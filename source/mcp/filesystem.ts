@@ -705,7 +705,10 @@ export class FilesystemMCPService {
 				};
 			}
 
-			const fullPath = this.resolvePath(filePath);
+			// 智能修正: AI常在文件路径后误加分隔符,需基于实际类型修正路径
+			// 原因: "file.cs\\" 会被当成目录处理,需要修正为文件路径读取
+			let finalPath = filePath;
+			let fullPath = this.resolvePath(filePath);
 
 			// For absolute paths, skip validation to allow access outside base path
 			if (!isAbsolute(filePath)) {
@@ -714,12 +717,37 @@ export class FilesystemMCPService {
 
 			// Check if the path is a directory, if so, list its contents instead
 			const stats = await fs.stat(fullPath);
+
+			// 如果路径以分隔符结尾但实际是文件,自动修正
+			if (
+				(filePath.endsWith('/') || filePath.endsWith('\\')) &&
+				!stats.isDirectory()
+			) {
+				const trimmedPath = filePath.replace(/[/\\]+$/, '');
+				const trimmedFullPath = this.resolvePath(trimmedPath);
+
+				// 验证修正后的路径是否为有效文件
+				try {
+					const trimmedStats = await fs.stat(trimmedFullPath);
+					if (!trimmedStats.isDirectory()) {
+						finalPath = trimmedPath;
+						fullPath = trimmedFullPath;
+						logger.debug(
+							`Auto-corrected path with trailing separator: "${filePath}" -> "${finalPath}"`,
+						);
+					}
+				} catch {
+					// 修正后的路径无效,使用原始路径
+				}
+			}
+
+			// 如果最终确认是目录,列出其内容
 			if (stats.isDirectory()) {
-				const files = await this.listFiles(filePath);
+				const files = await this.listFiles(finalPath);
 				const fileList = files.join('\n');
 				const lines = fileList.split('\n');
 				return {
-					content: `Directory: ${filePath}\n\n${fileList}`,
+					content: `Directory: ${finalPath}\n\n${fileList}`,
 					startLine: 1,
 					endLine: lines.length,
 					totalLines: lines.length,
