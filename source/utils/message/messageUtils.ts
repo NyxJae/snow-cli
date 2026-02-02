@@ -117,18 +117,18 @@ export function calculateReversePosition(
  * 通过计算倒数第N条位置并避开工具调用块，保证assistant(tool_calls)和tool消息保持相邻
  *
  * @param messages - 聊天消息数组
- * @param targetIndexFromEnd - 从末尾开始的目标位置（默认: 5）
+ * @param targetIndexFromEnd - 从末尾开始的目标位置（默认: 3）
  * @returns 安全的插入位置，如果落在工具调用块内则返回块之前的索引
  *
  * @example
  * ```typescript
- * // 在倒数第5条位置插入，自动避开工具调用块
- * const position = findSafeInsertPosition(messages, 5);
+ * // 在倒数第3条位置插入，自动避开工具调用块
+ * const position = findSafeInsertPosition(messages, 3);
  * ```
  */
 export function findSafeInsertPosition(
 	messages: ChatMessage[],
-	targetIndexFromEnd: number = 5,
+	targetIndexFromEnd: number = 3,
 ): number {
 	// 如果没有消息,插入到开头
 	if (messages.length === 0) {

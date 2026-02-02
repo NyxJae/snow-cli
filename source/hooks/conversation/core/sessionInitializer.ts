@@ -115,7 +115,7 @@ export async function initializeConversationSession(): Promise<{
 	// 步骤3: 在安全位置动态插入特殊用户消息
 	if (specialUserMessages.length > 0) {
 		// 计算插入位置
-		const insertPosition = findSafeInsertPosition(conversationMessages, 5);
+		const insertPosition = findSafeInsertPosition(conversationMessages, 3);
 
 		// 确保插入位置至少在system之后（system在第0位）
 		const safeInsertPosition = Math.max(1, insertPosition);
