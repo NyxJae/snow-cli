@@ -1590,6 +1590,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				<FileRollbackConfirmation
 					fileCount={snapshotState.pendingRollback.fileCount}
 					filePaths={snapshotState.pendingRollback.filePaths || []}
+					previewSessionId={sessionManager.getCurrentSession()?.id}
+					previewTargetMessageIndex={snapshotState.pendingRollback.messageIndex}
 					onConfirm={handleRollbackConfirm}
 				/>
 			)}

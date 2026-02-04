@@ -18,7 +18,7 @@ interface TodoTreeProps {
 interface TreeNode {
 	id: string;
 	content: string;
-	status: 'pending' | 'completed';
+	status: 'pending' | 'inProgress' | 'completed';
 	createdAt: string;
 	updatedAt: string;
 	parentId?: string;
@@ -148,17 +148,21 @@ export default function TodoTree({todos}: TodoTreeProps) {
 		0,
 	);
 
-	// 找到第一条未完成todo的索引
-	const firstPendingIndex = useMemo(() => {
+	// 找到第一条重要todo的索引（优先 inProgress，其次 pending）
+	const firstImportantIndex = useMemo(() => {
+		const inProgressIndex = flattenedTodos.findIndex(
+			t => t.status === 'inProgress',
+		);
+		if (inProgressIndex !== -1) return inProgressIndex;
 		return flattenedTodos.findIndex(t => t.status !== 'completed');
 	}, [flattenedTodos]);
 
 	const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 	const [pageIndex, setPageIndex] = useState(0);
 
-	// 使用 ref 保存最新的 pageIndex 和 firstPendingIndex，避免闭包问题
+	// 使用 ref 保存最新的 pageIndex 和 firstImportantIndex，避免闭包问题
 	const latestPageIndexRef = useRef(pageIndex);
-	const latestFirstPendingIndexRef = useRef(firstPendingIndex);
+	const latestFirstImportantIndexRef = useRef(firstImportantIndex);
 
 	// 同步 ref 到最新值
 	useEffect(() => {
@@ -166,19 +170,19 @@ export default function TodoTree({todos}: TodoTreeProps) {
 	}, [pageIndex]);
 
 	useEffect(() => {
-		latestFirstPendingIndexRef.current = firstPendingIndex;
-	}, [firstPendingIndex]);
+		latestFirstImportantIndexRef.current = firstImportantIndex;
+	}, [firstImportantIndex]);
 
-	// 获取第一条未完成todo所在页码
-	const getTargetPageIndex = (pendingIndex: number) => {
-		if (pendingIndex === -1) return 0; // 全部完成，从第1页开始
-		return Math.floor(pendingIndex / PAGE_SIZE);
+	// 获取第一条重要todo所在页码（优先 inProgress，其次 pending）
+	const getTargetPageIndex = (importantIndex: number) => {
+		if (importantIndex === -1) return 0; // 全部完成，从第1页开始
+		return Math.floor(importantIndex / PAGE_SIZE);
 	};
 
-	// 数据变化或初次加载时，自动定位到第一条未完成todo
+	// 数据变化或初次加载时，自动定位到第一条重要todo
 	useEffect(() => {
-		setPageIndex(getTargetPageIndex(firstPendingIndex));
-	}, [todos, firstPendingIndex]);
+		setPageIndex(getTargetPageIndex(firstImportantIndex));
+	}, [todos, firstImportantIndex]);
 
 	// 重置自动回滚定时器
 	const resetAutoRollbackTimer = () => {
@@ -186,9 +190,11 @@ export default function TodoTree({todos}: TodoTreeProps) {
 			clearTimeout(autoRollbackTimerRef.current);
 		}
 		autoRollbackTimerRef.current = setTimeout(() => {
-			// 3秒无操作，自动回滚到第一条未完成todo
+			// 3秒无操作，自动回滚到第一条重要todo（优先 inProgress，其次 pending）
 			// 使用 ref 获取最新值，避免闭包读到旧值
-			const targetPage = getTargetPageIndex(latestFirstPendingIndexRef.current);
+			const targetPage = getTargetPageIndex(
+				latestFirstImportantIndexRef.current,
+			);
 			const currentPage = latestPageIndexRef.current;
 			if (targetPage !== currentPage) {
 				setPageIndex(targetPage);
@@ -204,7 +210,7 @@ export default function TodoTree({todos}: TodoTreeProps) {
 				clearTimeout(autoRollbackTimerRef.current);
 			}
 		};
-	}, [pageIndex, firstPendingIndex]);
+	}, [pageIndex, firstImportantIndex]);
 
 	// Tab键翻页
 	useInput((_input, key) => {
@@ -235,13 +241,15 @@ export default function TodoTree({todos}: TodoTreeProps) {
 	}
 
 	const getStatusIcon = (status: string) => {
-		return status === 'completed' ? '✓' : '○';
+		if (status === 'completed') return '✓';
+		if (status === 'inProgress') return '~';
+		return '○';
 	};
 
 	const getStatusColor = (status: string) => {
-		return status === 'completed'
-			? theme.colors.success
-			: theme.colors.menuSecondary;
+		if (status === 'completed') return theme.colors.success;
+		if (status === 'inProgress') return theme.colors.warning;
+		return theme.colors.menuSecondary;
 	};
 
 	const renderTodoLine = (

@@ -10,7 +10,7 @@ export function formatTodoContext(
 	todos: Array<{
 		id: string;
 		content: string;
-		status: 'pending' | 'completed';
+		status: 'pending' | 'inProgress' | 'completed';
 	}>,
 	isSubAgent: boolean = false,
 ): string {
@@ -20,6 +20,7 @@ export function formatTodoContext(
 
 	const statusSymbol = {
 		pending: '[ ]',
+		inProgress: '[~]',
 		completed: '[x]',
 	};
 

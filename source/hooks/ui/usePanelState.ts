@@ -194,20 +194,21 @@ export function usePanelState(): PanelState & PanelActions {
 			setShowUsagePanel(false);
 			return true;
 		}
-
+		// CustomCommandConfigPanel handles its own ESC key logic internally
+		// Don't close it here - let the panel decide when to close
 		if (showCustomCommandConfig) {
-			setShowCustomCommandConfig(false);
-			return true;
+			return false; // Let CustomCommandConfigPanel handle ESC
 		}
-
+		// SkillsCreationPanel handles its own ESC key logic internally
+		// Don't close it here - let the panel decide when to close
 		if (showSkillsCreation) {
-			setShowSkillsCreation(false);
-			return true;
+			return false; // Let SkillsCreationPanel handle ESC
 		}
 
+		// WorkingDirectoryPanel handles its own ESC key logic internally
+		// Don't close it here - let the panel decide when to close
 		if (showWorkingDirPanel) {
-			setShowWorkingDirPanel(false);
-			return true;
+			return false; // Let WorkingDirectoryPanel handle ESC
 		}
 
 		if (showPermissionsPanel) {

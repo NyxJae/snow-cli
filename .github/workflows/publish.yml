@@ -58,9 +58,7 @@ jobs:
 
             ### What's New
 
-            - Optimize long text recovery logic for better content restoration
-            - Update TODO formatting rules with sequential numbering and improved item retrieval
-            - Invalidate cache and clear current session on successful session deletion
+            - File rollback support to view differences (only vscode)
 
             ### Installation
             ```bash
