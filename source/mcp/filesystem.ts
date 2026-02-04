@@ -10,6 +10,8 @@ import {
 	tryUnescapeFix,
 	trimPairIfPossible,
 	isOverEscaped,
+	unescapeString,
+	countOccurrences,
 } from '../utils/ui/escapeHandler.js';
 // SSH support for remote file operations
 import {SSHClient, parseSSHUrl} from '../utils/ssh/sshClient.js';
@@ -39,6 +41,7 @@ import {
 	calculateSimilarityAsync,
 	normalizeForDisplay,
 } from './utils/filesystem/similarity.utils.js';
+import {calculateActualMatchRange} from './utils/filesystem/search-replace/range-calculator.js';
 import {
 	analyzeCodeStructure,
 	findSmartContextBoundaries,
@@ -1221,6 +1224,40 @@ export class FilesystemMCPService {
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
 
+			let didInitialUnescapeFix = false;
+			const expectedUnescapeOccurrences = occurrence === -1 ? 1 : occurrence;
+			const initialUnescapeFix = tryUnescapeFix(
+				normalizedContent,
+				normalizedSearch,
+				expectedUnescapeOccurrences,
+			);
+			if (initialUnescapeFix) {
+				normalizedSearch = initialUnescapeFix.correctedString;
+				replaceContent = trimPairIfPossible(
+					initialUnescapeFix.correctedString,
+					replaceContent,
+					normalizedContent,
+					expectedUnescapeOccurrences,
+				).paired;
+				didInitialUnescapeFix = true;
+			} else if (occurrence === -1 && isOverEscaped(normalizedSearch)) {
+				const unescapedSearch = unescapeString(normalizedSearch);
+				const unescapedOccurrences = countOccurrences(
+					normalizedContent,
+					unescapedSearch,
+				);
+				if (unescapedOccurrences > 0) {
+					normalizedSearch = unescapedSearch;
+					replaceContent = trimPairIfPossible(
+						unescapedSearch,
+						replaceContent,
+						normalizedContent,
+						unescapedOccurrences,
+					).paired;
+					didInitialUnescapeFix = true;
+				}
+			}
+
 			// Split into lines for matching
 			let searchLines = normalizedSearch.split('\n');
 			const contentLines = normalizedContent.split('\n');
@@ -1300,12 +1337,14 @@ export class FilesystemMCPService {
 
 			// Handle no matches: Try escape correction before giving up
 			if (matches.length === 0) {
-				// Step 1: Try unescape correction (lightweight, no LLM)
-				const unescapeFix = tryUnescapeFix(
-					normalizedContent,
-					normalizedSearch,
-					1,
-				);
+				const unescapeFallbackOccurrences = occurrence === -1 ? 1 : occurrence;
+				const unescapeFix = didInitialUnescapeFix
+					? null
+					: tryUnescapeFix(
+							normalizedContent,
+							normalizedSearch,
+							unescapeFallbackOccurrences,
+					  );
 				if (unescapeFix) {
 					// Unescape succeeded! Re-run the matching with corrected content using async
 					const correctedSearchLines = unescapeFix.correctedString.split('\n');
@@ -1526,7 +1565,48 @@ export class FilesystemMCPService {
 				selectedMatch = matches[occurrence - 1]!;
 			}
 
-			const {startLine, endLine} = selectedMatch;
+			// ========== Feature Flag: 使用新的范围计算器 ==========
+			// 新的 range-calculator 可以修正基于 searchLines.length 计算的初值 endLine
+			// 返回实际匹配的精确范围，避免重复内容 bug
+			const USE_NEW_RANGE_CALCULATOR = true; // Feature flag: 设为 false 可快速切回旧逻辑
+
+			let finalStartLine = selectedMatch.startLine;
+			let finalEndLine = selectedMatch.endLine;
+
+			if (USE_NEW_RANGE_CALCULATOR) {
+				// 使用新的范围计算器修正 endLine
+				const rangeResult = calculateActualMatchRange({
+					searchContent: normalizedSearch,
+					fileLines: lines,
+					startLine: selectedMatch.startLine,
+					initialEndLine: selectedMatch.endLine,
+					trimMode: 'conservative',
+				});
+
+				if (rangeResult) {
+					// 范围计算成功，使用修正后的范围
+					finalStartLine = rangeResult.startLine;
+					finalEndLine = rangeResult.endLine;
+
+					// 记录日志（仅在置信度不高时）
+					if (rangeResult.confidence !== 'high') {
+						logger.debug(
+							`Range calculator adjusted endLine from ${selectedMatch.endLine} to ${finalEndLine} (confidence: ${rangeResult.confidence}, adjustment: ${rangeResult.adjustment})`,
+						);
+					}
+				} else {
+					// 范围计算失败（置信度过低），使用原有匹配结果
+					logger.warn(
+						`Range calculator returned null (low confidence), using original match range: line ${selectedMatch.startLine}-${selectedMatch.endLine}`,
+					);
+				}
+			}
+			// ========== End Feature Flag ==========
+
+			const {startLine, endLine} = {
+				startLine: finalStartLine,
+				endLine: finalEndLine,
+			};
 
 			// Perform the replacement by replacing the matched lines
 			const normalizedReplace = replaceContent

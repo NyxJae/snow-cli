@@ -34,7 +34,7 @@ source/mcp/filesystem.ts:2294 -->
 
 已在 0971ea8555cf30e5436dc45fe6a6ccf29e2aa3e1 尝试修复 但
 
-<!-- 
+<!--
 "{\"filePath\":\"F:/UnityProject/SL/SL_402/Code/Assets/LuaScripts/Logics/ZhuHunMiJing/ZhuHunMiJingDialog.txt\",
 
 \"replaceContent\":\"\\tUnityEngine.Debug.Log(\\\"[ZhuHunMiJing] UpdateRightPanel: 准备调用UpdateBossState, monsterId=\\\" .. bossInfo.monid)\\n\\n\\t-- 显示层名称 - 使用索引显示\\\"第1层\\\"、\\\"第2层\\\"等\\n\\tif self.LayerNameLabel then\\n\\t\\tself.LayerNameLabel.text = \\\"第\\\" .. self.selectLayerIndex .. \\\"层\\\"\\n\\tend\\n\\n\\tUnityEngine.Debug.Log(\\\"[ZhuHunMiJing] UpdateRightPanel: 显示Boss名称...\\\")\\n\\t-- 显示Boss名称\\n\\tlocal monDb = sGameDBData:GetMonsterBase(bossInfo.monid)\\n\\tif monDb then\\n\\t\\tif self.BossNameLabel then\\n\\t\\t\\tself.BossNameLabel.text = monDb.name\\n\\t\\tend\\n\\tend\\n\\n\\tUnityEngine.Debug.Log(\\\"[ZhuHunMiJing] UpdateRightPanel: 准备显示Boss模型...\\\")\\n\\t-- 显示所有Boss模型（每层可能有多个Boss）\\n\\tself:ShowAllBossModels(layerCfg.bossid)\\n\\n\\tUnityEngine.Debug.Log(\\\"[ZhuHunMiJing] UpdateRightPanel: 准备调用UpdateBossState...\\\")\\n\\t-- 显示Boss刷新时间和状态\\n\\tself:UpdateBossState(bossInfo.monid)\",
@@ -61,20 +61,20 @@ source/mcp/filesystem.ts:2294 -->
                                                                                |  187 +  self:UpdateBossState(bossInfo.monid)
     201                                                                        |  188
     202    -- 显示奖励预览                                                     |  189    -- 显示奖励预览
-    203    self:ShowRewardPreview(layerCfg.RewardsShow)                        |  190    self:ShowRewardPreview(layerCfg.RewardsShow) 
-    
+    203    self:ShowRewardPreview(layerCfg.RewardsShow)                        |  190    self:ShowRewardPreview(layerCfg.RewardsShow)
+
 187行重复了
     -->
 
+再在 95bc1507fe483f07c35151e1b8622beafe670aee 中尝试修复了,但
 
-再在95bc1507fe483f07c35151e1b8622beafe670aee 中尝试修复了,但
-<!-- 
+<!--
     {
   "name": "filesystem-edit_search",
   "arguments": "{\"filePath\":\"F:\\\\UnityProject\\\\SL\\\\SL_402\\\\Code\\\\Assets\\\\Editor\\\\AgentCommands\\\\Utils\\\\SerializedObjectHelper.cs\",
-  
+
   \"searchContent\":\"            using (SerializedObject serializedObj = new SerializedObject(obj))\\n            {\\n                SerializedProperty prop = serializedObj.GetIterator();\\n\\n                // 如果需要过滤私有字段, 建立字段映射\\n                Dictionary<string, System.Reflection.FieldInfo> fieldMap = null;\\n                if (!includePrivate)\\n                {\\n                    fieldMap = SerializedFieldFilter.GetFieldMap(obj.GetType());\\n                }\\n\\n                // 跳过根属性, 使用Next()以包含[HideInInspector]字段\\n                if (prop.Next(true))\\n                {\\n                    do\\n                    {\\n                        // 跳过脚本字段\\n                        if (prop.propertyPath == \\\"m_Script\\\")\\n                        {\\n                            continue;\\n                        }\\n\\n                        // 过滤私有字段\\n                        if (!includePrivate && fieldMap != null)\\n                        {\\n                            string baseFieldName = SerializedFieldFilter.ExtractBaseFieldName(prop.propertyPath);\\n                            if (fieldMap.TryGetValue(baseFieldName, out System.Reflection.FieldInfo field) && \\n                                field.IsPrivate)\\n                            {\\n                                continue;\\n                            }\\n                        }\\n\\n                        JsonData value = SerializedPropertyConverter.ConvertSerializedProperty(prop);\\n                        SerializedJsonTreeBuilder.InsertPropertyValue(\\n                            result, \\n                            PropertyPathParser.ParsePropertyPath(prop.propertyPath), \\n                            value);\\n                    }\\n                    while (prop.Next(false));\\n                }\\n            }\",
-  
+
   \"replaceContent\":\"            using (SerializedObject serializedObj = new SerializedObject(obj))\\n            {\\n                SerializedProperty prop = serializedObj.GetIterator();\\n\\n                // 如果需要过滤私有字段, 建立字段映射\\n                Dictionary<string, System.Reflection.FieldInfo> fieldMap = null;\\n                if (!includePrivate)\\n                {\\n                    fieldMap = SerializedFieldFilter.GetFieldMap(obj.GetType());\\n                }\\n\\n                // 跳过根属性, 使用Next()以包含[HideInInspector]字段\\n                if (prop.Next(true))\\n                {\\n                    int propIndex = 0;\\n                    do\\n                    {\\n                        try\\n                        {\\n                            propIndex++;\\n                            Debug.Log($\\\"[SerializedObjectHelper] Processing property {propIndex}: {prop.propertyPath}, type: {prop.propertyType}\\\");\\n\\n                            // 跳过脚本字段\\n                            if (prop.propertyPath == \\\"m_Script\\\")\\n                            {\\n                                continue;\\n                            }\\n\\n                            // 过滤私有字段\\n                            if (!includePrivate && fieldMap != null)\\n                            {\\n                                string baseFieldName = SerializedFieldFilter.ExtractBaseFieldName(prop.propertyPath);\\n                                if (fieldMap.TryGetValue(baseFieldName, out System.Reflection.FieldInfo field) && \\n                                    field.IsPrivate)\\n                                {\\n                                    continue;\\n                                }\\n                            }\\n\\n                            JsonData value = SerializedPropertyConverter.ConvertSerializedProperty(prop);\\n                            SerializedJsonTreeBuilder.InsertPropertyValue(\\n                                result, \\n                                PropertyPathParser.ParsePropertyPath(prop.propertyPath), \\n                                value);\\n                        }\\n                        catch (System.Exception ex)\\n                        {\\n                            string propertyPathStr = \\\"unknown\\\";\\n                            try\\n                            {\\n                                propertyPathStr = prop.propertyPath;\\n                            }\\n                            catch { }\\n                            \\n                            Debug.LogError($\\\"[SerializedObjectHelper] Error processing property {propIndex}: {ex.Message}\\\\nPropertyPath: {propertyPathStr}\\\\nStack: {ex.StackTrace}\\\");\\n                        }\\n                    }\\n                    while (prop.Next(false));\\n                }\\n            }\"}"
 
 
@@ -107,4 +107,81 @@ source/mcp/filesystem.ts:2294 -->
 
 又出现了 错误的添加了 94 95行的 大括号 -->
 
-在54b48d6e645263aa9a88f99e20378d4550306562 又一次尝试修复  
+在 54b48d6e645263aa9a88f99e20378d4550306562 又一次尝试修复
+
+<!-- {
+"name": "filesystem-edit_search",
+"arguments": "{\"filePath\":\"F:/UnityProject/SL/SL_402/Code/Assets/LuaScripts/Logics/yuanzheng/MainPanel.txt\",
+
+\"replaceContent\":\"\\t\\tself.TaZhongInfoPanel:SetVisible(false)\\n\\t\\tself.TaShangImage:SetVisible(false)\\n\\t\\tself.TaZhuangShiImage:SetVisible(false)\\n\\t\\tprint(\\\"[MainPanel] 显示第 1 关，塔底高度=\\\" .. TOWER_BOTTOM_HEIGHT_FIRST_FLOOR)\\n\\telseif curfloor == 2 then\\n\\t\\t-- 第 2 关\\n\\t\\tself.bgImage.picName = \\\"bg_di\\\"\\n\\t\\tself.TaXiaImage.picName = \\\"ta_di\\\"\\n\\t\\tself.TaXiaInfoPanel:SetVisible(false)\\n\\t\\t-- 设置塔底高度为 210\\n\\t\\tself.TaXiaPanel.recttransform.sizeDelta = Vector2.New(self.TaXiaPanel.recttransform.sizeDelta.x, TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)\\n\\t\\tself.TaZhongImage.picName = \\\"ta_zhong_liang\\\"\\n\\t\\tself.TaZhongInfoPanel:SetVisible(true)\\n\\t\\tself.TaShangImage.picName = \\\"ta_zhong_hui\\\"\\n\\t\\tself.TaShangImage:SetVisible(true)\\n\\t\\tself.TaZhuangShiImage:SetVisible(false)\\n\\t\\tprint(\\\"[MainPanel] 显示第 2 关，塔底高度=\\\" .. TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)\\n\\telseif curfloor < maxfloor then\\n\\t\\t-- 第 3 关至倒数第二关\\n\\t\\tself.bgImage.picName = \\\"bg_tian\\\"\\n\\t\\tself.TaXiaImage.picName = \\\"ta_zhong_liang\\\"\\n\\t\\tself.TaXiaInfoPanel:SetVisible(false)\\n\\t\\t-- 设置塔底高度为 210\\n\\t\\tself.TaXiaPanel.recttransform.sizeDelta = Vector2.New(self.TaXiaPanel.recttransform.sizeDelta.x, TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)\\n\\t\\tself.TaZhongImage.picName = \\\"ta_zhong_liang\\\"\\n\\t\\tself.TaZhongInfoPanel:SetVisible(true)\\n\\t\\tself.TaShangImage.picName = \\\"ta_zhong_hui\\\"\\n\\t\\tself.TaShangImage:SetVisible(true)\\n\\t\\tself.TaZhuangShiImage:SetVisible(true)\\n\\t\\tprint(\\\"[MainPanel] 显示第\\\" .. curfloor .. \\\"关（中间层），塔底高度=\\\" .. TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)\\n\\telse\\n\\t\\t-- 最后一关\\n\\t\\tself.bgImage.picName = \\\"bg_tian\\\"\\n\\t\\tself.TaXiaImage.picName = \\\"ta_zhong_liang\\\"\\n\\t\\tself.TaXiaInfoPanel:SetVisible(false)\\n\\t\\t-- 设置塔底高度为 210\\n\\t\\tself.TaXiaPanel.recttransform.sizeDelta = Vector2.New(self.TaXiaPanel.recttransform.sizeDelta.x, TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)\\n\\t\\tself.TaZhongImage.picName = \\\"ta_zhong_liang\\\"\\n\\t\\tself.TaZhongInfoPanel:SetVisible(true)\\n\\t\\tself.TaShangImage.picName = \\\"ta_ding\\\"\\n\\t\\tself.TaShangImage:SetVisible(true)\\n\\t\\tself.TaZhuangShiImage:SetVisible(true)\\n\\t\\tprint(\\\"[MainPanel] 显示最后一关，塔底高度=\\\" .. TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)\\n\\tend\",
+
+\"searchContent\":\"\\t\\tself.TaZhongInfoPanel:SetVisible(false)\\n\\t\\tself.TaShangImage:SetVisible(false)\\n\\t\\tself.TaZhuangShiImage:SetVisible(false)\\n\\t\\tprint(\\\"[MainPanel] 显示第 1 关，塔底高度=332\\\")\\n\\telseif curfloor == 2 then\\n\\t\\t-- 第 2 关\\n\\t\\tself.bgImage.picName = \\\"bg_di\\\"\\n\\t\\tself.TaXiaImage.picName = \\\"ta_di\\\"\\n\\t\\tself.TaXiaInfoPanel:SetVisible(false)\\n\\t\\t-- 设置塔底高度为 210\\n\\t\\tself.TaXiaPanel.recttransform.sizeDelta = Vector2.New(self.TaXiaPanel.recttransform.sizeDelta.x, TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)\\n\\t\\tself.TaZhongImage.picName = \\\"ta_zhong_liang\\\"\\n\\t\\tself.TaZhongInfoPanel:SetVisible(true)\\n\\t\\tself.TaShangImage.picName = \\\"ta_zhong_hui\\\"\\n\\t\\tself.TaShangImage:SetVisible(true)\\n\\t\\tself.TaZhuangShiImage:SetVisible(false)\\n\\t\\tprint(\\\"[MainPanel] 显示第 2 关，塔底高度=210\\\")\\n\\telseif curfloor < maxfloor then\\n\\t\\t-- 第 3 关至倒数第二关\\n\\t\\tself.bgImage.picName = \\\"bg_tian\\\"\\n\\t\\tself.TaXiaImage.picName = \\\"ta_zhong_liang\\\"\\n\\t\\tself.TaXiaInfoPanel:SetVisible(false)\\n\\t\\t-- 设置塔底高度为 210\\n\\t\\tself.TaXiaPanel.recttransform.sizeDelta = Vector2.New(self.TaXiaPanel.recttransform.sizeDelta.x, TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)\\n\\t\\tself.TaZhongImage.picName = \\\"ta_zhong_liang\\\"\\n\\t\\tself.TaZhongInfoPanel:SetVisible(true)\\n\\t\\tself.TaShangImage.picName = \\\"ta_zhong_hui\\\"\\n\\t\\tself.TaShangImage:SetVisible(true)\\n\\t\\tself.TaZhuangShiImage:SetVisible(true)\\n\\t\\tprint(\\\"[MainPanel] 显示第\\\" .. curfloor .. \\\"关（中间层），塔底高度=210\\\")\\n\\telse\\n\\t\\t-- 最后一关\\n\\t\\tself.bgImage.picName = \\\"bg_tian\\\"\\n\\t\\tself.TaXiaImage.picName = \\\"ta_zhong_liang\\\"\\n\\t\\tself.TaXiaInfoPanel:SetVisible(false)\\n\\t\\t-- 设置塔底高度为 210\\n\\t\\tself.TaXiaPanel.recttransform.sizeDelta = Vector2.New(self.TaXiaPanel.recttransform.sizeDelta.x, TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)\\n\\t\\tself.TaZhongImage.picName = \\\"ta_zhong_liang\\\"\\n\\t\\tself.TaZhongInfoPanel:SetVisible(true)\\n\\t\\tself.TaShangImage.picName = \\\"ta_ding\\\"\\n\\t\\tself.TaShangImage:SetVisible(true)\\n\\t\\tself.TaZhuangShiImage:SetVisible(true)\\n\\t\\tprint(\\\"[MainPanel] 显示最后一关，塔底高度=210\\\")\\n\\tend\"}"
+}
+
+    ----------------------------- OLD------------------------------ | ----------------------------- NEW------------------------------
+
+     129    self.TaShangImage.picName = "ta_ding"                   |  128    self.TaShangImage.picName = "ta_ding"
+     130    self.TaShangImage:SetVisible(true)                      |  129    self.TaShangImage:SetVisible(true)
+     131    self.TaZhuangShiImage:SetVisible(true)                  |  130    self.TaZhuangShiImage:SetVisible(true)
+     132 -  print("[MainPanel] 显示最后一关，塔底高度=210")         |  131 +  print("[MainPanel] 显示最后一关，塔底高度=" ..
+                                                                      TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)
+     133    end                                                     |  132    end
+                                                                    |  133 +  end
+     134   end                                                      |  134   end
+     135                                                            |  135
+     136   -- 刷新关卡层数显示                                      |  136   -- 刷新关卡层数显示
+
+133 行 错误的 多了个 end 但我看 搜索替换 的 参数 似乎是对的
+搜索块:
+print(\\\"[MainPanel] 显示最后一关，塔底高度=210\\\")\\n\\tend
+替换块:
+print(\\\"[MainPanel] 显示最后一关，塔底高度=\\\" .. TOWER_BOTTOM_HEIGHT_OTHER_FLOOR)\\n\\tend
+
+修复记录:
+
+- editFileBySearchSingle 在匹配前增加初始 unescape,并在初始修复时同步 trimPairIfPossible,避免 searchLines 长度偏差导致额外 end
+- occurrence == -1 时若 searchContent 过度转义,允许根据实际出现次数进行 unescape 匹配
+- 如果已做初始 unescape,后续 matches==0 时跳过重复 unescape 分支 -->
+
+
+又有错,
+
+{
+  "name": "filesystem-edit_search",
+  "arguments": "{\"filePath\":\"C:/Users/Administrator/.snow/hooks/show-windows-toast.js\",
+  
+  \"searchContent\":\"/**\\n * 显示 Windows Toast 通知\\n * @param {string} title - 通知标题\\n * @param {string} message - 通知内容\\n * @returns {boolean} 是否成功\\n */\\nfunction showWindowsToast(title, message) {\\n\\ttry {\\n\\t\\t// 使用 PowerShell 的 Windows.UI.Notifications 命名空间显示 toast\\n\\t\\tconst psScript = `\\n[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null\\n[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null\\n\\n$template = @\\\"\\n<toast>\\n    <visual>\\n        <binding template='ToastGeneric'>\\n            <text>$title</text>\\n            <text>$message</text>\\n        </binding>\\n    </visual>\\n    <audio src='ms-winsoundevent:Notification.Default'/>\\n</toast>\\n\\\"@\\n\\n$xml = New-Object Windows.Data.Xml.Dom.XmlDocument\\n$xml.LoadXml($template)\\n$toast = New-Object Windows.UI.Notifications.ToastNotification $xml\\n$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Snow CLI')\\n$notifier.Show($toast)\\n`;\\n\\n\\t\\tconst escapedTitle = escapePowerShellString(title);\\n\\t\\tconst escapedMessage = escapePowerShellString(message);\\n\\n\\t\\tconst psCommand = psScript\\n\\t\\t\\t.replace(/\\\\$title/g, escapedTitle)\\n\\t\\t\\t.replace(/\\\\$message/g, escapedMessage);\\n\\n\\t\\t// 使用 PowerShell 执行\\n\\t\\texecSync(\\n\\t\\t\\t`powershell -NoProfile -NonInteractive -Command \\\"${psCommand.replace(/\\\"/g, '\\\\\\\\\\\"')}\\\"`,\\n\\t\\t\\t{\\n\\t\\t\\t\\tstdio: 'ignore',\\n\\t\\t\\t\\ttimeout: 5000,\\n\\t\\t\\t},\\n\\t\\t);\\n\\n\\t\\treturn true;\\n\\t} catch (error) {\\n\\t\\t// 备用方案：使用 balloon tip（兼容性更好）\\n\\t\\treturn showBalloonTip(title, message);\\n\\t}\\n}\",
+  
+  \"replaceContent\":\"/**\\n * 显示 Windows Toast 通知\\n * @param {string} title - 通知标题\\n * @param {string} message - 通知内容\\n * @returns {boolean} 是否成功\\n */\\nfunction showWindowsToast(title, message) {\\n\\ttry {\\n\\t\\tprocess.stderr.write('🔔 [DEBUG] 尝试显示通知: ' + title + '\\\\n');\\n\\n\\t\\t// 使用 PowerShell 的 Windows.UI.Notifications 命名空间显示 toast\\n\\t\\tconst psScript = `\\n[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null\\n[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null\\n\\n$template = @\\\"\\n<toast>\\n    <visual>\\n        <binding template='ToastGeneric'>\\n            <text>$title</text>\\n            <text>$message</text>\\n        </binding>\\n    </visual>\\n    <audio src='ms-winsoundevent:Notification.Default'/>\\n</toast>\\n\\\"@\\n\\n$xml = New-Object Windows.Data.Xml.Dom.XmlDocument\\n$xml.LoadXml($template)\\n$toast = New-Object Windows.UI.Notifications.ToastNotification $xml\\n$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Snow CLI')\\n$notifier.Show($toast)\\n`;\\n\\n\\t\\tconst escapedTitle = escapePowerShellString(title);\\n\\t\\tconst escapedMessage = escapePowerShellString(message);\\n\\n\\t\\tconst psCommand = psScript\\n\\t\\t\\t.replace(/\\\\$title/g, escapedTitle)\\n\\t\\t\\t.replace(/\\\\$message/g, escapedMessage);\\n\\n\\t\\tprocess.stderr.write('🔔 [DEBUG] 准备执行 PowerShell 命令\\\\n');\\n\\n\\t\\t// 使用 PowerShell 执行\\n\\t\\texecSync(\\n\\t\\t\\t`powershell -NoProfile -NonInteractive -Command \\\"${psCommand.replace(/\\\"/g, '\\\\\\\\\\\"')}\\\"`,\\n\\t\\t\\t{\\n\\t\\t\\t\\tstdio: 'ignore',\\n\\t\\t\\t\\ttimeout: 5000,\\n\\t\\t\\t},\\n\\t\\t);\\n\\n\\t\\tprocess.stderr.write('✅ [DEBUG] PowerShell 命令执行成功\\\\n');\\n\\t\\treturn true;\\n\\t} catch (error) {\\n\\t\\tprocess.stderr.write('⚠️ [DEBUG] Toast 通知失败，尝试 Balloon Tip: ' + error.message + '\\\\n');\\n\\t\\t// 备用方案：使用 balloon tip（兼容性更好）\\n\\t\\treturn showBalloonTip(title, message);\\n\\t}\\n}\"}"
+}
+
+
+   ---------------------------- OLD ----------------------------- |---------------------------- NEW ----------------------------- 
+
+    158    },                                                     | 159    },
+    159    );                                                     | 160    );
+    160                                                           | 161
+                                                                  | 162 +  process.stderr.write('✅ [DEBUG] PowerShell 
+                                                                   命令执行成功\n');
+    161    return true;                                           | 163    return true;
+    162    } catch (error) {                                      | 164    } catch (error) {
+                                                                  | 165 +  process.stderr.write('⚠️ [DEBUG] Toast 通知失败，尝试  
+                                                                   Balloon Tip: ' + error.message + '\n');
+    163    // 备用方案：使用 balloon tip（兼容性更好）            | 166    // 备用方案：使用 balloon tip（兼容性更好）
+    164    return showBalloonTip(title, message);                 | 167    return showBalloonTip(title, message);
+    165    }                                                      | 168    }
+    166   }                                                       | 169   }
+                                                                  | 170 +  return showBalloonTip(title, message);
+                                                                  | 171 +  }
+                                                                  | 172 + }
+    167                                                           | 173
+    168   /**                                                     | 174   /**
+    169    * 备用方案：使用 Balloon Tip 显示通知                  | 175    * 备用方案：使用 Balloon Tip 显示通知
+
+
+    错误的在 170 - 172 多了重复行
+
+但看 搜索块和输入块最后都有完全一样的
+\\n\\t\\treturn showBalloonTip(title, message);\\n\\t}\\n}
+
+显然调用没错 一定是 项目的搜索替换工具还是有问题
