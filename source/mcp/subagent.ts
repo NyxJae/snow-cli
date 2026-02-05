@@ -105,6 +105,7 @@ export class SubAgentService {
 	}> {
 		// Get user-configured agents (built-in agents are hardcoded below)
 		const userAgents = getUserSubAgents();
+		const userAgentMap = new Map(userAgents.map(agent => [agent.id, agent]));
 
 		// Built-in agents (hardcoded, always available)
 		const tools = [
@@ -164,6 +165,13 @@ export class SubAgentService {
 			'agent_plan',
 			'agent_general',
 		]);
+
+		for (const tool of tools) {
+			const userAgent = userAgentMap.get(tool.name);
+			if (userAgent && userAgent.name && userAgent.description) {
+				tool.description = `${userAgent.name}: ${userAgent.description}`;
+			}
+		}
 
 		// Add user-configured agents (filter out duplicates with built-in)
 		tools.push(
