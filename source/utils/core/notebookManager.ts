@@ -71,13 +71,126 @@ export function readNotebookData(): NotebookData {
 }
 
 /**
+ * 备忘录路径类型
+ */
+type NotebookPathKind = 'folder' | 'file';
+
+/**
+ * 备忘录路径信息
+ */
+interface NotebookPathInfo {
+	original: string;
+	segments: string[];
+	isFolder: boolean;
+}
+
+/**
+ * 获取备忘录路径信息,用于排序
+ */
+function getNotebookPathInfo(filePath: string): NotebookPathInfo {
+	let normalized = filePath.replace(/\\/g, '/');
+	if (normalized.startsWith('./')) {
+		normalized = normalized.substring(2);
+	}
+	const isRoot = normalized === '/';
+	const isFolder = isRoot || normalized.endsWith('/');
+	const trimmed = isRoot ? '' : isFolder ? normalized.slice(0, -1) : normalized;
+	const segments = trimmed ? trimmed.split('/').filter(Boolean) : [];
+	return {
+		original: filePath,
+		segments,
+		isFolder,
+	};
+}
+
+/**
+ * 获取某个路径段的类型(文件夹或文件)
+ */
+function getSegmentKind(
+	pathInfo: NotebookPathInfo,
+	segmentIndex: number,
+): NotebookPathKind {
+	if (segmentIndex < pathInfo.segments.length - 1) {
+		return 'folder';
+	}
+	return pathInfo.isFolder ? 'folder' : 'file';
+}
+
+/**
+ * 按 ASCII/Unicode 顺序比较字符串
+ */
+function comparePathSegment(a: string, b: string): number {
+	if (a === b) {
+		return 0;
+	}
+	return a < b ? -1 : 1;
+}
+
+/**
+ * 按树形顺序比较两个路径
+ */
+function compareNotebookPaths(pathA: string, pathB: string): number {
+	if (pathA === pathB) {
+		return 0;
+	}
+
+	const infoA = getNotebookPathInfo(pathA);
+	const infoB = getNotebookPathInfo(pathB);
+	const minLength = Math.min(infoA.segments.length, infoB.segments.length);
+
+	for (let index = 0; index < minLength; index++) {
+		const segmentA = infoA.segments[index]!;
+		const segmentB = infoB.segments[index]!;
+
+		if (segmentA !== segmentB) {
+			const kindA = getSegmentKind(infoA, index);
+			const kindB = getSegmentKind(infoB, index);
+			if (kindA !== kindB) {
+				return kindA === 'folder' ? -1 : 1;
+			}
+			return comparePathSegment(segmentA, segmentB);
+		}
+	}
+
+	if (infoA.segments.length !== infoB.segments.length) {
+		const isAShorter = infoA.segments.length < infoB.segments.length;
+		const shorterInfo = isAShorter ? infoA : infoB;
+		if (shorterInfo.isFolder) {
+			return infoA.segments.length - infoB.segments.length;
+		}
+		return isAShorter ? 1 : -1;
+	}
+
+	if (infoA.isFolder !== infoB.isFolder) {
+		return infoA.isFolder ? -1 : 1;
+	}
+
+	return comparePathSegment(infoA.original, infoB.original);
+}
+
+/**
+ * 对备忘录数据按路径树形顺序排序
+ */
+function sortNotebookDataByPath(data: NotebookData): NotebookData {
+	const sortedEntries = Object.entries(data)
+		.filter(([, entries]) => entries.length > 0)
+		.sort((entryA, entryB) => compareNotebookPaths(entryA[0], entryB[0]));
+	const sortedData: NotebookData = {};
+	for (const [filePath, entries] of sortedEntries) {
+		sortedData[filePath] = entries;
+	}
+	return sortedData;
+}
+
+/**
  * 保存备忘录数据
  */
 function saveNotebookData(data: NotebookData): void {
 	const filePath = getNotebookFilePath();
+	const sortedData = sortNotebookDataByPath(data);
 
 	try {
-		fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+		fs.writeFileSync(filePath, JSON.stringify(sortedData, null, 2), 'utf-8');
 	} catch (error) {
 		console.error('Failed to save notebook data:', error);
 		throw error;
