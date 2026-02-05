@@ -1223,6 +1223,8 @@ export class FilesystemMCPService {
 			const normalizedContent = content
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
+			const trimTrailingNewline = (value: string): string =>
+				value.replace(/\n+$/, '');
 
 			let didInitialUnescapeFix = false;
 			const expectedUnescapeOccurrences = occurrence === -1 ? 1 : occurrence;
@@ -1232,13 +1234,14 @@ export class FilesystemMCPService {
 				expectedUnescapeOccurrences,
 			);
 			if (initialUnescapeFix) {
-				normalizedSearch = initialUnescapeFix.correctedString;
-				replaceContent = trimPairIfPossible(
+				const trimResult = trimPairIfPossible(
 					initialUnescapeFix.correctedString,
 					replaceContent,
 					normalizedContent,
 					expectedUnescapeOccurrences,
-				).paired;
+				);
+				normalizedSearch = trimTrailingNewline(trimResult.target);
+				replaceContent = trimTrailingNewline(trimResult.paired);
 				didInitialUnescapeFix = true;
 			} else if (occurrence === -1 && isOverEscaped(normalizedSearch)) {
 				const unescapedSearch = unescapeString(normalizedSearch);
@@ -1247,16 +1250,20 @@ export class FilesystemMCPService {
 					unescapedSearch,
 				);
 				if (unescapedOccurrences > 0) {
-					normalizedSearch = unescapedSearch;
-					replaceContent = trimPairIfPossible(
+					const trimResult = trimPairIfPossible(
 						unescapedSearch,
 						replaceContent,
 						normalizedContent,
 						unescapedOccurrences,
-					).paired;
+					);
+					normalizedSearch = trimTrailingNewline(trimResult.target);
+					replaceContent = trimTrailingNewline(trimResult.paired);
 					didInitialUnescapeFix = true;
 				}
 			}
+
+			normalizedSearch = trimTrailingNewline(normalizedSearch);
+			replaceContent = trimTrailingNewline(replaceContent);
 
 			// Split into lines for matching
 			let searchLines = normalizedSearch.split('\n');
@@ -1609,7 +1616,7 @@ export class FilesystemMCPService {
 			};
 
 			// Perform the replacement by replacing the matched lines
-			const normalizedReplace = replaceContent
+			const normalizedReplace = trimTrailingNewline(replaceContent)
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
 			const beforeLines = lines.slice(0, startLine - 1);

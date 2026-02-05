@@ -143,29 +143,28 @@ print(\\\"[MainPanel] 显示最后一关，塔底高度=\\\" .. TOWER_BOTTOM_HEI
 - occurrence == -1 时若 searchContent 过度转义,允许根据实际出现次数进行 unescape 匹配
 - 如果已做初始 unescape,后续 matches==0 时跳过重复 unescape 分支 -->
 
-
 又有错,
 
-{
+<!-- {
   "name": "filesystem-edit_search",
   "arguments": "{\"filePath\":\"C:/Users/Administrator/.snow/hooks/show-windows-toast.js\",
-  
+
   \"searchContent\":\"/**\\n * 显示 Windows Toast 通知\\n * @param {string} title - 通知标题\\n * @param {string} message - 通知内容\\n * @returns {boolean} 是否成功\\n */\\nfunction showWindowsToast(title, message) {\\n\\ttry {\\n\\t\\t// 使用 PowerShell 的 Windows.UI.Notifications 命名空间显示 toast\\n\\t\\tconst psScript = `\\n[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null\\n[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null\\n\\n$template = @\\\"\\n<toast>\\n    <visual>\\n        <binding template='ToastGeneric'>\\n            <text>$title</text>\\n            <text>$message</text>\\n        </binding>\\n    </visual>\\n    <audio src='ms-winsoundevent:Notification.Default'/>\\n</toast>\\n\\\"@\\n\\n$xml = New-Object Windows.Data.Xml.Dom.XmlDocument\\n$xml.LoadXml($template)\\n$toast = New-Object Windows.UI.Notifications.ToastNotification $xml\\n$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Snow CLI')\\n$notifier.Show($toast)\\n`;\\n\\n\\t\\tconst escapedTitle = escapePowerShellString(title);\\n\\t\\tconst escapedMessage = escapePowerShellString(message);\\n\\n\\t\\tconst psCommand = psScript\\n\\t\\t\\t.replace(/\\\\$title/g, escapedTitle)\\n\\t\\t\\t.replace(/\\\\$message/g, escapedMessage);\\n\\n\\t\\t// 使用 PowerShell 执行\\n\\t\\texecSync(\\n\\t\\t\\t`powershell -NoProfile -NonInteractive -Command \\\"${psCommand.replace(/\\\"/g, '\\\\\\\\\\\"')}\\\"`,\\n\\t\\t\\t{\\n\\t\\t\\t\\tstdio: 'ignore',\\n\\t\\t\\t\\ttimeout: 5000,\\n\\t\\t\\t},\\n\\t\\t);\\n\\n\\t\\treturn true;\\n\\t} catch (error) {\\n\\t\\t// 备用方案：使用 balloon tip（兼容性更好）\\n\\t\\treturn showBalloonTip(title, message);\\n\\t}\\n}\",
-  
+
   \"replaceContent\":\"/**\\n * 显示 Windows Toast 通知\\n * @param {string} title - 通知标题\\n * @param {string} message - 通知内容\\n * @returns {boolean} 是否成功\\n */\\nfunction showWindowsToast(title, message) {\\n\\ttry {\\n\\t\\tprocess.stderr.write('🔔 [DEBUG] 尝试显示通知: ' + title + '\\\\n');\\n\\n\\t\\t// 使用 PowerShell 的 Windows.UI.Notifications 命名空间显示 toast\\n\\t\\tconst psScript = `\\n[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null\\n[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null\\n\\n$template = @\\\"\\n<toast>\\n    <visual>\\n        <binding template='ToastGeneric'>\\n            <text>$title</text>\\n            <text>$message</text>\\n        </binding>\\n    </visual>\\n    <audio src='ms-winsoundevent:Notification.Default'/>\\n</toast>\\n\\\"@\\n\\n$xml = New-Object Windows.Data.Xml.Dom.XmlDocument\\n$xml.LoadXml($template)\\n$toast = New-Object Windows.UI.Notifications.ToastNotification $xml\\n$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Snow CLI')\\n$notifier.Show($toast)\\n`;\\n\\n\\t\\tconst escapedTitle = escapePowerShellString(title);\\n\\t\\tconst escapedMessage = escapePowerShellString(message);\\n\\n\\t\\tconst psCommand = psScript\\n\\t\\t\\t.replace(/\\\\$title/g, escapedTitle)\\n\\t\\t\\t.replace(/\\\\$message/g, escapedMessage);\\n\\n\\t\\tprocess.stderr.write('🔔 [DEBUG] 准备执行 PowerShell 命令\\\\n');\\n\\n\\t\\t// 使用 PowerShell 执行\\n\\t\\texecSync(\\n\\t\\t\\t`powershell -NoProfile -NonInteractive -Command \\\"${psCommand.replace(/\\\"/g, '\\\\\\\\\\\"')}\\\"`,\\n\\t\\t\\t{\\n\\t\\t\\t\\tstdio: 'ignore',\\n\\t\\t\\t\\ttimeout: 5000,\\n\\t\\t\\t},\\n\\t\\t);\\n\\n\\t\\tprocess.stderr.write('✅ [DEBUG] PowerShell 命令执行成功\\\\n');\\n\\t\\treturn true;\\n\\t} catch (error) {\\n\\t\\tprocess.stderr.write('⚠️ [DEBUG] Toast 通知失败，尝试 Balloon Tip: ' + error.message + '\\\\n');\\n\\t\\t// 备用方案：使用 balloon tip（兼容性更好）\\n\\t\\treturn showBalloonTip(title, message);\\n\\t}\\n}\"}"
 }
 
 
-   ---------------------------- OLD ----------------------------- |---------------------------- NEW ----------------------------- 
+   ---------------------------- OLD ----------------------------- |---------------------------- NEW -----------------------------
 
     158    },                                                     | 159    },
     159    );                                                     | 160    );
     160                                                           | 161
-                                                                  | 162 +  process.stderr.write('✅ [DEBUG] PowerShell 
+                                                                  | 162 +  process.stderr.write('✅ [DEBUG] PowerShell
                                                                    命令执行成功\n');
     161    return true;                                           | 163    return true;
     162    } catch (error) {                                      | 164    } catch (error) {
-                                                                  | 165 +  process.stderr.write('⚠️ [DEBUG] Toast 通知失败，尝试  
+                                                                  | 165 +  process.stderr.write('⚠️ [DEBUG] Toast 通知失败，尝试
                                                                    Balloon Tip: ' + error.message + '\n');
     163    // 备用方案：使用 balloon tip（兼容性更好）            | 166    // 备用方案：使用 balloon tip（兼容性更好）
     164    return showBalloonTip(title, message);                 | 167    return showBalloonTip(title, message);
@@ -184,4 +183,72 @@ print(\\\"[MainPanel] 显示最后一关，塔底高度=\\\" .. TOWER_BOTTOM_HEI
 但看 搜索块和输入块最后都有完全一样的
 \\n\\t\\treturn showBalloonTip(title, message);\\n\\t}\\n}
 
-显然调用没错 一定是 项目的搜索替换工具还是有问题
+显然调用没错 一定是 项目的搜索替换工具还是有问题 -->
+
+<!-- 又出现搜索替换问题,分析下
+
+{
+  "name": "filesystem-edit_search",
+  "arguments": "{\"filePath\":\"Code/Assets/LuaScripts/Logics/yuanzheng/Items/RewardItemPanel.txt\",
+
+  \"searchContent\":\"        if self.NextProfitLabel then\\n            self.NextProfitLabel:SetVisible(true)\\n            self.NextProfitLabel.text = string.format(\\\"%d/小时\\\", nextNum)\\n        end\\n    end\\nend\",
+
+  \"replaceContent\":\"        if self.NextProfitLabel then\\n            self.NextProfitLabel:SetVisible(true)\\n            self.NextProfitLabel.text = string.format(\\\"%s/小时\\\", YuanzhengUtils.FormatProfitValue(nextNum))\\n        end\\n    end\\nend\"}"
+}
+
+
+   Code/Assets/LuaScripts/Logics/yuanzheng/Items/RewardItemPanel.txt (modified) (side-by-side)
+
+   @@ Lines 36-41 @@
+   ----------------------------- OLD ------------------------------ |----------------------------- NEW ------------------------------
+
+     36    end                                                      |  36    end
+     37    if self.NextProfitLabel then                             |  37    if self.NextProfitLabel then
+     38    self.NextProfitLabel:SetVisible(true)                    |  38    self.NextProfitLabel:SetVisible(true)
+                                                                    |  39 +  self.NextProfitLabel.text = string.format("%s/小时",
+                                                                     YuanzhengUtils.FormatProfitValue(nextNum))
+                                                                    |  40 +  end
+                                                                    |  41 +  end
+                                                                    |  42 + end
+                                                                    |  43 +  self.NextProfitLabel:SetVisible(true)
+     39    self.NextProfitLabel.text = string.format("%d/小时",     |  44    self.NextProfitLabel.text = string.format("%d/小时",
+   nextNum)                                                          nextNum)
+     40    end                                                      |  45    end
+     41    end                                                      |  46    end
+
+
+44 - 46 错误的没有被替换掉 导致 错误的添加了 39-43 行 -->
+
+{
+"name": "filesystem-edit_search",
+"arguments": "{\"filePath\":\"F:\\\\Projects\\\\snow-cli\\\\source\\\\mcp\\\\subagent.ts\",
+
+\"searchContent\":\"\\t\\t// Get user-configured agents (built-in agents are hardcoded below)\\n\\t\\tconst userAgents = getUserSubAgents();\\n\\n\\t\\t// Built-in agents (hardcoded, always available)\\n\",
+
+\"replaceContent\":\"\\t\\t// Get user-configured agents (built-in agents are hardcoded below)\\n\\t\\tconst userAgents = getUserSubAgents();\\n\\t\\tconst userAgentMap = new Map(userAgents.map(agent => [agent.id, agent]));\\n\\n\\t\\t// Built-in agents (hardcoded, always available)\\n\"}"
+}
+
+    F:\Projects\snow-cli\source\mcp\subagent.ts (modified) (side-by-side)
+
+    @@ Lines 105-113 @@
+    -------------------------------- OLD ---------------------------------- |-------------------------------- NEW ---------------------------------
+                                                                                                                  -
+     105    }> {                                                            | 105    }> {
+     106    // Get user-configured agents (built-in agents are hardcoded    | 106    // Get user-configured agents (built-in agents are hardcoded
+    below)                                                                   below)
+     107    const userAgents = getUserSubAgents();                          | 107    const userAgents = getUserSubAgents();
+                                                                            | 108 +  const userAgentMap = new Map(userAgents.map(agent =>
+                                                                             [agent.id, agent]));
+     108                                                                    | 109
+     109    // Built-in agents (hardcoded, always available)                | 110    // Built-in agents (hardcoded, always available)
+     110 -  const tools = [                                                 | 111 +
+     111    {                                                               | 112    {
+     112    name: 'agent_explore',                                          | 113    name: 'agent_explore',
+     113    description:                                                    | 114    description:
+
+又有错 这里 错误的删除了 110 行 但这里 搜索替换块甚至都没 提及 110 行 但最后 是 \n 换行符 是不是因为这个 搞错了 行号
+
+修复记录:
+
+- editFileBySearchSingle 在匹配时如果 searchContent 末尾带换行,会 split 出空字符串行,导致 endLine 计算多一行从而误删下一行. 已在 normalize 后统一 trim 末尾换行,避免 searchLines.length 偏差引发多删行.
+- 同步裁剪 replaceContent 末尾多余换行,并允许移除多个尾部换行,避免替换后行数偏差.
