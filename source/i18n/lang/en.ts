@@ -240,6 +240,8 @@ export const en: TranslationKeys = {
 			'This may take a few seconds depending on your network connection',
 		systemPrompt: 'System Prompt (Optional)',
 		customHeadersField: 'Custom Headers (Optional)',
+		modelSpecificPrompt: 'Model-specific Prompt (Optional)',
+		modelSpecificPromptPlaceholder: 'Enter model-specific prompt',
 		followGlobalNone: 'Follow Global: None',
 		followGlobal: 'Follow Global: {name}',
 		followGlobalWithParentheses: 'Follow Global ({name})',

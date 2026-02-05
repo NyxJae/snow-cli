@@ -217,6 +217,8 @@ export const zh: TranslationKeys = {
 		fetchingHint: '根据网络连接情况,这可能需要几秒钟',
 		systemPrompt: '系统提示词（选填）',
 		customHeadersField: '自定义请求头（选填）',
+		modelSpecificPrompt: '模型专属提示词（选填）',
+		modelSpecificPromptPlaceholder: '输入模型专属提示词',
 		followGlobalNone: '跟随全局：无',
 		followGlobal: '跟随全局：{name}',
 		followGlobalWithParentheses: '跟随全局（{name}）',

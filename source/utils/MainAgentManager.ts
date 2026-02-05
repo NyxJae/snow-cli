@@ -19,6 +19,7 @@ import {
 	createSystemContext,
 	getTaskCompletionPrompt,
 } from './agentsPromptUtils.js';
+import {getModelSpecificPrompt} from './config/apiConfig.js';
 
 /**
  * 内置主代理的固定排序顺序
@@ -307,6 +308,12 @@ export class MainAgentManager {
 
 		// 创建基础提示词
 		let prompt = mainAgentRole;
+
+		// 添加模型专属提示词
+		const modelSpecificPrompt = getModelSpecificPrompt();
+		if (modelSpecificPrompt) {
+			prompt += '\n\n' + modelSpecificPrompt;
+		}
 
 		// 添加 AGENTS.md 内容
 		const agentsPrompt = getAgentsPrompt();

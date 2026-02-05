@@ -43,6 +43,7 @@ type ConfigField =
 	| 'requestMethod'
 	| 'systemPromptId'
 	| 'customHeadersSchemeId'
+	| 'modelSpecificPrompt'
 	| 'anthropicBeta'
 	| 'anthropicCacheTTL'
 	| 'enableAutoCompress'
@@ -128,6 +129,7 @@ export default function ConfigScreen({
 	const [customHeadersSchemeId, setCustomHeadersSchemeId] = useState<
 		string | undefined
 	>(undefined);
+	const [modelSpecificPrompt, setModelSpecificPrompt] = useState('');
 	const [systemPrompts, setSystemPrompts] = useState<
 		Array<{id: string; name: string}>
 	>([]);
@@ -206,6 +208,7 @@ export default function ConfigScreen({
 			'requestMethod',
 			'systemPromptId',
 			'customHeadersSchemeId',
+			'modelSpecificPrompt',
 			'enableAutoCompress',
 			'showThinking',
 			...(requestMethod === 'anthropic'
@@ -332,6 +335,7 @@ export default function ConfigScreen({
 		setRequestMethod(config.requestMethod || 'chat');
 		setSystemPromptId(config.systemPromptId);
 		setCustomHeadersSchemeId(config.customHeadersSchemeId);
+		setModelSpecificPrompt(config.modelSpecificPrompt || '');
 		setAnthropicBeta(config.anthropicBeta || false);
 		setAnthropicCacheTTL(config.anthropicCacheTTL || '5m');
 		setEnableAutoCompress(config.enableAutoCompress !== false); // Default to true
@@ -406,6 +410,7 @@ export default function ConfigScreen({
 		if (currentField === 'profile') return activeProfile;
 		if (currentField === 'baseUrl') return baseUrl;
 		if (currentField === 'apiKey') return apiKey;
+		if (currentField === 'modelSpecificPrompt') return modelSpecificPrompt;
 		if (currentField === 'advancedModel') return advancedModel;
 		if (currentField === 'basicModel') return basicModel;
 		if (currentField === 'maxContextTokens') return maxContextTokens.toString();
@@ -566,6 +571,7 @@ export default function ConfigScreen({
 					requestMethod,
 					systemPromptId,
 					customHeadersSchemeId,
+					modelSpecificPrompt: modelSpecificPrompt.trim() || '',
 					anthropicBeta,
 					anthropicCacheTTL,
 					enableAutoCompress,
@@ -644,6 +650,7 @@ export default function ConfigScreen({
 				requestMethod,
 				systemPromptId,
 				customHeadersSchemeId,
+				modelSpecificPrompt: modelSpecificPrompt.trim() || '',
 				anthropicBeta,
 				anthropicCacheTTL,
 				enableAutoCompress,
@@ -695,6 +702,7 @@ export default function ConfigScreen({
 						requestMethod,
 						systemPromptId,
 						customHeadersSchemeId,
+						modelSpecificPrompt: modelSpecificPrompt.trim() || '',
 						anthropicBeta,
 						anthropicCacheTTL,
 						enableAutoCompress,
@@ -908,6 +916,38 @@ export default function ConfigScreen({
 					</Box>
 				);
 			}
+
+			case 'modelSpecificPrompt':
+				return (
+					<Box key={field} flexDirection="column">
+						<Text
+							color={
+								isActive ? theme.colors.menuSelected : theme.colors.menuNormal
+							}
+						>
+							{isActive ? '❯ ' : '  '}
+							{t.configScreen.modelSpecificPrompt}
+						</Text>
+						{isCurrentlyEditing && (
+							<Box marginLeft={3}>
+								<TextInput
+									value={modelSpecificPrompt}
+									onChange={value =>
+										setModelSpecificPrompt(stripFocusArtifacts(value))
+									}
+									placeholder={t.configScreen.modelSpecificPromptPlaceholder}
+								/>
+							</Box>
+						)}
+						{!isCurrentlyEditing && (
+							<Box marginLeft={3}>
+								<Text color={theme.colors.menuSecondary}>
+									{modelSpecificPrompt || t.configScreen.notSet}
+								</Text>
+							</Box>
+						)}
+					</Box>
+				);
 
 			case 'anthropicBeta':
 				return (
@@ -1439,6 +1479,7 @@ export default function ConfigScreen({
 				currentField === 'requestMethod' ||
 				currentField === 'systemPromptId' ||
 				currentField === 'customHeadersSchemeId' ||
+				currentField === 'modelSpecificPrompt' ||
 				currentField === 'anthropicCacheTTL' ||
 				currentField === 'advancedModel' ||
 				currentField === 'basicModel' ||
@@ -1636,6 +1677,8 @@ export default function ConfigScreen({
 					setGeminiThinkingEnabled(!geminiThinkingEnabled);
 				} else if (currentField === 'responsesReasoningEnabled') {
 					setResponsesReasoningEnabled(!responsesReasoningEnabled);
+				} else if (currentField === 'modelSpecificPrompt') {
+					setIsEditing(true);
 				} else if (
 					currentField === 'maxContextTokens' ||
 					currentField === 'maxTokens' ||

@@ -14,7 +14,10 @@ import {
 	getUsefulInfoService,
 	getTodoService,
 } from './mcpToolsManager.js';
-import {getOpenAiConfig} from '../config/apiConfig.js';
+import {
+	getModelSpecificPromptForConfig,
+	getOpenAiConfig,
+} from '../config/apiConfig.js';
 import {sessionManager} from '../session/sessionManager.js';
 import {unifiedHooksExecutor} from './unifiedHooksExecutor.js';
 import {checkYoloPermission} from './yoloPermissionChecker.js';
@@ -840,7 +843,41 @@ OPEN QUESTIONS:
 			};
 		}
 
-		// 构建最终提示词: 子代理配置subAgentRole + AGENTS.md + 系统环境 + 平台指导 + 任务提示词(最后)
+		// 获取子代理配置
+		// 如果子代理有 configProfile，则加载；否则使用主配置
+		let config;
+		let model;
+		if (agent.configProfile) {
+			try {
+				const {loadProfile} = await import('../config/configManager.js');
+				const profileConfig = loadProfile(agent.configProfile);
+				if (profileConfig?.snowcfg) {
+					config = profileConfig.snowcfg;
+					model = config.advancedModel || 'gpt-5';
+				} else {
+					// 未找到配置文件，回退到主配置
+					config = getOpenAiConfig();
+					model = config.advancedModel || 'gpt-5';
+					console.warn(
+						`Profile ${agent.configProfile} not found for sub-agent, using main config`,
+					);
+				}
+			} catch (error) {
+				// 如果加载配置文件失败，回退到主配置
+				config = getOpenAiConfig();
+				model = config.advancedModel || 'gpt-5';
+				console.warn(
+					`Failed to load profile ${agent.configProfile} for sub-agent, using main config:`,
+					error,
+				);
+			}
+		} else {
+			// 未指定 configProfile，使用主配置
+			config = getOpenAiConfig();
+			model = config.advancedModel || 'gpt-5';
+		}
+
+		// 构建最终提示词: 子代理配置subAgentRole + 模型专属提示词 + AGENTS.md + 系统环境 + 平台指导 + 任务提示词(最后)
 		let finalPrompt = '';
 
 		// 1. 如果配置了代理特定角色，则追加
@@ -848,7 +885,15 @@ OPEN QUESTIONS:
 			finalPrompt = agent.subAgentRole;
 		}
 
-		// 2. 如果有 AGENTS.md 内容，则追加
+		// 2. 如果配置了模型专属提示词，则追加
+		const modelSpecificPrompt = getModelSpecificPromptForConfig(config);
+		if (modelSpecificPrompt) {
+			finalPrompt = finalPrompt
+				? `${finalPrompt}\n\n${modelSpecificPrompt}`
+				: modelSpecificPrompt;
+		}
+
+		// 3. 如果有 AGENTS.md 内容，则追加
 		const agentsPrompt = getAgentsPrompt();
 		if (agentsPrompt) {
 			finalPrompt = finalPrompt
@@ -856,7 +901,7 @@ OPEN QUESTIONS:
 				: agentsPrompt;
 		}
 
-		// 3. 追加系统环境和平台指导
+		// 4. 追加系统环境和平台指导
 		const systemContext = createSystemContext();
 		if (systemContext) {
 			finalPrompt = finalPrompt
@@ -864,7 +909,7 @@ OPEN QUESTIONS:
 				: systemContext;
 		}
 
-		// 4. 添加任务完成标识提示词
+		// 5. 添加任务完成标识提示词
 		const taskCompletionPrompt = getTaskCompletionPrompt();
 		if (taskCompletionPrompt) {
 			finalPrompt = finalPrompt
@@ -872,7 +917,7 @@ OPEN QUESTIONS:
 				: taskCompletionPrompt;
 		}
 
-		// 5. 最后追加主代理传入的任务提示词
+		// 6. 最后追加主代理传入的任务提示词
 		if (prompt) {
 			finalPrompt = finalPrompt ? `${finalPrompt}\n\n${prompt}` : prompt;
 		}
@@ -979,40 +1024,6 @@ OPEN QUESTIONS:
 
 			// 获取当前会话
 			const currentSession = sessionManager.getCurrentSession();
-
-			// 获取子代理配置
-			// 如果子代理有 configProfile，则加载；否则使用主配置
-			let config;
-			let model;
-			if (agent.configProfile) {
-				try {
-					const {loadProfile} = await import('../config/configManager.js');
-					const profileConfig = loadProfile(agent.configProfile);
-					if (profileConfig?.snowcfg) {
-						config = profileConfig.snowcfg;
-						model = config.advancedModel || 'gpt-5';
-					} else {
-						// 未找到配置文件，回退到主配置
-						config = getOpenAiConfig();
-						model = config.advancedModel || 'gpt-5';
-						console.warn(
-							`Profile ${agent.configProfile} not found for sub-agent, using main config`,
-						);
-					}
-				} catch (error) {
-					// 如果加载配置文件失败，回退到主配置
-					config = getOpenAiConfig();
-					model = config.advancedModel || 'gpt-5';
-					console.warn(
-						`Failed to load profile ${agent.configProfile} for sub-agent, using main config:`,
-						error,
-					);
-				}
-			} else {
-				// 未指定 configProfile，使用主配置
-				config = getOpenAiConfig();
-				model = config.advancedModel || 'gpt-5';
-			}
 
 			// 重试回调函数 - 为子智能体提供流中断重试支持
 			const onRetry = (error: Error, attempt: number, nextDelay: number) => {

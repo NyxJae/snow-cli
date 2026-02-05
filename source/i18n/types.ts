@@ -218,6 +218,8 @@ export type TranslationKeys = {
 		fetchingHint: string;
 		systemPrompt: string;
 		customHeadersField: string;
+		modelSpecificPrompt: string;
+		modelSpecificPromptPlaceholder: string;
 		followGlobalNone: string;
 		followGlobal: string;
 		followGlobalWithParentheses: string;

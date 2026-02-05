@@ -217,6 +217,8 @@ export const zhTW: TranslationKeys = {
 		fetchingHint: '根據網絡連接情況,這可能需要幾秒鐘',
 		systemPrompt: '系統提示詞（選填）',
 		customHeadersField: '自定義請求頭（選填）',
+		modelSpecificPrompt: '模型專屬提示詞（選填）',
+		modelSpecificPromptPlaceholder: '輸入模型專屬提示詞',
 		followGlobalNone: '跟隨全域：無',
 		followGlobal: '跟隨全域：{name}',
 		followGlobalWithParentheses: '跟隨全域（{name}）',

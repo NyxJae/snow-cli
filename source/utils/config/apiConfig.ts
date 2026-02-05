@@ -45,6 +45,8 @@ export interface ApiConfig {
 	systemPromptId?: string;
 	// 选填：覆盖 custom-headers.json 的 active（undefined=跟随全局；''=不使用；其它=按ID选择）
 	customHeadersSchemeId?: string;
+	// 模型专属提示词(纯文本,为空则不生效)
+	modelSpecificPrompt?: string;
 	// 文件搜索编辑相似度阈值 (0.0-1.0, 默认: 0.75, 建议非必要不修改)
 	editSimilarityThreshold?: number;
 	// 工具返回结果的最大 token 限制 (默认: 100000)
@@ -115,6 +117,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 		maxContextTokens: 120000,
 		maxTokens: 32000,
 		anthropicBeta: false,
+		modelSpecificPrompt: '',
 		editSimilarityThreshold: 0.75,
 	},
 };
@@ -636,6 +639,21 @@ export function getCustomSystemPromptId(): string | undefined {
  */
 export function getCustomSystemPrompt(): string | undefined {
 	return getCustomSystemPromptForConfig(getOpenAiConfig());
+}
+
+export function getModelSpecificPrompt(): string | undefined {
+	return getModelSpecificPromptForConfig(getOpenAiConfig());
+}
+
+export function getModelSpecificPromptForConfig(
+	apiConfig: ApiConfig,
+): string | undefined {
+	const prompt = apiConfig.modelSpecificPrompt;
+	if (!prompt) {
+		return undefined;
+	}
+	const trimmed = prompt.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
 }
 
 export function getCustomSystemPromptForConfig(
