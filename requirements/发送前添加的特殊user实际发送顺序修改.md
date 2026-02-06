@@ -68,7 +68,7 @@
 
 已完成
 
-
+<!-- 
 现在 特殊user 动态调整位置逻辑应该有bug 他们应该 接在 倒数 第3条 tool返回 后
 
 即 
@@ -101,4 +101,5 @@ specialuser3
 specialuser4
 assistant
 tool
-
+ -->
+已完成

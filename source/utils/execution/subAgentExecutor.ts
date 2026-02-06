@@ -34,7 +34,7 @@ import {
 	clearReadFolders,
 } from '../core/folderNotebookPreprocessor.js';
 import {
-	findSafeInsertPosition,
+	findInsertPositionAfterNthToolFromEnd,
 	insertMessagesAtPosition,
 } from '../message/messageUtils.js';
 
@@ -433,7 +433,7 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 		}
 
 		// 先将finalPrompt作为user消息推入messages数组
-		// 这样messages就不会是空数组，可以正确计算倒数第5条位置
+		// 这样messages就不会是空数组，可以正确计算基于tool返回的动态插入位置
 		messages.push({
 			role: 'user',
 			content: finalPrompt,
@@ -484,11 +484,11 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 			});
 		}
 
-		// 动态在倒数第5个位置插入特殊用户消息
+		// 动态在倒数第3条tool返回之后插入特殊用户消息
 		// 同时避开工具调用块
 		// 使用insertMessagesAtPosition保持与主代理实现一致，避免原地splice的副作用
 		if (specialUserMessages.length > 0) {
-			const insertPosition = findSafeInsertPosition(messages, 5);
+			const insertPosition = findInsertPositionAfterNthToolFromEnd(messages, 3);
 			messages = insertMessagesAtPosition(
 				messages,
 				specialUserMessages,

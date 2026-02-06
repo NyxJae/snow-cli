@@ -7,7 +7,7 @@ import {getUsefulInfoService} from '../../../utils/execution/mcpToolsManager.js'
 import {formatUsefulInfoContext} from '../../../utils/core/usefulInfoPreprocessor.js';
 import {formatFolderNotebookContext} from '../../../utils/core/folderNotebookPreprocessor.js';
 import {
-	findSafeInsertPosition,
+	findInsertPositionAfterNthToolFromEnd,
 	insertMessagesAtPosition,
 } from '../../../utils/message/messageUtils.js';
 import {getCustomSystemPrompt} from '../../../utils/config/apiConfig.js';
@@ -65,7 +65,7 @@ export async function initializeConversationSession(): Promise<{
 	}
 
 	// 步骤2: 收集4类特殊用户消息
-	// 这些消息需要动态插入到倒数第5条位置，提高模型注意力和KV缓存命中率
+	// 这些消息需要动态插入到倒数第3条tool返回之后，提高模型注意力和KV缓存命中率
 	const specialUserMessages: ChatMessage[] = [];
 
 	// 1. Agent角色定义(包含mainAgentRole + AGENTS.md + 环境上下文 + 任务完成标识)
@@ -114,8 +114,11 @@ export async function initializeConversationSession(): Promise<{
 
 	// 步骤3: 在安全位置动态插入特殊用户消息
 	if (specialUserMessages.length > 0) {
-		// 计算插入位置
-		const insertPosition = findSafeInsertPosition(conversationMessages, 3);
+		// 插入到倒数第3条tool返回之后
+		const insertPosition = findInsertPositionAfterNthToolFromEnd(
+			conversationMessages,
+			3,
+		);
 
 		// 确保插入位置至少在system之后（system在第0位）
 		const safeInsertPosition = Math.max(1, insertPosition);

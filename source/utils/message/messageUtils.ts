@@ -157,6 +157,67 @@ export function findSafeInsertPosition(
 }
 
 /**
+ * 查找倒数第N条tool返回之后的安全插入位置
+ *
+ * 规则:
+ * 1. 从后向前查找倒数第N条tool消息
+ * 2. 插入位置默认是该tool消息之后
+ * 3. 若该位置仍在工具调用块内,移动到该块之后,避免打断assistant(tool_calls)+tool块
+ * 4. 若tool数量不足N条,回退到最早工具调用块之前(若不存在工具块则回退到消息末尾)
+ *
+ * @param messages - 聊天消息数组
+ * @param targetToolFromEnd - 倒数第几条tool消息（默认: 3）
+ * @returns 安全的插入位置
+ */
+export function findInsertPositionAfterNthToolFromEnd(
+	messages: ChatMessage[],
+	targetToolFromEnd: number = 3,
+): number {
+	if (messages.length === 0) {
+		return 0;
+	}
+
+	let toolCount = 0;
+	let targetToolIndex = -1;
+
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (messages[i]?.role === 'tool') {
+			toolCount++;
+			if (toolCount === targetToolFromEnd) {
+				targetToolIndex = i;
+				break;
+			}
+		}
+	}
+
+	const toolCallBlocks = identifyToolCallBlocks(messages);
+
+	if (targetToolIndex === -1) {
+		// tool数量不足N条时，回退到最早的工具调用块之前
+		// 这样在“刚开始对话”场景下会得到: system,user,special...,assistant,tool
+		const firstToolCallBlock = toolCallBlocks[0];
+		if (firstToolCallBlock) {
+			return firstToolCallBlock.startIndex;
+		}
+		return messages.length;
+	}
+
+	let insertPosition = targetToolIndex + 1;
+
+	for (const block of toolCallBlocks) {
+		if (
+			targetToolIndex >= block.startIndex &&
+			targetToolIndex <= block.endIndex
+		) {
+			insertPosition = block.endIndex + 1;
+			break;
+		}
+	}
+
+	return insertPosition;
+}
+
+/**
  * 安全地在指定位置插入新消息块
  * 使用不可变操作创建新数组，避免直接修改原数组带来的副作用
  *
