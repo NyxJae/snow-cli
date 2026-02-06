@@ -220,6 +220,7 @@ type Props = {
 	onSwitchProfile?: () => void; // Callback when Ctrl+P is pressed to switch profile
 	profileSearchQuery?: string;
 	setProfileSearchQuery?: (query: string) => void;
+	onPasteReceivingChange?: (isReceiving: boolean, charCount: number) => void;
 	disableKeyboardNavigation?: boolean; // Disable arrow keys and Ctrl+K when background panel is active
 	// Main agent picker
 	showMainAgentPicker?: boolean;
@@ -269,6 +270,7 @@ export default function ChatInput({
 	onSwitchProfile,
 	profileSearchQuery,
 	setProfileSearchQuery,
+	onPasteReceivingChange,
 	disableKeyboardNavigation = false,
 	// Main agent picker
 	showMainAgentPicker = false,
@@ -418,10 +420,6 @@ export default function ChatInput({
 		triggerUpdate,
 	);
 
-	const pasteShortcutTimeoutMs = 800;
-	const pasteFlushDebounceMs = 250;
-	const pasteIndicatorThreshold = 300;
-
 	// Use keyboard input hook
 	useKeyboardInput({
 		buffer,
@@ -468,9 +466,6 @@ export default function ChatInput({
 		resetHistoryNavigation,
 		saveToHistory,
 		pasteFromClipboard,
-		pasteShortcutTimeoutMs,
-		pasteFlushDebounceMs,
-		pasteIndicatorThreshold,
 		onSubmit,
 		ensureFocus,
 		showAgentPicker,
@@ -514,6 +509,7 @@ export default function ChatInput({
 		profileSearchQuery: profileSearchQuery || '',
 		setProfileSearchQuery: setProfileSearchQuery || (() => {}),
 		onSwitchProfile,
+		onPasteReceivingChange,
 		showMainAgentPicker,
 		setShowMainAgentPicker: setShowMainAgentPicker || (() => {}),
 		mainAgentSelectedIndex,
