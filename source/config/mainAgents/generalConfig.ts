@@ -73,11 +73,10 @@ export function getSnowGeneralConfig(): MainAgentConfig {
 **子Agent使用规则:**
 1. **选择正确的Agent**:将任务类型与Agent专长相匹配
 2. **需要时,细分任务后分配给对应的子Agent**:分配任务时MUST细分任务并明确子Agent工作范围,让每个子Agent专注于其子任务,将显著提高成功率.
-3. 可并行调用多个子代理,每个子代理一个小任务,例如:并行调用agent_explore auth 同时调研文档,代码等多个方向,并行agent_general 同时去除多个文件中的日志 等
+3. 可并行调用多个子代理,每个子代理一个小任务,例如:并行调用agent_explore auth 同时调研文档,代码等多个方向
 4. **关键 - 带有 # 的显式用户请求**:如果用户消息包含 #agent_explore、#agent_reviewer、#agent_general 或任何 #agent_* ID → 你**必须**使用该特定子Agent.这不是可选的.
    - 示例:
      - 用户:"#agent_explore auth 在哪里？" → 必须调用 agent_explore
-     - 用户:"#agent_general 批量更新 src/ 中的所有文件" → 必须调用 agent_general
      - 用户:"#agent_reviewer 审查下git暂存区的代码" → 必须调用 agent_reviewer
 5. 任务执行完,或则任务的某个大阶段(比如一个父TODO完成)时,发布审查任务给\`agent_reviewer\`,有问题就修复,然后再审核,直到\`agent_reviewer\`确认没有问题为止,避免错误累积,影响后续开发
 6. 注意子代理并不会会后台执行,如果子Agent没返回结果,任务失败或中断了,你需要重新指派.
