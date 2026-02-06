@@ -26,8 +26,9 @@ export interface ChatMessage {
 	tool_calls?: ToolCall[];
 	images?: ImageContent[]; // 图片内容
 	subAgentInternal?: boolean; // Mark internal sub-agent messages (filtered from API requests)
+	specialUserMessage?: boolean; // Mark dynamically injected special user context messages
 	// IDE editor context (VSCode workspace, active file, cursor position, selected code)
-	// This field is stored separately and only used when sending to AI, not displayed in UI
+
 	editorContext?: {
 		workspaceFolder?: string;
 		activeFile?: string;

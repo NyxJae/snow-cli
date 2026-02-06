@@ -75,6 +75,7 @@ export async function initializeConversationSession(): Promise<{
 		specialUserMessages.push({
 			role: 'user',
 			content: mainAgentManager.getSystemPrompt(),
+			specialUserMessage: true,
 		});
 	}
 
@@ -84,6 +85,7 @@ export async function initializeConversationSession(): Promise<{
 		specialUserMessages.push({
 			role: 'user',
 			content: todoContext,
+			specialUserMessage: true,
 		});
 	}
 
@@ -100,6 +102,7 @@ export async function initializeConversationSession(): Promise<{
 		specialUserMessages.push({
 			role: 'user',
 			content: usefulInfoContext,
+			specialUserMessage: true,
 		});
 	}
 
@@ -109,6 +112,7 @@ export async function initializeConversationSession(): Promise<{
 		specialUserMessages.push({
 			role: 'user',
 			content: folderNotebookContext,
+			specialUserMessage: true,
 		});
 	}
 

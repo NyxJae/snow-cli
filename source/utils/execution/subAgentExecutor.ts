@@ -86,6 +86,62 @@ export interface UserQuestionCallback {
 	}>;
 }
 
+function stripSpecialUserMessages(messages: ChatMessage[]): ChatMessage[] {
+	return messages.filter(msg => !msg.specialUserMessage);
+}
+
+async function refreshSubAgentSpecialUserMessages(
+	messages: ChatMessage[],
+	sessionId: string,
+): Promise<ChatMessage[]> {
+	const baseMessages = stripSpecialUserMessages(messages);
+	const specialUserMessages: ChatMessage[] = [];
+
+	const todoService = getTodoService();
+	const existingTodoList = await todoService.getTodoList(sessionId);
+	if (existingTodoList && existingTodoList.todos.length > 0) {
+		const todoContext = formatTodoContext(existingTodoList.todos, true);
+		specialUserMessages.push({
+			role: 'user',
+			content: todoContext,
+			specialUserMessage: true,
+		});
+	}
+
+	const usefulInfoService = getUsefulInfoService();
+	const usefulInfoList = await usefulInfoService.getUsefulInfoList(sessionId);
+	if (usefulInfoList && usefulInfoList.items.length > 0) {
+		const usefulInfoContext = await formatUsefulInfoContext(
+			usefulInfoList.items,
+		);
+		specialUserMessages.push({
+			role: 'user',
+			content: usefulInfoContext,
+			specialUserMessage: true,
+		});
+	}
+
+	const folderNotebookContext = formatFolderNotebookContext();
+	if (folderNotebookContext) {
+		specialUserMessages.push({
+			role: 'user',
+			content: folderNotebookContext,
+			specialUserMessage: true,
+		});
+	}
+
+	if (specialUserMessages.length === 0) {
+		return baseMessages;
+	}
+
+	const insertPosition = findInsertPositionAfterNthToolFromEnd(baseMessages, 3);
+	return insertMessagesAtPosition(
+		baseMessages,
+		specialUserMessages,
+		insertPosition,
+	);
+}
+
 /**
  * 执行子智能体作为工具
  * @param agentId - 子智能体 ID
@@ -439,60 +495,11 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 			content: finalPrompt,
 		});
 
-		// 收集其他3类特殊用户消息(TODO、有用信息、文件夹笔记)
-		const specialUserMessages: ChatMessage[] = [];
 		const currentSession = sessionManager.getCurrentSession();
-
-		// 2. 收集TODO列表作为第2类特殊user，确保子代理了解当前任务进度
-		if (currentSession) {
-			const todoService = getTodoService();
-			const existingTodoList = await todoService.getTodoList(currentSession.id);
-
-			if (existingTodoList && existingTodoList.todos.length > 0) {
-				const todoContext = formatTodoContext(existingTodoList.todos, true); // isSubAgent=true
-				specialUserMessages.push({
-					role: 'user',
-					content: todoContext,
-				});
-			}
-		}
-
-		// 3. 收集有用信息作为第3类特殊user，让子代理了解上下文中的重要信息
-		if (currentSession) {
-			const usefulInfoService = getUsefulInfoService();
-			const usefulInfoList = await usefulInfoService.getUsefulInfoList(
-				currentSession.id,
-			);
-
-			if (usefulInfoList && usefulInfoList.items.length > 0) {
-				const usefulInfoContext = await formatUsefulInfoContext(
-					usefulInfoList.items,
-				);
-				specialUserMessages.push({
-					role: 'user',
-					content: usefulInfoContext,
-				});
-			}
-		}
-
-		// 4. 收集文件夹笔记作为第4类特殊user，提供目录级别的指导信息
-		const folderNotebookContext = formatFolderNotebookContext();
-		if (folderNotebookContext) {
-			specialUserMessages.push({
-				role: 'user',
-				content: folderNotebookContext,
-			});
-		}
-
-		// 动态在倒数第3条tool返回之后插入特殊用户消息
-		// 同时避开工具调用块
-		// 使用insertMessagesAtPosition保持与主代理实现一致，避免原地splice的副作用
-		if (specialUserMessages.length > 0) {
-			const insertPosition = findInsertPositionAfterNthToolFromEnd(messages, 3);
-			messages = insertMessagesAtPosition(
+		if (currentSession?.id) {
+			messages = await refreshSubAgentSpecialUserMessages(
 				messages,
-				specialUserMessages,
-				insertPosition,
+				currentSession.id,
 			);
 		}
 
@@ -534,6 +541,12 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 
 			// 获取当前会话
 			const currentSession = sessionManager.getCurrentSession();
+			if (currentSession?.id) {
+				messages = await refreshSubAgentSpecialUserMessages(
+					messages,
+					currentSession.id,
+				);
+			}
 
 			// 重试回调函数 - 为子智能体提供流中断重试支持
 			const onRetry = (error: Error, attempt: number, nextDelay: number) => {

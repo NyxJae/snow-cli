@@ -9,6 +9,7 @@ import {createStreamingAnthropicCompletion} from '../../api/anthropic.js';
 import {mainAgentManager} from '../../utils/MainAgentManager.js';
 import {
 	collectAllMCPTools,
+	getTodoService,
 	getUsefulInfoService,
 } from '../../utils/execution/mcpToolsManager.js';
 import {filterToolsByMainAgent} from '../../utils/core/toolFilterUtils.js';
@@ -21,6 +22,11 @@ import {sessionManager} from '../../utils/session/sessionManager.js';
 import {unifiedHooksExecutor} from '../../utils/execution/unifiedHooksExecutor.js';
 import {formatTodoContext} from '../../utils/core/todoPreprocessor.js';
 import {formatUsefulInfoContext} from '../../utils/core/usefulInfoPreprocessor.js';
+import {formatFolderNotebookContext} from '../../utils/core/folderNotebookPreprocessor.js';
+import {
+	findInsertPositionAfterNthToolFromEnd,
+	insertMessagesAtPosition,
+} from '../../utils/message/messageUtils.js';
 import type {Message} from '../../ui/components/chat/MessageList.js';
 import {filterToolsBySensitivity} from '../../utils/execution/yoloPermissionChecker.js';
 import {
@@ -208,6 +214,72 @@ export async function handleConversationWithTools(
 /**
  * 内层重试逻辑（原有代码）
  */
+function stripSpecialUserMessages(messages: ChatMessage[]): ChatMessage[] {
+	return messages.filter(msg => !msg.specialUserMessage);
+}
+
+async function refreshMainAgentSpecialUserMessages(
+	messages: ChatMessage[],
+	sessionId: string,
+): Promise<ChatMessage[]> {
+	const baseMessages = stripSpecialUserMessages(messages);
+	const specialUserMessages: ChatMessage[] = [];
+
+	const currentAgentConfig = mainAgentManager.getCurrentAgentConfig();
+	if (currentAgentConfig && currentAgentConfig.mainAgentRole) {
+		specialUserMessages.push({
+			role: 'user',
+			content: mainAgentManager.getSystemPrompt(),
+			specialUserMessage: true,
+		});
+	}
+
+	const todoService = getTodoService();
+	const latestTodoList = await todoService.getTodoList(sessionId);
+	if (latestTodoList && latestTodoList.todos.length > 0) {
+		const todoContext = formatTodoContext(latestTodoList.todos);
+		specialUserMessages.push({
+			role: 'user',
+			content: todoContext,
+			specialUserMessage: true,
+		});
+	}
+
+	const usefulInfoService = getUsefulInfoService();
+	const usefulInfoList = await usefulInfoService.getUsefulInfoList(sessionId);
+	if (usefulInfoList && usefulInfoList.items.length > 0) {
+		const usefulInfoContext = await formatUsefulInfoContext(
+			usefulInfoList.items,
+		);
+		specialUserMessages.push({
+			role: 'user',
+			content: usefulInfoContext,
+			specialUserMessage: true,
+		});
+	}
+
+	const folderNotebookContext = formatFolderNotebookContext();
+	if (folderNotebookContext) {
+		specialUserMessages.push({
+			role: 'user',
+			content: folderNotebookContext,
+			specialUserMessage: true,
+		});
+	}
+
+	if (specialUserMessages.length === 0) {
+		return baseMessages;
+	}
+
+	const insertPosition = findInsertPositionAfterNthToolFromEnd(baseMessages, 3);
+	const safeInsertPosition = Math.max(1, insertPosition);
+	return insertMessagesAtPosition(
+		baseMessages,
+		specialUserMessages,
+		safeInsertPosition,
+	);
+}
+
 async function executeWithInternalRetry(
 	options: ConversationHandlerOptions,
 ): Promise<{usage: any | null}> {
@@ -333,6 +405,14 @@ async function executeWithInternalRetry(
 			if (controller.signal.aborted) {
 				freeEncoder();
 				break;
+			}
+
+			const latestSession = sessionManager.getCurrentSession();
+			if (latestSession?.id) {
+				conversationMessages = await refreshMainAgentSpecialUserMessages(
+					conversationMessages,
+					latestSession.id,
+				);
 			}
 
 			let streamedContent = '';
