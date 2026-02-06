@@ -24,7 +24,12 @@ import {getModelSpecificPrompt} from './config/apiConfig.js';
 /**
  * 内置主代理的固定排序顺序
  */
-const BUILTIN_AGENT_ORDER = ['general', 'team', 'debugger'];
+const BUILTIN_AGENT_ORDER = [
+	'general',
+	'requirement_analyzer',
+	'Architect',
+	'debugger',
+];
 
 /**
  * 主代理管理器类
@@ -74,7 +79,7 @@ export class MainAgentManager {
 
 	/**
 	 * 切换到下一个主代理（循环列表）
-	 * 循环顺序：General → Leader → RequirementAnalyzer → Debugger → VulnerabilityHunter → General
+	 * 循环顺序：General → RequirementAnalyzer → Architect → Debugger → General
 	 * @returns 新的主代理 ID
 	 */
 	switchToNextAgent(): string {
@@ -82,10 +87,9 @@ export class MainAgentManager {
 		// 注意：这里的顺序必须与 BUILTIN_MAIN_AGENTS 保持一致
 		const builtinOrder = [
 			'general',
-			'leader',
 			'requirement_analyzer',
+			'Architect',
 			'debugger',
-			'vulnerability_hunter',
 		];
 		const currentIndex = builtinOrder.indexOf(this.currentAgentId);
 
@@ -128,12 +132,12 @@ export class MainAgentManager {
 	 */
 	getCurrentMode(): string {
 		const yolo = this.yoloEnabled;
-		const isTeam = this.currentAgentId === 'team';
+		const currentAgentId = this.currentAgentId || 'general';
+		const isRequirementAnalyzer = currentAgentId === 'requirement_analyzer';
 
-		if (yolo && isTeam) return 'yolo-team';
+		if (yolo && isRequirementAnalyzer) return 'yolo-requirement_analyzer';
 		if (yolo) return 'yolo';
-		if (isTeam) return 'team';
-		return 'general';
+		return currentAgentId;
 	}
 
 	/**
@@ -147,7 +151,7 @@ export class MainAgentManager {
 
 	/**
 	 * 获取排序后的主代理列表
-	 * 顺序：内置代理（General → Team → Debugger）→ 用户自定义代理（按创建时间）
+	 * 顺序：内置代理（General → RequirementAnalyzer → Architect → Debugger）→ 用户自定义代理（按创建时间）
 	 */
 	getOrderedAgentList(): MainAgentConfig[] {
 		const configs = this.getAllConfigs();

@@ -212,9 +212,12 @@ export default function SubAgentConfigScreen({
 			return;
 		}
 
-		const isBuiltin = ['agent_explore', 'agent_plan', 'agent_general'].includes(
-			agentId,
-		);
+		const isBuiltin = [
+			'agent_reviewer',
+			'agent_explore',
+			'agent_general',
+			'agent_todo_progress_useful_info_admin',
+		].includes(agentId);
 		setIsBuiltinAgent(isBuiltin);
 
 		setAgentName(agent.name);

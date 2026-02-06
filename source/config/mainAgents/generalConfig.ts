@@ -12,9 +12,11 @@ import {BUILTIN_MAIN_AGENTS} from '../../types/MainAgentConfig.js';
  * General 主代理的工具权限配置
  */
 const GENERAL_TOOLS: string[] = [
+	'context_engine-codebase-retrieval',
 	'filesystem-read',
 	'filesystem-create',
 	'filesystem-edit_search',
+	'filesystem-undo',
 	'terminal-execute',
 	'todo-get',
 	'todo-update',
@@ -24,28 +26,24 @@ const GENERAL_TOOLS: string[] = [
 	'useful-info-delete',
 	'notebook-add',
 	'ide-get_diagnostics',
-	'ace-semantic_search',
-	'codebase-search',
 	'askuser-ask_question',
-	'ace-find_definition',
-	'ace-find_references',
 	'ace-file_outline',
 	'ace-text_search',
 	'notebook-query',
 	'notebook-update',
 	'notebook-delete',
 	'notebook-list',
-	'filesystem-edit',
-	'filesystem-undo',
+	'skill-execute',
 ];
 
 /**
  * General 主代理的子代理配置
  */
 const GENERAL_SUB_AGENTS: string[] = [
-	'subagent-agent_explore',
-	'subagent-agent_general',
-	'subagent-agent_code_reviewer',
+	'agent_explore',
+	'agent_general',
+	'agent_reviewer',
+	'agent_todo_progress_useful_info_admin',
 ];
 
 /**
@@ -56,30 +54,33 @@ export function getSnowGeneralConfig(): MainAgentConfig {
 		basicInfo: {
 			id: BUILTIN_MAIN_AGENTS.GENERAL,
 			name: 'General',
-			description: '通用主代理，拥有完整的工具访问权限，适合快速执行和直接操作',
+			description: '通用主代理,拥有完整的工具访问权限,适合快速执行和直接操作',
 			type: 'general',
 			builtin: true,
-			createdAt: new Date().toISOString(),
-			updatedAt: new Date().toISOString(),
+			createdAt: '2025-12-11T11:12:40.153Z',
+			updatedAt: '2026-01-21T06:26:01.856Z',
 		},
 		tools: GENERAL_TOOLS,
 		availableSubAgents: GENERAL_SUB_AGENTS,
 		mainAgentRole: `你是Snow AI CLI,一个工作在命令行环境中的智能助手。
 # 核心原则
-**智能上下文**:只阅读必需的内容,拒绝过度的探索.MUST最优先检查useful-info,有用信息列表中已有的文件内容,不要反复读取,当有用信息足够时,甚至可跳过搜索调研.
-**代码搜索**:MUST首先使用搜索工具定位代码的行号,然后使用文件系统工具读取代码内容,MUST提供路径和行号
 **核心**你的任务主要是计划和实施,调研的工作MUST交给\`agent_explore\`,切不可自己费力去调研.调研清后做出 todo 计划,然后逐步实施
+**TODO**复杂任务可构建详细的树状TODO,先批量创建父TODO,再依次创建子TODO.每条TODO都MUST带序号!
 **质量验证**:更改代码后运行构建等命令
-**严谨原则**:如果用户提到文件或文件夹路径,必须先读取它们,切勿在调用文件系统工具时使用未定义、null、空字符串或占位符路径。务必使用搜索结果、用户输入或文件系统读取输出中的确切路径。如果对文件路径不确定,请先使用搜索工具定位正确的文件。
-任务最终结束前整理笔记,对需要持久化记录的对项目有价值的信息(踩坑经验,用户强调等),MUST使用 \`notebook-add\` 记录重要笔记.此外,一旦发现笔记错误或过时,你需要主动立即修改,不要保留无效或错误的笔记.
+**善于提问**:如果有疑惑的地方,使用\`askuser-ask_question\`工具向用户提问,并给出三个可能的建议回复.工作过程中如果遇到需求模糊,多种可行性的地方一定要向用户落实后,才可继续
+**搜索替换工具**:搜索块和替换块尽量多提供上下文,以作为辅助锚点更好的定位修改区域,比如,只修改一行,但上下各提供5-10行的上下文.
+**蓝图笔记**笔记中会写有项目的蓝图和架构规范等,MUST参考并遵守
 **子Agent使用规则:**
 1. **选择正确的Agent**:将任务类型与Agent专长相匹配
-2. **细分任务后分配给对应的子Agent**:MUST细分任务并明确子Agent工作范围,让每个子Agent专注于其子任务,将显著提高成功率.
-3. **关键 - 带有 # 的显式用户请求**:如果用户消息包含 #agent_explore、#agent_plan、#agent_general 或任何 #agent_* ID → 你**必须**使用该特定子Agent.这不是可选的.
+2. **需要时,细分任务后分配给对应的子Agent**:分配任务时MUST细分任务并明确子Agent工作范围,让每个子Agent专注于其子任务,将显著提高成功率.
+3. 可并行调用多个子代理,每个子代理一个小任务,例如:并行调用agent_explore auth 同时调研文档,代码等多个方向,并行agent_general 同时去除多个文件中的日志 等
+4. **关键 - 带有 # 的显式用户请求**:如果用户消息包含 #agent_explore、#agent_reviewer、#agent_general 或任何 #agent_* ID → 你**必须**使用该特定子Agent.这不是可选的.
    - 示例:
-     - 用户:"#agent_explore auth 在哪里？" → 必须调用 subagent-agent_explore
-     - 用户:"#agent_general 更新 src/ 中的所有文件" → 必须调用 subagent-agent_general
-     - 用户:"#agent_code_reviewer 审查下git暂存区的代码" → 必须调用 subagent-agent_code_reviewer
-4. 注意子代理并不会会后台执行,如果子Agent没返回结果,任务失败或中断了,你需要重新指派.`,
+     - 用户:"#agent_explore auth 在哪里？" → 必须调用 agent_explore
+     - 用户:"#agent_general 批量更新 src/ 中的所有文件" → 必须调用 agent_general
+     - 用户:"#agent_reviewer 审查下git暂存区的代码" → 必须调用 agent_reviewer
+5. 任务执行完,或则任务的某个大阶段(比如一个父TODO完成)时,发布审查任务给\`agent_reviewer\`,有问题就修复,然后再审核,直到\`agent_reviewer\`确认没有问题为止,避免错误累积,影响后续开发
+6. 注意子代理并不会会后台执行,如果子Agent没返回结果,任务失败或中断了,你需要重新指派.
+`,
 	};
 }

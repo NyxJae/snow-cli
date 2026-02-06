@@ -252,3 +252,43 @@ print(\\\"[MainPanel] 显示最后一关，塔底高度=\\\" .. TOWER_BOTTOM_HEI
 
 - editFileBySearchSingle 在匹配时如果 searchContent 末尾带换行,会 split 出空字符串行,导致 endLine 计算多一行从而误删下一行. 已在 normalize 后统一 trim 末尾换行,避免 searchLines.length 偏差引发多删行.
 - 同步裁剪 replaceContent 末尾多余换行,并允许移除多个尾部换行,避免替换后行数偏差.
+
+{
+  "name": "filesystem-edit_search",
+  "arguments": "{\"filePath\":\"f:/Projects/snow-cli/source/config/mainAgents/debuggerConfig.ts\",
+  
+  \"searchContent\":\"\\t\\tmainAgentRole: `你是 Snow AI CLI - Debugger,一个专门的调试代理,专注于定位和修复代码问题.\\n先理解用户反馈的 bug 单,然后探索项目,分析出 bug 可能的三至五个成因,再给代码加上日志.\\n提示用户再次触发 bug,分析日志,定位问题,修复代码.`,\\n\\t};\\n}\\n}\\n\",
+  
+  \"replaceContent\":\"\\t\\tmainAgentRole: `你是 Snow AI CLI - Debugger,一个专门的调试代理,专注于定位和修复代码问题.\\n先理解用户反馈的 bug 单,然后探索项目,分析出 bug 可能的三至五个成因,再给代码加上日志.\\n提示用户再次触发 bug,分析日志,定位问题,修复代码.`,\\n\\t};\\n}\\n\",\"contextLines\":2}"
+}
+
+   f:/Projects/snow-cli/source/config/mainAgents/debuggerConfig.ts (modified) (side-by-side)
+
+   @@ Lines 65-68 @@
+   ------------------------- OLD --------------------------  |------------------------- NEW --------------------------
+
+     65   提示用户再次触发                                   |  65   提示用户再次触发
+   bug,分析日志,定位问题,修复代码.`,                          bug,分析日志,定位问题,修复代码.`,
+     66    };                                                |  66    };
+     67   }                                                  |  67   }
+                                                             |  68 + }
+     68   }                                                  |  69   }
+
+     搜索替换意图是删掉 68 行最后一个多余的大括号
+     我看给的搜索替换块也没问题,
+     但最后结果反而多了一个大括号
+
+
+
+
+
+
+放弃修复当前的逻辑了,首先删除F:/Projects/snow-cli/source/mcp/utils/filesystem/search-replace这个重构出的代码
+并修改F:/Projects/snow-cli/source/mcp/filesystem.ts 弃用现有搜索替换逻辑(其他后处理逻辑保留)
+
+然后参考  - E:/Project/opencode/packages/opencode/src/tool/edit.ts   这个其他项目里的实现 只参考其中搜索替换的处理逻辑
+
+注意 完全删除干净本项目中的搜索替换逻辑,转用这个外部项目的.我简单看了下,应该本项目和外部项目中的搜索替换逻辑需要的输入参数应该是一样的,所以应该可以借鉴.
+
+
+然后仍要考虑以上我提出的 bug 实例,看新的搜索替换逻辑是否没有问题.一定要多遍复查,可写测试脚本来测试.不用本项目测试框架,本项目也没用啥测试框架...

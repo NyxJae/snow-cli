@@ -477,16 +477,12 @@ export function validateConfigFile(configFile: MainAgentConfigFile): {
 		}
 
 		if (
-			![
-				'general',
-				'leader',
-				'requirement_analyzer',
-				'debugger',
-				'vulnerability_hunter',
-			].includes(agentConfig.basicInfo.type)
+			!['general', 'requirement_analyzer', 'Architect', 'debugger'].includes(
+				agentConfig.basicInfo.type,
+			)
 		) {
 			errors.push(
-				`代理 "${agentId}" 的类型必须是general、leader、requirement_analyzer、debugger或vulnerability_hunter`,
+				`代理 "${agentId}" 的类型必须是general、requirement_analyzer、Architect、debugger`,
 			);
 		}
 

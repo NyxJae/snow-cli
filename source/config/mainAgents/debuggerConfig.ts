@@ -12,39 +12,36 @@ import {BUILTIN_MAIN_AGENTS} from '../../types/MainAgentConfig.js';
  * Debugger 主代理的工具权限配置
  */
 const DEBUGGER_TOOLS: string[] = [
-	'filesystem-read',
+	'context_engine-codebase-retrieval',
 	'ide-get_diagnostics',
 	'todo-add',
 	'todo-delete',
 	'todo-get',
 	'todo-update',
+	'filesystem-read',
 	'filesystem-create',
 	'filesystem-edit_search',
-	'filesystem-edit',
 	'filesystem-undo',
 	'terminal-execute',
-	'ace-semantic_search',
 	'ace-text_search',
 	'useful-info-add',
 	'useful-info-delete',
 	'notebook-add',
-	'codebase-search',
 	'askuser-ask_question',
-	'ace-find_definition',
-	'ace-find_references',
 	'ace-file_outline',
 	'notebook-query',
 	'notebook-update',
 	'notebook-delete',
 	'notebook-list',
+	'skill-execute',
 ];
 
 /**
  * Debugger 主代理的子代理配置
  */
 const DEBUGGER_SUB_AGENTS: string[] = [
-	'subagent-agent_explore',
-	'subagent-agent_general',
+	'agent_explore',
+	'agent_general',
 ];
 
 /**
@@ -55,11 +52,11 @@ export function getSnowDebuggerConfig(): MainAgentConfig {
 		basicInfo: {
 			id: BUILTIN_MAIN_AGENTS.DEBUGGER,
 			name: 'Debugger',
-			description: '调试代理，专注于定位和修复代码问题',
+			description: '调试代理,专注于定位和修复代码问题',
 			type: 'debugger',
 			builtin: true,
-			createdAt: new Date().toISOString(),
-			updatedAt: new Date().toISOString(),
+			createdAt: '2025-12-11T11:12:40.153Z',
+			updatedAt: '2026-01-21T06:28:03.118Z',
 		},
 		tools: DEBUGGER_TOOLS,
 		availableSubAgents: DEBUGGER_SUB_AGENTS,

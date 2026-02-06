@@ -5,29 +5,26 @@
  *
  * 注意：内置主代理配置已拆分为独立文件：
  * - source/config/mainAgents/generalConfig.ts
- * - source/config/mainAgents/leaderConfig.ts
  * - source/config/mainAgents/requirementAnalyzerConfig.ts
+ * - source/config/mainAgents/architectConfig.ts
  * - source/config/mainAgents/debuggerConfig.ts
- * - source/config/mainAgents/vulnerabilityHunterConfig.ts
  * - source/config/mainAgents/index.ts
  */
 
 import type {MainAgentConfig} from '../types/MainAgentConfig.js';
 import {
 	getSnowGeneralConfig,
-	getSnowLeaderConfig,
 	getSnowRequirementAnalyzerConfig,
+	getSnowArchitectConfig,
 	getSnowDebuggerConfig,
-	getSnowVulnerabilityHunterConfig,
 	getBuiltinMainAgentConfigs,
 } from './mainAgents/index.js';
 
 export {
 	getSnowGeneralConfig,
-	getSnowLeaderConfig,
 	getSnowRequirementAnalyzerConfig,
+	getSnowArchitectConfig,
 	getSnowDebuggerConfig,
-	getSnowVulnerabilityHunterConfig,
 	getBuiltinMainAgentConfigs,
 };
 
@@ -64,16 +61,12 @@ export function validateMainAgentConfig(config: MainAgentConfig): {
 	}
 	if (
 		!config.basicInfo?.type ||
-		![
-			'general',
-			'leader',
-			'requirement_analyzer',
-			'debugger',
-			'vulnerability_hunter',
-		].includes(config.basicInfo.type)
+		!['general', 'requirement_analyzer', 'Architect', 'debugger'].includes(
+			config.basicInfo.type,
+		)
 	) {
 		errors.push(
-			'主代理类型必须是general、leader、requirement_analyzer、debugger或vulnerability_hunter',
+			'主代理类型必须是general、requirement_analyzer、Architect、debugger',
 		);
 	}
 

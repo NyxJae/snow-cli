@@ -18,12 +18,7 @@ export interface MainAgentBasicInfo {
 	/** 主代理描述信息 */
 	description: string;
 	/** 主代理类型 */
-	type:
-		| 'general'
-		| 'leader'
-		| 'requirement_analyzer'
-		| 'debugger'
-		| 'vulnerability_hunter';
+	type: 'general' | 'requirement_analyzer' | 'Architect' | 'debugger';
 	/** 是否为内置主代理 */
 	builtin?: boolean;
 	/** 创建时间 */
@@ -99,10 +94,9 @@ export interface MainAgentConfigOptions {
  */
 export enum MainAgentType {
 	GENERAL = 'general',
-	LEADER = 'leader',
 	REQUIREMENT_ANALYZER = 'requirement_analyzer',
+	ARCHITECT = 'Architect',
 	DEBUGGER = 'debugger',
-	VULNERABILITY_HUNTER = 'vulnerability_hunter',
 }
 
 /**
@@ -110,8 +104,7 @@ export enum MainAgentType {
  */
 export const BUILTIN_MAIN_AGENTS = {
 	GENERAL: 'general',
-	LEADER: 'leader',
 	REQUIREMENT_ANALYZER: 'requirement_analyzer',
+	ARCHITECT: 'Architect',
 	DEBUGGER: 'debugger',
-	VULNERABILITY_HUNTER: 'vulnerability_hunter',
 } as const;

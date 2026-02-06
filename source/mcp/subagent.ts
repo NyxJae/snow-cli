@@ -110,9 +110,25 @@ export class SubAgentService {
 		// Built-in agents (hardcoded, always available)
 		const tools = [
 			{
+				name: 'agent_reviewer',
+				description:
+					'reviewer: 负责专门审查的子Agent.提供:用户需求,编辑范围,其他要求;产出:审核报告.每次你修改文件,或其他子Agent修改文件后,都MUST发布任务给此Agent审核',
+				inputSchema: {
+					type: 'object',
+					properties: {
+						prompt: {
+							type: 'string',
+							description:
+								'CRITICAL: Provide COMPLETE context from main session. Sub-agent has NO access to main conversation history. Include: (1) Full task description with business requirements, (2) Known file locations and code paths, (3) Relevant code snippets or patterns already discovered, (4) Any constraints or important context. Example: "Review changes in src/api/users.ts, focus on error handling and validate outputs against requirements."',
+						},
+					},
+					required: ['prompt'],
+				},
+			},
+			{
 				name: 'agent_explore',
 				description:
-					'Explore Agent: Specialized for quickly exploring and understanding codebases. Excels at searching code, finding definitions, analyzing code structure and dependencies. Read-only operations, will not modify files or execute commands.',
+					'Explore Agent: 专门快速探索和理解代码库的子Agent.擅长网络搜索,搜索代码、查找定义、分析代码结构和依赖关系.当需要调研,搜索某目标时,MUST发布任务给此子Agent.可将研究目标细分,并行调用多个探索子代理,每个子代理专注一个方向,比如,一个专门调研文档,一个专门调研代码等.',
 				inputSchema: {
 					type: 'object',
 					properties: {
@@ -126,25 +142,9 @@ export class SubAgentService {
 				},
 			},
 			{
-				name: 'agent_plan',
-				description:
-					'Plan Agent: Specialized for planning complex tasks. Analyzes requirements, explores code, identifies relevant files, and creates detailed implementation plans. Read-only operations, outputs structured implementation proposals.',
-				inputSchema: {
-					type: 'object',
-					properties: {
-						prompt: {
-							type: 'string',
-							description:
-								'CRITICAL: Provide COMPLETE context from main session. Sub-agent has NO access to main conversation history. Include: (1) Full requirement details and business objectives, (2) Current architecture/file structure understanding, (3) Known dependencies and constraints, (4) Files/modules already identified that need changes, (5) User preferences or specific implementation approaches mentioned. Example: "Plan caching implementation. Current API uses Express in src/server.ts, data layer in src/models/. Need Redis caching, user wants minimal changes to existing controllers in src/controllers/."',
-						},
-					},
-					required: ['prompt'],
-				},
-			},
-			{
 				name: 'agent_general',
 				description:
-					'General Purpose Agent: General-purpose multi-step task execution agent. Has full tool access for searching, modifying files, and executing commands. Best for complex tasks requiring actual operations.',
+					'General Purpose Agent: 通用任务执行子Agent.可修改文件和执行命令.最适合需要实际操作的多步骤任务.当有需要实际执行的任务,发布给此Agent.MUST现将任务拆分成小任务发布,让此Agent每次只专注执行一个具体小任务.',
 				inputSchema: {
 					type: 'object',
 					properties: {
@@ -157,13 +157,30 @@ export class SubAgentService {
 					required: ['prompt'],
 				},
 			},
+			{
+				name: 'agent_todo_progress_useful_info_admin',
+				description:
+					'Todo progress and Useful_info Administrator: todo进度和 useful_info 管理子Agent,随着任务的进行或中断等,todo和有用信息都会变得混乱,此子Agent负责清理和整理.当任务进度需要明确,todo需要整理,有用信息需要清理时,MUST发布任务给此子Agent.',
+				inputSchema: {
+					type: 'object',
+					properties: {
+						prompt: {
+							type: 'string',
+							description:
+								'CRITICAL: Provide COMPLETE context from main session. Sub-agent has NO access to main conversation history. Include: (1) Task progress details and objectives, (2) Known file locations and code structure, (3) TODO states and useful-info state, (4) Dependencies and relationships. Example: "整理当前TODO和useful-info,删除已完成项,保留未完成任务."',
+						},
+					},
+					required: ['prompt'],
+				},
+			},
 		];
 
 		// Built-in agent IDs (used to filter out duplicates)
 		const builtInAgentIds = new Set([
+			'agent_reviewer',
 			'agent_explore',
-			'agent_plan',
 			'agent_general',
+			'agent_todo_progress_useful_info_admin',
 		]);
 
 		for (const tool of tools) {
