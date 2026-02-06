@@ -13,7 +13,7 @@
 
 **功能点简述**:
 
-- [ ] 动态插入位置: 以倒数第 5 条附近为目标插入点,遇到工具调用块时向前移动,保证块完整.
+- [ ] 动态插入位置: 以倒数第 3 条附近为目标插入点,遇到工具调用块时向前移动,保证块完整.
 - [ ] 统一主代理与子代理: 子代理需补上文件夹笔记,两者都插入 4 类特殊 user,顺序一致.
 - [ ] 保持角色定义差异: 主代理与子代理仍使用各自的角色定义配置,只统一插入策略与顺序.
 - [ ] 变量命名修正: 主代理与子代理的角色定义变量命名统一为 xxxAgentRole 风格,与系统提示词命名区分.
@@ -38,14 +38,14 @@
   system, Agent 角色定义, TODO, 有用信息, 文件夹笔记, user, assistant, tool_calls, tool
 - **例 2: 多轮对话,存在多个工具调用块**:
   system, user, assistant(tool_calls), tool, assistant(tool_calls), tool, ... , Agent 角色定义, TODO, 有用信息, 文件夹笔记, assistant(tool_calls), tool, user, assistant
-- **例 3: 倒数第 5 条位置落在工具调用块中**:
+- **例 3: 倒数第 3 条位置落在工具调用块中**:
   插入点向前移动到该块之前,保证 assistant(tool_calls)与 tool 相邻.
 - **例 4: 特殊 user 列表为空**:
   不插入任何特殊 user,保持原有消息序列.
 - **例 5: 子代理角色定义缺失**:
   视为配置错误,子代理不可执行,需要先补齐角色定义后再进入插入流程.
-- **例 6: 特殊 user 数量超过 5 条**:
-  插入点仍按倒数第 5 条计算,整体插入为一个连续块.
+- **例 6: 特殊 user 数量超过 3 条**:
+  插入点仍按倒数第 3 条计算,整体插入为一个连续块.
 
 ## 4. 需求合理性说明(待补充证据)
 
@@ -67,3 +67,38 @@
 且他们任然是特殊user 消息 一起 动态调整位置 (重复了没问题,因为这些信息重要,重复两次没事) -->
 
 已完成
+
+
+现在 特殊user 动态调整位置逻辑应该有bug 他们应该 接在 倒数 第3条 tool返回 后
+
+即 
+举例1
+sys
+user
+ass
+tool
+.....
+
+ass
+tool
+ass
+tool (倒数第三条tool返回)
+specialuser1
+specialuser2
+specialuser3
+specialuser4
+assistant
+tool
+ass
+tool
+
+举例二 (刚开始对话)
+sys
+user
+specialuser1
+specialuser2
+specialuser3
+specialuser4
+assistant
+tool
+

@@ -10,8 +10,6 @@ import {
 	tryUnescapeFix,
 	trimPairIfPossible,
 	isOverEscaped,
-	unescapeString,
-	countOccurrences,
 } from '../utils/ui/escapeHandler.js';
 // SSH support for remote file operations
 import {SSHClient, parseSSHUrl} from '../utils/ssh/sshClient.js';
@@ -41,7 +39,6 @@ import {
 	calculateSimilarityAsync,
 	normalizeForDisplay,
 } from './utils/filesystem/similarity.utils.js';
-import {calculateActualMatchRange} from './utils/filesystem/search-replace/range-calculator.js';
 import {
 	analyzeCodeStructure,
 	findSmartContextBoundaries,
@@ -1223,47 +1220,6 @@ export class FilesystemMCPService {
 			const normalizedContent = content
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
-			const trimTrailingNewline = (value: string): string =>
-				value.replace(/\n+$/, '');
-
-			let didInitialUnescapeFix = false;
-			const expectedUnescapeOccurrences = occurrence === -1 ? 1 : occurrence;
-			const initialUnescapeFix = tryUnescapeFix(
-				normalizedContent,
-				normalizedSearch,
-				expectedUnescapeOccurrences,
-			);
-			if (initialUnescapeFix) {
-				const trimResult = trimPairIfPossible(
-					initialUnescapeFix.correctedString,
-					replaceContent,
-					normalizedContent,
-					expectedUnescapeOccurrences,
-				);
-				normalizedSearch = trimTrailingNewline(trimResult.target);
-				replaceContent = trimTrailingNewline(trimResult.paired);
-				didInitialUnescapeFix = true;
-			} else if (occurrence === -1 && isOverEscaped(normalizedSearch)) {
-				const unescapedSearch = unescapeString(normalizedSearch);
-				const unescapedOccurrences = countOccurrences(
-					normalizedContent,
-					unescapedSearch,
-				);
-				if (unescapedOccurrences > 0) {
-					const trimResult = trimPairIfPossible(
-						unescapedSearch,
-						replaceContent,
-						normalizedContent,
-						unescapedOccurrences,
-					);
-					normalizedSearch = trimTrailingNewline(trimResult.target);
-					replaceContent = trimTrailingNewline(trimResult.paired);
-					didInitialUnescapeFix = true;
-				}
-			}
-
-			normalizedSearch = trimTrailingNewline(normalizedSearch);
-			replaceContent = trimTrailingNewline(replaceContent);
 
 			// Split into lines for matching
 			let searchLines = normalizedSearch.split('\n');
@@ -1344,14 +1300,12 @@ export class FilesystemMCPService {
 
 			// Handle no matches: Try escape correction before giving up
 			if (matches.length === 0) {
-				const unescapeFallbackOccurrences = occurrence === -1 ? 1 : occurrence;
-				const unescapeFix = didInitialUnescapeFix
-					? null
-					: tryUnescapeFix(
-							normalizedContent,
-							normalizedSearch,
-							unescapeFallbackOccurrences,
-					  );
+				// Step 1: Try unescape correction (lightweight, no LLM)
+				const unescapeFix = tryUnescapeFix(
+					normalizedContent,
+					normalizedSearch,
+					1,
+				);
 				if (unescapeFix) {
 					// Unescape succeeded! Re-run the matching with corrected content using async
 					const correctedSearchLines = unescapeFix.correctedString.split('\n');
@@ -1399,90 +1353,6 @@ export class FilesystemMCPService {
 							searchLines.length,
 							...normalizedSearch.split('\n'),
 						);
-
-						const didChangeTarget =
-							trimResult.target !== unescapeFix.correctedString;
-						if (didChangeTarget) {
-							const trimmedMatches: Array<{
-								startLine: number;
-								endLine: number;
-								similarity: number;
-							}> = [];
-							const trimmedSearchFirstLine =
-								searchLines[0]?.replace(/\s+/g, ' ').trim() || '';
-							const useTrimmedPreFilter = searchLines.length >= 5;
-
-							for (
-								let i = 0;
-								i <= contentLines.length - searchLines.length;
-								i++
-							) {
-								if (useTrimmedPreFilter) {
-									const firstLineCandidate =
-										contentLines[i]?.replace(/\s+/g, ' ').trim() || '';
-									const firstLineSimilarity = calculateSimilarity(
-										trimmedSearchFirstLine,
-										firstLineCandidate,
-										preFilterThreshold,
-									);
-
-									if (firstLineSimilarity < preFilterThreshold) {
-										continue;
-									}
-								}
-
-								const candidateLines = contentLines.slice(
-									i,
-									i + searchLines.length,
-								);
-								const candidateContent = candidateLines.join('\n');
-								const similarity = await calculateSimilarityAsync(
-									normalizedSearch,
-									candidateContent,
-									threshold,
-								);
-
-								if (similarity >= threshold) {
-									trimmedMatches.push({
-										startLine: i + 1,
-										endLine: i + searchLines.length,
-										similarity,
-									});
-
-									if (similarity >= 0.95) {
-										break;
-									}
-
-									if (trimmedMatches.length >= maxMatches) {
-										break;
-									}
-								}
-							}
-
-							trimmedMatches.sort((a, b) => b.similarity - a.similarity);
-							matches.splice(0, matches.length, ...trimmedMatches);
-							if (matches.length === 0) {
-								const trimmedSearchPreview = normalizedSearch
-									? normalizedSearch.split('\n').slice(0, 5)
-									: [];
-								const previewMessage = trimmedSearchPreview.length
-									? `\n\n📝 Trimmed search preview:\n${trimmedSearchPreview
-											.map(
-												(line, idx) =>
-													`${idx + 1}. ${JSON.stringify(
-														normalizeForDisplay(line),
-													)}`,
-											)
-											.join('\n')}`
-									: '';
-								throw new Error(
-									`❌ Search content not found after unescape + trim fix in file: ${filePath}` +
-										`\n` +
-										`🔍 Trimmed search length: ${searchLines.length} lines, threshold ${threshold}` +
-										previewMessage,
-								);
-							}
-						}
 					}
 				}
 
@@ -1572,51 +1442,10 @@ export class FilesystemMCPService {
 				selectedMatch = matches[occurrence - 1]!;
 			}
 
-			// ========== Feature Flag: 使用新的范围计算器 ==========
-			// 新的 range-calculator 可以修正基于 searchLines.length 计算的初值 endLine
-			// 返回实际匹配的精确范围，避免重复内容 bug
-			const USE_NEW_RANGE_CALCULATOR = true; // Feature flag: 设为 false 可快速切回旧逻辑
-
-			let finalStartLine = selectedMatch.startLine;
-			let finalEndLine = selectedMatch.endLine;
-
-			if (USE_NEW_RANGE_CALCULATOR) {
-				// 使用新的范围计算器修正 endLine
-				const rangeResult = calculateActualMatchRange({
-					searchContent: normalizedSearch,
-					fileLines: lines,
-					startLine: selectedMatch.startLine,
-					initialEndLine: selectedMatch.endLine,
-					trimMode: 'conservative',
-				});
-
-				if (rangeResult) {
-					// 范围计算成功，使用修正后的范围
-					finalStartLine = rangeResult.startLine;
-					finalEndLine = rangeResult.endLine;
-
-					// 记录日志（仅在置信度不高时）
-					if (rangeResult.confidence !== 'high') {
-						logger.debug(
-							`Range calculator adjusted endLine from ${selectedMatch.endLine} to ${finalEndLine} (confidence: ${rangeResult.confidence}, adjustment: ${rangeResult.adjustment})`,
-						);
-					}
-				} else {
-					// 范围计算失败（置信度过低），使用原有匹配结果
-					logger.warn(
-						`Range calculator returned null (low confidence), using original match range: line ${selectedMatch.startLine}-${selectedMatch.endLine}`,
-					);
-				}
-			}
-			// ========== End Feature Flag ==========
-
-			const {startLine, endLine} = {
-				startLine: finalStartLine,
-				endLine: finalEndLine,
-			};
+			const {startLine, endLine} = selectedMatch;
 
 			// Perform the replacement by replacing the matched lines
-			const normalizedReplace = trimTrailingNewline(replaceContent)
+			const normalizedReplace = replaceContent
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
 			const beforeLines = lines.slice(0, startLine - 1);

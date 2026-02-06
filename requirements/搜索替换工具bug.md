@@ -219,7 +219,7 @@ print(\\\"[MainPanel] 显示最后一关，塔底高度=\\\" .. TOWER_BOTTOM_HEI
 
 44 - 46 错误的没有被替换掉 导致 错误的添加了 39-43 行 -->
 
-{
+<!-- {
 "name": "filesystem-edit_search",
 "arguments": "{\"filePath\":\"F:\\\\Projects\\\\snow-cli\\\\source\\\\mcp\\\\subagent.ts\",
 
@@ -276,19 +276,15 @@ print(\\\"[MainPanel] 显示最后一关，塔底高度=\\\" .. TOWER_BOTTOM_HEI
 
      搜索替换意图是删掉 68 行最后一个多余的大括号
      我看给的搜索替换块也没问题,
-     但最后结果反而多了一个大括号
+     但最后结果反而多了一个大括号 -->
 
 
+放弃修复当前的逻辑了,经过多次修复仍没很好解决,打算先还原
 
+首先删除F:/Projects/snow-cli/source/mcp/utils/filesystem/search-replace这个重构出的代码(我已经代为删除)
+并修改F:/Projects/snow-cli/source/mcp/filesystem.ts 弃用现有搜索替换逻辑(其他后处理和其他本地优化逻辑保留)
 
-
-
-放弃修复当前的逻辑了,首先删除F:/Projects/snow-cli/source/mcp/utils/filesystem/search-replace这个重构出的代码
-并修改F:/Projects/snow-cli/source/mcp/filesystem.ts 弃用现有搜索替换逻辑(其他后处理逻辑保留)
-
-然后参考  - E:/Project/opencode/packages/opencode/src/tool/edit.ts   这个其他项目里的实现 只参考其中搜索替换的处理逻辑
-
-注意 完全删除干净本项目中的搜索替换逻辑,转用这个外部项目的.我简单看了下,应该本项目和外部项目中的搜索替换逻辑需要的输入参数应该是一样的,所以应该可以借鉴.
+"D:\Personal\Documents\临时\filesystem.ts" 这个是本项目上游的,没经过我改动的版本,主要搜索替换逻辑改回上游的方案
 
 
 然后仍要考虑以上我提出的 bug 实例,看新的搜索替换逻辑是否没有问题.一定要多遍复查,可写测试脚本来测试.不用本项目测试框架,本项目也没用啥测试框架...
