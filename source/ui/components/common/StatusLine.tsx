@@ -65,6 +65,10 @@ type Props = {
 
 	// Profile 信息
 	currentProfileName?: string;
+
+	// 粘贴接收状态
+	pasteReceiving?: boolean;
+	pasteReceivingCharCount?: number;
 };
 
 export default function StatusLine({
@@ -79,10 +83,24 @@ export default function StatusLine({
 	watcherEnabled = false,
 	fileUpdateNotification,
 	currentProfileName,
+	pasteReceiving = false,
+	pasteReceivingCharCount = 0,
 }: Props) {
 	const {t} = useI18n();
 	const {theme} = useTheme();
 	const simpleMode = getSimpleMode();
+	const normalizedPasteReceivingCharCount = Math.max(
+		0,
+		Math.floor(pasteReceivingCharCount),
+	);
+	const formatPasteReceivingText = (template: string, fallback: string) => {
+		const text = template || fallback;
+		const count = normalizedPasteReceivingCharCount.toString();
+		if (text.includes('{count}')) {
+			return text.replace('{count}', count);
+		}
+		return `${text} ${count}`;
+	};
 
 	// 是否显示任何状态信息
 	const hasAnyStatus =
@@ -94,7 +112,8 @@ export default function StatusLine({
 		codebaseIndexing ||
 		watcherEnabled ||
 		fileUpdateNotification ||
-		currentProfileName;
+		currentProfileName ||
+		pasteReceiving;
 
 	if (!hasAnyStatus) {
 		return null;
@@ -172,6 +191,17 @@ export default function StatusLine({
 			statusItems.push({
 				text: `⛁ ${t.chatScreen.statusFileUpdatedShort || '已更新'}`,
 				color: 'yellow',
+			});
+		}
+
+		// 粘贴接收状态
+		if (pasteReceiving) {
+			statusItems.push({
+				text: formatPasteReceivingText(
+					t.chatScreen.statusPasteReceivingShort,
+					'粘贴接收中 {count} 字符',
+				),
+				color: 'cyan',
 			});
 		}
 
@@ -478,6 +508,18 @@ export default function StatusLine({
 						{t.chatScreen.statusFileUpdated.replace(
 							'{file}',
 							fileUpdateNotification.file,
+						)}
+					</Text>
+				</Box>
+			)}
+
+			{/* 粘贴接收状态 */}
+			{pasteReceiving && (
+				<Box>
+					<Text color="cyan" dimColor>
+						{formatPasteReceivingText(
+							t.chatScreen.statusPasteReceiving,
+							'正在接收粘贴内容，已接收 {count} 字符，暂时无法输入',
 						)}
 					</Text>
 				</Box>

@@ -131,6 +131,16 @@ type ChatFooterProps = {
 export default function ChatFooter(props: ChatFooterProps) {
 	const {t} = useI18n();
 	const [todos, setTodos] = useState<TodoItem[]>([]);
+	const [isPasteReceiving, setIsPasteReceiving] = useState(false);
+	const [pasteReceivingCharCount, setPasteReceivingCharCount] = useState(0);
+
+	const handlePasteReceivingChange = (
+		isReceiving: boolean,
+		charCount: number,
+	) => {
+		setIsPasteReceiving(isReceiving);
+		setPasteReceivingCharCount(isReceiving ? charCount : 0);
+	};
 
 	// 使用事件监听 TODO 更新，替代轮询
 	useEffect(() => {
@@ -195,6 +205,7 @@ export default function ChatFooter(props: ChatFooterProps) {
 						getFilteredMainAgents={props.getFilteredMainAgents}
 						onSwitchMainAgent={props.onSwitchMainAgent}
 						onMainAgentSelect={props.onMainAgentSelect}
+						onPasteReceivingChange={handlePasteReceivingChange}
 					/>
 
 					<Box marginTop={1}>
@@ -212,6 +223,8 @@ export default function ChatFooter(props: ChatFooterProps) {
 						watcherEnabled={props.watcherEnabled}
 						fileUpdateNotification={props.fileUpdateNotification}
 						currentProfileName={props.currentProfileName}
+						pasteReceiving={isPasteReceiving}
+						pasteReceivingCharCount={pasteReceivingCharCount}
 					/>
 
 					{props.isCompressing && (
