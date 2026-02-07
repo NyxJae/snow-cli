@@ -659,7 +659,7 @@ export const mcpTools = [
 	{
 		name: 'terminal-execute',
 		description:
-			'执行终端命令,如 npm、git、构建脚本等。**SSH远程支持**: 当 workingDirectory 是远程 SSH 路径(ssh://...)时,命令会自动通过 SSH 在远程服务器执行 - 无需自己包装 ssh user@host,直接提供原始命令即可。最佳实践:对于文件编辑,MUST ONLY 使用 `filesystem-xxx` 系列工具,不可使用本工具进行任何文件编辑!!!——主要使用场景:(1) 运行构建/测试/代码检查脚本,(2) 版本控制操作,(3) 包管理,(4) 系统工具',
+			'执行终端命令,如 npm、git、构建脚本等。**SSH远程支持**: 当 workingDirectory 是远程 SSH 路径(ssh://...)时,命令会自动通过 SSH 在远程服务器执行 - 无需自己包装 ssh user@host,直接提供原始命令即可。最佳实践:对于文件编辑,MUST ONLY 使用 `filesystem-xxx` 系列工具,不可使用本工具进行任何文件的文本编辑!!!——主要使用场景:(1) 运行构建/测试/代码检查脚本,(2) 版本控制操作,(3) 包管理,(4) 系统工具,(5) 必要的文件操作`mv`,`cp`,`rm`等',
 		inputSchema: {
 			type: 'object',
 			properties: {
