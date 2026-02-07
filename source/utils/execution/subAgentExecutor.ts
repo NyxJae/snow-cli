@@ -92,33 +92,46 @@ function stripSpecialUserMessages(messages: ChatMessage[]): ChatMessage[] {
 
 async function refreshSubAgentSpecialUserMessages(
 	messages: ChatMessage[],
-	sessionId: string,
+	sessionId: string | undefined,
+	finalPrompt?: string,
 ): Promise<ChatMessage[]> {
 	const baseMessages = stripSpecialUserMessages(messages);
 	const specialUserMessages: ChatMessage[] = [];
 
-	const todoService = getTodoService();
-	const existingTodoList = await todoService.getTodoList(sessionId);
-	if (existingTodoList && existingTodoList.todos.length > 0) {
-		const todoContext = formatTodoContext(existingTodoList.todos, true);
+	// finalPrompt 必须作为 specialUserMessage 注入,否则 stripSpecialUserMessages() 无法识别并移除它,
+	// 会导致 while 循环每轮刷新时出现重复/顺序异常,也无法和 TODO/有用信息/文件夹笔记一起动态重排.
+	if (finalPrompt) {
 		specialUserMessages.push({
 			role: 'user',
-			content: todoContext,
+			content: finalPrompt,
 			specialUserMessage: true,
 		});
 	}
 
-	const usefulInfoService = getUsefulInfoService();
-	const usefulInfoList = await usefulInfoService.getUsefulInfoList(sessionId);
-	if (usefulInfoList && usefulInfoList.items.length > 0) {
-		const usefulInfoContext = await formatUsefulInfoContext(
-			usefulInfoList.items,
-		);
-		specialUserMessages.push({
-			role: 'user',
-			content: usefulInfoContext,
-			specialUserMessage: true,
-		});
+	if (sessionId) {
+		const todoService = getTodoService();
+		const existingTodoList = await todoService.getTodoList(sessionId);
+		if (existingTodoList && existingTodoList.todos.length > 0) {
+			const todoContext = formatTodoContext(existingTodoList.todos, true);
+			specialUserMessages.push({
+				role: 'user',
+				content: todoContext,
+				specialUserMessage: true,
+			});
+		}
+
+		const usefulInfoService = getUsefulInfoService();
+		const usefulInfoList = await usefulInfoService.getUsefulInfoList(sessionId);
+		if (usefulInfoList && usefulInfoList.items.length > 0) {
+			const usefulInfoContext = await formatUsefulInfoContext(
+				usefulInfoList.items,
+			);
+			specialUserMessages.push({
+				role: 'user',
+				content: usefulInfoContext,
+				specialUserMessage: true,
+			});
+		}
 	}
 
 	const folderNotebookContext = formatFolderNotebookContext();
@@ -135,10 +148,14 @@ async function refreshSubAgentSpecialUserMessages(
 	}
 
 	const insertPosition = findInsertPositionAfterNthToolFromEnd(baseMessages, 3);
+	const safeInsertPosition =
+		baseMessages.length > 0 && baseMessages[0]?.role === 'system'
+			? Math.max(1, insertPosition)
+			: Math.max(0, insertPosition);
 	return insertMessagesAtPosition(
 		baseMessages,
 		specialUserMessages,
-		insertPosition,
+		safeInsertPosition,
 	);
 }
 
@@ -488,20 +505,12 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 			finalPrompt = finalPrompt ? `${finalPrompt}\n\n${prompt}` : prompt;
 		}
 
-		// 先将finalPrompt作为user消息推入messages数组
-		// 这样messages就不会是空数组，可以正确计算基于tool返回的动态插入位置
-		messages.push({
-			role: 'user',
-			content: finalPrompt,
-		});
-
 		const currentSession = sessionManager.getCurrentSession();
-		if (currentSession?.id) {
-			messages = await refreshSubAgentSpecialUserMessages(
-				messages,
-				currentSession.id,
-			);
-		}
+		messages = await refreshSubAgentSpecialUserMessages(
+			messages,
+			currentSession?.id,
+			finalPrompt,
+		);
 
 		// 流式执行子代理
 		let finalResponse = '';
@@ -541,12 +550,11 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 
 			// 获取当前会话
 			const currentSession = sessionManager.getCurrentSession();
-			if (currentSession?.id) {
-				messages = await refreshSubAgentSpecialUserMessages(
-					messages,
-					currentSession.id,
-				);
-			}
+			messages = await refreshSubAgentSpecialUserMessages(
+				messages,
+				currentSession?.id,
+				finalPrompt,
+			);
 
 			// 重试回调函数 - 为子智能体提供流中断重试支持
 			const onRetry = (error: Error, attempt: number, nextDelay: number) => {

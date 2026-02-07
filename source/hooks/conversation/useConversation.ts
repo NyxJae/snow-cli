@@ -1484,6 +1484,7 @@ async function executeWithInternalRetry(
 								conversationMessages.push({
 									role: 'user',
 									content: todoContext,
+									specialUserMessage: true,
 								});
 							}
 
@@ -1502,6 +1503,7 @@ async function executeWithInternalRetry(
 								conversationMessages.push({
 									role: 'user',
 									content: usefulInfoContext,
+									specialUserMessage: true,
 								});
 							}
 
