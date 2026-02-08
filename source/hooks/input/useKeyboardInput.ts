@@ -1234,7 +1234,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// Tab - autocomplete command to input
+			// Tab: 将当前候选命令补全到输入框,减少手动输入成本.
 			if (key.tab) {
 				if (
 					filteredCommands.length > 0 &&

@@ -25,9 +25,9 @@ import {logger} from '../../utils/core/logger.js';
 import {runningSubAgentTracker} from '../../utils/execution/runningSubAgentTracker.js';
 
 /**
- * Parse "# SubAgentTarget:instanceId:agentName" markers from a message.
- * These are injected by the running-agents picker via TextBuffer placeholders.
- * Returns the target sub-agent info and the clean message (markers stripped).
+ * 从用户输入中解析运行中子代理的定向标记(# SubAgentTarget:instanceId:agentName).
+ * 这些标记由 running-agents picker 注入,用于让主会话把用户消息路由到指定子代理.
+ * 解析后会剥离标记,避免把控制信息发送给模型.
  */
 function parseSubAgentTargets(message: string): {
 	targets: Array<{instanceId: string; agentName: string}>;
