@@ -1322,8 +1322,6 @@ async function executeWithInternalRetry(
 							multiSelect,
 						);
 					},
-					options.getPendingMessages,
-					options.clearPendingMessages,
 				);
 				options.setSubAgentRunState?.(null);
 

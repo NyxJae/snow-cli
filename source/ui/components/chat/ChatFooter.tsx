@@ -133,6 +133,8 @@ export default function ChatFooter(props: ChatFooterProps) {
 	const [todos, setTodos] = useState<TodoItem[]>([]);
 	const [isPasteReceiving, setIsPasteReceiving] = useState(false);
 	const [pasteReceivingCharCount, setPasteReceivingCharCount] = useState(0);
+	void isPasteReceiving;
+	void pasteReceivingCharCount;
 
 	const handlePasteReceivingChange = (
 		isReceiving: boolean,
@@ -223,8 +225,6 @@ export default function ChatFooter(props: ChatFooterProps) {
 						watcherEnabled={props.watcherEnabled}
 						fileUpdateNotification={props.fileUpdateNotification}
 						currentProfileName={props.currentProfileName}
-						pasteReceiving={isPasteReceiving}
-						pasteReceivingCharCount={pasteReceivingCharCount}
 					/>
 
 					{props.isCompressing && (

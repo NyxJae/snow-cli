@@ -84,6 +84,10 @@ export interface Message {
 	}; // Hook error details for rendering with HookErrorDisplay
 	thinking?: string; // Extended Thinking content from Anthropic
 	pendingToolIds?: string[]; // Track pending tool call IDs in sub-agent compact mode
+	/** Present when a user message was directed to specific running sub-agents via >> picker */
+	subAgentDirected?: {
+		targets: Array<{agentName: string; promptSnippet: string}>;
+	};
 }
 
 interface Props {
@@ -106,7 +110,9 @@ const MessageList = memo(
 				{messages.slice(-maxMessages).map((message, index) => {
 					const iconColor =
 						message.role === 'user'
-							? 'green'
+							? message.subAgentDirected
+								? 'magenta'
+								: 'green'
 							: message.role === 'command'
 							? 'gray'
 							: message.role === 'subagent'
@@ -121,7 +127,9 @@ const MessageList = memo(
 						<Box key={index}>
 							<Text color={iconColor} bold>
 								{message.role === 'user'
-									? '❯'
+									? message.subAgentDirected
+										? '»'
+										: '❯'
 									: message.role === 'command'
 									? '⌘'
 									: message.role === 'subagent'
@@ -131,6 +139,32 @@ const MessageList = memo(
 									: '❆'}
 							</Text>
 							<Box marginLeft={1} flexDirection="column">
+								{message.role === 'user' &&
+									message.subAgentDirected &&
+									message.subAgentDirected.targets.length > 0 && (
+										<Box flexDirection="column">
+											{message.subAgentDirected.targets.map(
+												(target, ti, arr) => {
+													const isLast = ti === arr.length - 1;
+													const branch = isLast ? '└─' : '├─';
+													return (
+														<Box key={ti}>
+															<Text color="magenta" dimColor>
+																{branch}{' '}
+															</Text>
+															<Text color="magenta">{target.agentName}</Text>
+															{target.promptSnippet ? (
+																<Text color="gray" dimColor>
+																	{' '}
+																	{target.promptSnippet}
+																</Text>
+															) : null}
+														</Box>
+													);
+												},
+											)}
+										</Box>
+									)}
 								{message.role === 'command' ? (
 									<Text color="gray">└─ {message.commandName}</Text>
 								) : message.role === 'subagent' ? (

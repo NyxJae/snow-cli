@@ -10,6 +10,7 @@ import WorkingDirectoryPanel from './WorkingDirectoryPanel.js';
 import PermissionsPanel from './PermissionsPanel.js';
 import MainAgentPanel from './MainAgentPanel.js';
 import {mainAgentManager} from '../../../utils/MainAgentManager.js';
+import {BranchPanel} from './BranchPanel.js';
 import type {CommandLocation} from '../../../utils/commands/custom.js';
 import type {
 	GeneratedSkillContent,
@@ -32,6 +33,7 @@ type PanelsManagerProps = {
 	showSkillsCreation: boolean;
 	showWorkingDirPanel: boolean;
 	showPermissionsPanel: boolean;
+	showBranchPanel: boolean;
 	advancedModel: string;
 	basicModel: string;
 	setShowSessionPanel: (show: boolean) => void;
@@ -40,6 +42,7 @@ type PanelsManagerProps = {
 	setShowSkillsCreation: (show: boolean) => void;
 	setShowWorkingDirPanel: (show: boolean) => void;
 	setShowPermissionsPanel: (show: boolean) => void;
+	setShowBranchPanel: (show: boolean) => void;
 	handleSessionPanelSelect: (sessionId: string) => Promise<void>;
 
 	onCustomCommandSave: (
@@ -75,6 +78,7 @@ export default function PanelsManager({
 	showSkillsCreation,
 	showWorkingDirPanel,
 	showPermissionsPanel,
+	showBranchPanel,
 	advancedModel,
 	basicModel,
 	setShowSessionPanel,
@@ -83,6 +87,7 @@ export default function PanelsManager({
 	setShowSkillsCreation,
 	setShowWorkingDirPanel,
 	setShowPermissionsPanel,
+	setShowBranchPanel,
 	handleSessionPanelSelect,
 	onCustomCommandSave,
 	onSkillsSave,
@@ -232,6 +237,13 @@ export default function PanelsManager({
 						visible={true}
 						searchQuery={mainAgentSearchQuery}
 					/>
+				</Box>
+			)}
+
+			{/* Show branch management panel if active */}
+			{showBranchPanel && (
+				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
+					<BranchPanel onClose={() => setShowBranchPanel(false)} />
 				</Box>
 			)}
 		</>

@@ -16,6 +16,7 @@ export type PanelState = {
 	showWorkingDirPanel: boolean;
 	showPermissionsPanel: boolean;
 	showReviewCommitPanel: boolean;
+	showBranchPanel: boolean;
 	showProfilePanel: boolean;
 	showModelsPanel: boolean;
 	profileSelectedIndex: number;
@@ -35,6 +36,7 @@ export type PanelActions = {
 	setShowWorkingDirPanel: Dispatch<SetStateAction<boolean>>;
 	setShowPermissionsPanel: Dispatch<SetStateAction<boolean>>;
 	setShowReviewCommitPanel: Dispatch<SetStateAction<boolean>>;
+	setShowBranchPanel: Dispatch<SetStateAction<boolean>>;
 	setShowProfilePanel: Dispatch<SetStateAction<boolean>>;
 	setShowModelsPanel: Dispatch<SetStateAction<boolean>>;
 	setProfileSelectedIndex: Dispatch<SetStateAction<number>>;
@@ -69,6 +71,7 @@ export function usePanelState(): PanelState & PanelActions {
 	const [showWorkingDirPanel, setShowWorkingDirPanel] = useState(false);
 	const [showPermissionsPanel, setShowPermissionsPanel] = useState(false);
 	const [showReviewCommitPanel, setShowReviewCommitPanel] = useState(false);
+	const [showBranchPanel, setShowBranchPanel] = useState(false);
 	const [showProfilePanel, setShowProfilePanel] = useState(false);
 	const [showModelsPanel, setShowModelsPanel] = useState(false);
 	const [profileSelectedIndex, setProfileSelectedIndex] = useState(0);
@@ -99,6 +102,7 @@ export function usePanelState(): PanelState & PanelActions {
 			showWorkingDirPanel ||
 			showPermissionsPanel ||
 			showReviewCommitPanel ||
+			showBranchPanel ||
 			showProfilePanel ||
 			showModelsPanel ||
 			options.hasPendingRollback ||
@@ -221,6 +225,12 @@ export function usePanelState(): PanelState & PanelActions {
 			return true;
 		}
 
+		// BranchPanel handles its own ESC key logic internally
+		// Don't close it here - let the panel decide when to close
+		if (showBranchPanel) {
+			return false; // Let BranchPanel handle ESC
+		}
+
 		if (showProfilePanel) {
 			setShowProfilePanel(false);
 			return true;
@@ -249,6 +259,7 @@ export function usePanelState(): PanelState & PanelActions {
 			showWorkingDirPanel ||
 			showPermissionsPanel ||
 			showReviewCommitPanel ||
+			showBranchPanel ||
 			showProfilePanel ||
 			showMainAgentPanel ||
 			showModelsPanel
@@ -265,6 +276,7 @@ export function usePanelState(): PanelState & PanelActions {
 		showWorkingDirPanel,
 		showPermissionsPanel,
 		showReviewCommitPanel,
+		showBranchPanel,
 		showProfilePanel,
 		showModelsPanel,
 		profileSelectedIndex,
@@ -282,6 +294,7 @@ export function usePanelState(): PanelState & PanelActions {
 		setShowWorkingDirPanel,
 		setShowPermissionsPanel,
 		setShowReviewCommitPanel,
+		setShowBranchPanel,
 		setShowProfilePanel,
 		setShowModelsPanel,
 		setProfileSelectedIndex,

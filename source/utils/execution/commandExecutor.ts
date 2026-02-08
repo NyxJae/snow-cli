@@ -34,6 +34,7 @@ export interface CommandResult {
 		| 'reindexCodebase'
 		| 'copyLastMessage'
 		| 'toggleCodebase'
+		| 'showBranchPanel'
 		| 'sendAsMessage'
 		| 'quit';
 	prompt?: string;

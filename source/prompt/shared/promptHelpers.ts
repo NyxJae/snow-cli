@@ -2,86 +2,9 @@
  * Shared helper functions for system prompt generation
  */
 
-import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import {loadCodebaseConfig} from '../../utils/config/codebaseConfig.js';
-
-/**
- * Get the system prompt with ROLE.md content if it exists
- * Priority: Project ROLE.md > Global ROLE.md > Default prompt
- * @param basePrompt - The base prompt template to modify
- * @param defaultRoleText - The default role text to replace (e.g., "You are Snow AI CLI")
- * @returns The prompt with ROLE.md content or original prompt
- */
-export function getSystemPromptWithRole(
-	basePrompt: string,
-	defaultRoleText: string,
-): string {
-	const tryReadRole = (rolePath: string): string | null => {
-		try {
-			if (!fs.existsSync(rolePath)) return null;
-			const content = fs.readFileSync(rolePath, 'utf-8').trim();
-			return content || null;
-		} catch {
-			return null;
-		}
-	};
-
-	const getActiveRolePath = (location: 'project' | 'global'): string | null => {
-		try {
-			const baseDir =
-				location === 'project'
-					? process.cwd()
-					: path.join(os.homedir(), '.snow');
-			const configPath =
-				location === 'project'
-					? path.join(baseDir, '.snow', 'role.json')
-					: path.join(baseDir, 'role.json');
-
-			let activeRoleId: string | undefined;
-			if (fs.existsSync(configPath)) {
-				try {
-					const raw = fs.readFileSync(configPath, 'utf-8');
-					const parsed = JSON.parse(raw) as {activeRoleId?: string};
-					activeRoleId = parsed.activeRoleId;
-				} catch {
-					// ignore
-				}
-			}
-
-			if (!activeRoleId || activeRoleId === 'active') {
-				return path.join(baseDir, 'ROLE.md');
-			}
-			return path.join(baseDir, `ROLE-${activeRoleId}.md`);
-		} catch {
-			return null;
-		}
-	};
-
-	try {
-		// Priority: Project active (via .snow/role.json) > Global active (via ~/.snow/role.json)
-		const projectActivePath = getActiveRolePath('project');
-		if (projectActivePath) {
-			const roleContent = tryReadRole(projectActivePath);
-			if (roleContent) {
-				return basePrompt.replace(defaultRoleText, roleContent);
-			}
-		}
-
-		const globalActivePath = getActiveRolePath('global');
-		if (globalActivePath) {
-			const roleContent = tryReadRole(globalActivePath);
-			if (roleContent) {
-				return basePrompt.replace(defaultRoleText, roleContent);
-			}
-		}
-	} catch (error) {
-		console.error('Failed to read ROLE configuration:', error);
-	}
-
-	return basePrompt;
-}
 
 /**
  * Detect if running in PowerShell environment on Windows

@@ -483,6 +483,7 @@ export type TranslationKeys = {
 			codebase: string;
 			permissions: string;
 			vulnerabilityHunting: string;
+			worktree: string; // Git branch management panel
 			quit: string;
 		};
 	};
@@ -725,8 +726,6 @@ export type TranslationKeys = {
 		statusWatcherActiveShort: string;
 		statusFileUpdated: string;
 		statusFileUpdatedShort: string;
-		statusPasteReceiving: string;
-		statusPasteReceivingShort: string;
 		statusCreating: string;
 		statusSaving: string;
 		statusCompressing: string;
@@ -966,40 +965,23 @@ export type TranslationKeys = {
 		createErrorMessage: string;
 		errorUnknown: string;
 	};
-	roleCreation: {
+	// Branch Panel
+	branchPanel: {
 		title: string;
-		locationLabel: string;
-		locationGlobal: string;
-		locationGlobalInfo: string;
-		locationProject: string;
-		locationProjectInfo: string;
-		confirmQuestion: string;
-		confirmYes: string;
-		confirmNo: string;
-		escCancel: string;
-		warningExistsGlobal: string;
-		warningExistsProject: string;
-		createSuccessMessage: string;
-		createErrorMessage: string;
-		errorUnknown: string;
-	};
-	roleDeletion: {
-		title: string;
-		locationLabel: string;
-		locationGlobal: string;
-		locationGlobalInfo: string;
-		locationProject: string;
-		locationProjectInfo: string;
-		confirmQuestion: string;
-		confirmYes: string;
-		confirmNo: string;
-		escCancel: string;
-		warningNotExistsGlobal: string;
-		warningNotExistsProject: string;
-		deleteSuccessMessage: string;
-		deleteErrorMessage: string;
-		errorNotFound: string;
-		errorUnknown: string;
+		notGitRepo: string;
+		noBranches: string;
+		current: string;
+		newBranchLabel: string;
+		newBranchPlaceholder: string;
+		createHint: string;
+		confirmDelete: string;
+		confirmDeleteHint: string;
+		cannotDeleteCurrent: string;
+		stashConfirm: string;
+		stashConfirmHint: string;
+		loading: string;
+		hints: string;
+		pressEscToClose: string;
 	};
 	// AskUserQuestion Component
 	askUser: {
@@ -1219,6 +1201,16 @@ export type TranslationKeys = {
 		statusFailed: string;
 		navigationHint: string;
 		pleaseWait: string;
+	};
+	// Running Agents Panel
+	runningAgentsPanel: {
+		title: string;
+		noAgentsRunning: string;
+		keyboardHint: string;
+		selected: string;
+		scrollHint: string;
+		moreAbove: string;
+		moreBelow: string;
 	};
 	sseServer: {
 		started: string;

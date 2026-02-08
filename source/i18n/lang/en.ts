@@ -518,6 +518,8 @@ export const en: TranslationKeys = {
 			models: 'Open model switching panel',
 			vulnerabilityHunting:
 				'Toggle vulnerability hunting mode for security-focused code analysis',
+			worktree:
+				'Open Git branch management panel for switching, creating and deleting branches',
 			quit: 'Exit the application',
 		},
 	},
@@ -759,9 +761,6 @@ export const en: TranslationKeys = {
 		statusWatcherActiveShort: 'Watcher',
 		statusFileUpdated: 'Updated: {file}',
 		statusFileUpdatedShort: 'Updated',
-		statusPasteReceiving:
-			'Receiving pasted content: {count} chars, input is temporarily unavailable',
-		statusPasteReceivingShort: 'Pasting {count}',
 		statusCreating: 'Creating...',
 		statusSaving: 'Saving...',
 		statusCompressing: 'Compressing...',
@@ -1022,46 +1021,27 @@ export const en: TranslationKeys = {
 		createErrorMessage: 'Failed to create skill: {error}',
 		errorUnknown: 'Unknown error',
 	},
-	roleCreation: {
-		title: 'Create ROLE.md',
-		locationLabel: 'Select Location:',
-		locationGlobal: 'Global (~/.snow/ROLE.md)',
-		locationGlobalInfo: 'Available across all projects',
-		locationProject: 'Project (./ROLE.md in project root)',
-		locationProjectInfo: 'Only available in this project',
-		confirmQuestion: 'Create ROLE.md?',
-		confirmYes: 'Yes, Create',
-		confirmNo: 'No, Cancel',
-		escCancel: 'Press ESC to cancel',
-		warningExistsGlobal:
-			'Warning: Global ROLE.md already exists (~/.snow/ROLE.md)',
-		warningExistsProject: 'Warning: Project ROLE.md already exists (./ROLE.md)',
-		createSuccessMessage:
-			'Created ROLE.md successfully! ｜ Location: {location} ｜ Path: {path}',
-		createErrorMessage: 'Failed to create ROLE.md: {error}',
-		errorUnknown: 'Unknown error',
+	branchPanel: {
+		title: 'Git Branch Management',
+		notGitRepo:
+			'Current directory is not a Git repository. Cannot manage branches.',
+		noBranches: 'No branches found. Press N to create one.',
+		current: 'current',
+		newBranchLabel: 'New branch name:',
+		newBranchPlaceholder: 'feature/my-new-branch',
+		createHint: 'Enter to confirm, ESC to cancel',
+		confirmDelete: 'Delete branch "{branch}"?',
+		confirmDeleteHint: 'Press Y to confirm, N to cancel',
+		cannotDeleteCurrent: 'Cannot delete the currently checked-out branch',
+		stashConfirm:
+			'Local changes detected. Stash changes and switch to "{branch}"?',
+		stashConfirmHint: 'Press Y to stash & switch, N to cancel',
+		loading: 'Processing...',
+		hints:
+			'↑↓: Navigate | Enter: Switch | N: New branch | D: Delete | ESC: Close',
+		pressEscToClose: 'Press ESC to close',
 	},
-	roleDeletion: {
-		title: 'Delete ROLE.md',
-		locationLabel: 'Select Location:',
-		locationGlobal: 'Global (~/.snow/ROLE.md)',
-		locationGlobalInfo: 'ROLE.md for all projects',
-		locationProject: 'Project (./ROLE.md in project root)',
-		locationProjectInfo: 'ROLE.md for current project only',
-		confirmQuestion: 'Confirm deletion of ROLE.md?',
-		confirmYes: 'Yes, Delete',
-		confirmNo: 'No, Cancel',
-		escCancel: 'Press ESC to cancel',
-		warningNotExistsGlobal:
-			'Warning: Global ROLE.md does not exist (~/.snow/ROLE.md)',
-		warningNotExistsProject:
-			'Warning: Project ROLE.md does not exist (./ROLE.md)',
-		deleteSuccessMessage:
-			'Deleted ROLE.md successfully! | Location: {location} | Path: {path}',
-		deleteErrorMessage: 'Failed to delete ROLE.md: {error}',
-		errorNotFound: 'ROLE.md file does not exist',
-		errorUnknown: 'Unknown error',
-	},
+
 	askUser: {
 		header: '[User Input Required]',
 		customInputOption: 'Custom input...',
@@ -1285,6 +1265,15 @@ export const en: TranslationKeys = {
 		statusFailed: 'Failed',
 		navigationHint: '↑↓ Navigate • Enter Reconnect • Tab Toggle Service',
 		pleaseWait: 'Please wait...',
+	},
+	runningAgentsPanel: {
+		title: 'Running Sub-Agents',
+		noAgentsRunning: 'No sub-agents are currently running',
+		keyboardHint: '(Space: toggle · Enter: confirm · Esc: cancel)',
+		selected: 'Selected: {count}',
+		scrollHint: '↑↓ to scroll',
+		moreAbove: '{count} more above',
+		moreBelow: '{count} more below',
 	},
 	sseServer: {
 		started: '✓ SSE Server Started',

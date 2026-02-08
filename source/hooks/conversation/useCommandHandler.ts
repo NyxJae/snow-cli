@@ -282,6 +282,7 @@ type CommandHandlerOptions = {
 	setShowWorkingDirPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowReviewCommitPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowPermissionsPanel: React.Dispatch<React.SetStateAction<boolean>>;
+	setShowBranchPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowBackgroundPanel: () => void;
 	onSwitchProfile: () => void;
 	setYoloMode: React.Dispatch<React.SetStateAction<boolean>>;
@@ -588,6 +589,14 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				options.setMessages(prev => [...prev, commandMessage]);
 			} else if (result.success && result.action === 'showPermissionsPanel') {
 				options.setShowPermissionsPanel(true);
+				const commandMessage: Message = {
+					role: 'command',
+					content: '',
+					commandName: commandName,
+				};
+				options.setMessages(prev => [...prev, commandMessage]);
+			} else if (result.success && result.action === 'showBranchPanel') {
+				options.setShowBranchPanel(true);
 				const commandMessage: Message = {
 					role: 'command',
 					content: '',
@@ -936,8 +945,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					}
 				}
 			} else if (result.message) {
-				// For commands that just return a message (like /role, /init without AGENTS.md, etc.)
-				// Display the message as a command message
+				// 某些命令只返回一段文本,这里将其作为 command 消息展示到消息列表中.
 				const commandMessage: Message = {
 					role: 'command',
 					content: result.message,

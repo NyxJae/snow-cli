@@ -4,6 +4,7 @@ import ansiEscapes from 'ansi-escapes';
 import {useI18n} from '../../i18n/I18nContext.js';
 import {useTheme} from '../contexts/ThemeContext.js';
 import {configEvents} from '../../utils/config/configEvents.js';
+import {isPickerActive, setPickerActive} from '../../utils/ui/pickerState.js';
 import {type Message} from '../components/chat/MessageList.js';
 import PendingMessages from '../components/chat/PendingMessages.js';
 import ToolConfirmation from '../components/tools/ToolConfirmation.js';
@@ -310,6 +311,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			import('../../utils/commands/permissions.js'),
 			import('../../utils/commands/backend.js'),
 			import('../../utils/commands/models.js'),
+			import('../../utils/commands/worktree.js'),
 		])
 			.then(async () => {
 				// Load and register custom commands from user directory
@@ -877,6 +879,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setShowWorkingDirPanel: panelState.setShowWorkingDirPanel,
 		setShowReviewCommitPanel: panelState.setShowReviewCommitPanel,
 		setShowPermissionsPanel: panelState.setShowPermissionsPanel,
+		setShowBranchPanel: panelState.setShowBranchPanel,
 		onSwitchProfile: handleSwitchProfile,
 		setShowBackgroundPanel: backgroundProcesses.enablePanel,
 		setYoloMode,
@@ -1112,7 +1115,15 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			return;
 		}
 
-		// 如果已经处于 stopping,但流已结束:允许再次按 ESC 直接解除卡死状态
+		// If a picker panel in ChatInput consumed this ESC, skip all streaming abort logic.
+		// In ink, multiple useInput hooks fire for the same keypress, so we must coordinate.
+		if (key.escape && isPickerActive()) {
+			// Reset the flag immediately so the next ESC is not blocked
+			setPickerActive(false);
+			return;
+		}
+
+		// 如果已经处于 stopping，但流已结束：允许再次按 ESC 直接解除卡死状态
 		if (
 			key.escape &&
 			streamingState.isStopping &&
@@ -1465,6 +1476,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				showSkillsCreation={panelState.showSkillsCreation}
 				showWorkingDirPanel={panelState.showWorkingDirPanel}
 				showPermissionsPanel={panelState.showPermissionsPanel}
+				showBranchPanel={panelState.showBranchPanel}
 				advancedModel={advancedModel}
 				basicModel={basicModel}
 				setShowSessionPanel={panelState.setShowSessionPanel}
@@ -1473,6 +1485,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				setShowSkillsCreation={panelState.setShowSkillsCreation}
 				setShowWorkingDirPanel={panelState.setShowWorkingDirPanel}
 				setShowPermissionsPanel={panelState.setShowPermissionsPanel}
+				setShowBranchPanel={panelState.setShowBranchPanel}
 				handleSessionPanelSelect={handleSessionPanelSelect}
 				alwaysApprovedTools={alwaysApprovedTools}
 				onRemoveTool={removeFromAlwaysApproved}
@@ -1592,7 +1605,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					panelState.showCustomCommandConfig ||
 					panelState.showSkillsCreation ||
 					panelState.showWorkingDirPanel ||
-					panelState.showPermissionsPanel
+					panelState.showPermissionsPanel ||
+					panelState.showBranchPanel
 				) &&
 				!snapshotState.pendingRollback && (
 					<ChatFooter

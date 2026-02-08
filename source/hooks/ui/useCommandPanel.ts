@@ -20,11 +20,6 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 			},
 			{name: 'resume', description: t.commandPanel.commands.resume},
 			{name: 'mcp', description: t.commandPanel.commands.mcp},
-			{name: 'yolo', description: t.commandPanel.commands.yolo},
-			{
-				name: 'plan',
-				description: t.commandPanel.commands.plan,
-			},
 			{
 				name: 'init',
 				description: t.commandPanel.commands.init,
@@ -100,6 +95,12 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 				name: 'permissions',
 				description:
 					t.commandPanel.commands.permissions || 'Manage tool permissions',
+			},
+			{
+				name: 'worktree',
+				description:
+					t.commandPanel.commands.worktree ||
+					'Open Git branch management panel',
 			},
 			{
 				name: 'quit',

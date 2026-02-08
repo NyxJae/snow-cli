@@ -17,7 +17,9 @@ const AgentPickerPanel = lazy(() => import('../panels/AgentPickerPanel.js'));
 const TodoPickerPanel = lazy(() => import('../panels/TodoPickerPanel.js'));
 const SkillsPickerPanel = lazy(() => import('../panels/SkillsPickerPanel.js'));
 const ProfilePanel = lazy(() => import('../panels/ProfilePanel.js'));
-
+const RunningAgentsPanel = lazy(
+	() => import('../panels/RunningAgentsPanel.js'),
+);
 import {useInputBuffer} from '../../../hooks/input/useInputBuffer.js';
 import {useCommandPanel} from '../../../hooks/ui/useCommandPanel.js';
 import {useFilePicker} from '../../../hooks/picker/useFilePicker.js';
@@ -29,6 +31,7 @@ import {useTerminalFocus} from '../../../hooks/ui/useTerminalFocus.js';
 import {useAgentPicker} from '../../../hooks/picker/useAgentPicker.js';
 import {useTodoPicker} from '../../../hooks/picker/useTodoPicker.js';
 import {useSkillsPicker} from '../../../hooks/picker/useSkillsPicker.js';
+import {useRunningAgentsPicker} from '../../../hooks/picker/useRunningAgentsPicker.js';
 import {useI18n} from '../../../i18n/index.js';
 import {useTheme} from '../../contexts/ThemeContext.js';
 import {useBashMode} from '../../../hooks/input/useBashMode.js';
@@ -37,50 +40,38 @@ function parseSkillIdFromHeaderLine(line: string): string {
 	return line.replace(/^# Skill:\s*/i, '').trim() || 'unknown';
 }
 
-type RestoreTextWithSkillPlaceholdersOptions = {
-	/**
-	 * true: 当普通文本片段非常长时，使用 [Paste ...] 占位符写入输入框，避免渲染/复制巨量文本。
-	 * false: 始终把普通文本按原样写回输入框。
-	 */
-	usePastePlaceholderForLongPlainText?: boolean;
-	/**
-	 * 触发粘贴占位符的阈值。保持与 TextBuffer.insert 的默认阈值一致。
-	 */
-	pastePlaceholderThreshold?: number;
-};
-
 function restoreTextWithSkillPlaceholders(
 	buffer: {
 		insertRestoredText: (t: string) => void;
 		insertTextPlaceholder: (c: string, p: string) => void;
-		insert: (t: string) => void;
 	},
 	text: string,
-	options: RestoreTextWithSkillPlaceholdersOptions = {},
 ) {
 	if (!text) return;
 
-	const {
-		usePastePlaceholderForLongPlainText = false,
-		pastePlaceholderThreshold = 300,
-	} = options;
-
 	const lines = text.split('\n');
 	let plain = '';
+	let rollbackPasteCounter = 0;
+
+	const insertPlainOrPastePlaceholder = (chunk: string) => {
+		if (!chunk) return;
+		const lineCount = chunk.split('\n').length;
+		const shouldMaskAsPaste = chunk.length >= 400 || lineCount >= 12;
+		if (!shouldMaskAsPaste) {
+			buffer.insertRestoredText(chunk);
+			return;
+		}
+
+		rollbackPasteCounter++;
+		buffer.insertTextPlaceholder(
+			chunk,
+			`[Paste ${lineCount} lines #${rollbackPasteCounter}] `,
+		);
+	};
 
 	const flushPlain = () => {
 		if (!plain) return;
-
-		if (
-			usePastePlaceholderForLongPlainText &&
-			plain.length > pastePlaceholderThreshold
-		) {
-			// 使用 TextBuffer.insert() 触发其内置的大文本占位逻辑。
-			buffer.insert(plain);
-		} else {
-			buffer.insertRestoredText(plain);
-		}
-
+		insertPlainOrPastePlaceholder(plain);
 		plain = '';
 	};
 
@@ -174,7 +165,11 @@ type Props = {
 	placeholder?: string;
 	disabled?: boolean;
 	isProcessing?: boolean; // Prevent command panel from showing during AI response/tool execution
-	chatHistory?: Array<{role: string; content: string}>;
+	chatHistory?: Array<{
+		role: string;
+		content: string;
+		subAgentDirected?: unknown;
+	}>;
 	onHistorySelect?: (selectedIndex: number, message: string) => void;
 	yoloMode?: boolean;
 	setYoloMode?: (value: boolean) => void;
@@ -412,6 +407,20 @@ export default function ChatInput({
 		closeSkillsPicker,
 	} = useSkillsPicker(buffer, triggerUpdate);
 
+	// Use running agents picker hook
+	const {
+		showRunningAgentsPicker,
+		setShowRunningAgentsPicker,
+		runningAgentsSelectedIndex,
+		setRunningAgentsSelectedIndex,
+		runningAgents,
+		selectedRunningAgents,
+		toggleRunningAgentSelection,
+		confirmRunningAgentsSelection,
+		closeRunningAgentsPicker,
+		updateRunningAgentsPickerState,
+	} = useRunningAgentsPicker(buffer, triggerUpdate);
+
 	// Use clipboard hook
 	const {pasteFromClipboard} = useClipboard(
 		buffer,
@@ -419,6 +428,10 @@ export default function ChatInput({
 		updateFilePickerState,
 		triggerUpdate,
 	);
+
+	const pasteShortcutTimeoutMs = 800;
+	const pasteFlushDebounceMs = 250;
+	const pasteIndicatorThreshold = 300;
 
 	// Use keyboard input hook
 	useKeyboardInput({
@@ -466,6 +479,9 @@ export default function ChatInput({
 		resetHistoryNavigation,
 		saveToHistory,
 		pasteFromClipboard,
+		pasteShortcutTimeoutMs,
+		pasteFlushDebounceMs,
+		pasteIndicatorThreshold,
 		onSubmit,
 		ensureFocus,
 		showAgentPicker,
@@ -510,6 +526,7 @@ export default function ChatInput({
 		setProfileSearchQuery: setProfileSearchQuery || (() => {}),
 		onSwitchProfile,
 		onPasteReceivingChange,
+		// Main agent picker
 		showMainAgentPicker,
 		setShowMainAgentPicker: setShowMainAgentPicker || (() => {}),
 		mainAgentSelectedIndex,
@@ -521,6 +538,17 @@ export default function ChatInput({
 		onMainAgentSelect,
 		onTodoScrollUp,
 		onTodoScrollDown,
+		// Running agents picker
+		showRunningAgentsPicker,
+		setShowRunningAgentsPicker,
+		runningAgentsSelectedIndex,
+		setRunningAgentsSelectedIndex,
+		runningAgents,
+		selectedRunningAgents,
+		toggleRunningAgentSelection,
+		confirmRunningAgentsSelection,
+		closeRunningAgentsPicker,
+		updateRunningAgentsPickerState,
 	});
 
 	// Set initial content when provided (e.g., when rolling back to first message)
@@ -538,9 +566,7 @@ export default function ChatInput({
 				// - doesn't get treated as a "paste" placeholder
 				// - rebuilds Skill injection blocks back into [Skill:id] placeholders
 				if (text) {
-					restoreTextWithSkillPlaceholders(buffer, text, {
-						usePastePlaceholderForLongPlainText: true,
-					});
+					restoreTextWithSkillPlaceholders(buffer, text);
 				}
 			} else {
 				// Split text by image placeholders and reconstruct with actual images
@@ -553,9 +579,7 @@ export default function ChatInput({
 					// Insert text part
 					const part = parts[i];
 					if (part) {
-						restoreTextWithSkillPlaceholders(buffer, part, {
-							usePastePlaceholderForLongPlainText: true,
-						});
+						restoreTextWithSkillPlaceholders(buffer, part);
 					}
 
 					// Insert image after this text part (if exists)
@@ -762,6 +786,7 @@ export default function ChatInput({
 			// Use visual lines for proper wrapping and multi-line support
 			const visualLines = buffer.viewportVisualLines;
 			const [cursorRow, cursorCol] = buffer.visualCursor;
+
 			const renderedLines: React.ReactNode[] = [];
 
 			for (let i = 0; i < visualLines.length; i++) {
@@ -1032,6 +1057,15 @@ export default function ChatInput({
 							visible={showProfilePicker}
 							maxHeight={5}
 							searchQuery={profileSearchQuery}
+						/>
+					</Suspense>
+					<Suspense fallback={null}>
+						<RunningAgentsPanel
+							agents={runningAgents}
+							selectedIndex={runningAgentsSelectedIndex}
+							selectedAgents={selectedRunningAgents}
+							visible={showRunningAgentsPicker}
+							maxHeight={5}
 						/>
 					</Suspense>
 				</>

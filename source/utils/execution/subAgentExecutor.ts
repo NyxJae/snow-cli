@@ -22,7 +22,6 @@ import {sessionManager} from '../session/sessionManager.js';
 import {unifiedHooksExecutor} from './unifiedHooksExecutor.js';
 import {checkYoloPermission} from './yoloPermissionChecker.js';
 import type {ConfirmationResult} from '../../ui/components/tools/ToolConfirmation.js';
-import type {PendingMessage} from '../../mcp/subagent.js';
 import type {MCPTool} from './mcpToolsManager.js';
 import type {ChatMessage} from '../../api/types.js';
 import {formatUsefulInfoContext} from '../core/usefulInfoPreprocessor.js';
@@ -57,6 +56,8 @@ export interface SubAgentResult {
 	result: string;
 	error?: string;
 	usage?: TokenUsage;
+	/** User messages injected from the main session during sub-agent execution */
+	injectedUserMessages?: string[];
 }
 
 export interface ToolConfirmationCallback {
@@ -184,12 +185,8 @@ export async function executeSubAgent(
 	yoloMode?: boolean,
 	addToAlwaysApproved?: AddToAlwaysApprovedCallback,
 	requestUserQuestion?: UserQuestionCallback,
-	getPendingMessages?: () => PendingMessage[],
-	clearPendingMessages?: () => void,
+	instanceId?: string,
 ): Promise<SubAgentResult> {
-	// 待处理消息回调函数，在工具调用完成后使用
-	void getPendingMessages;
-	void clearPendingMessages;
 	// 保存主代理readFolders状态，子代理以空的readFolders状态开始
 	const mainAgentReadFolders = getReadFolders();
 	clearReadFolders();
@@ -517,6 +514,8 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 		let hasError = false;
 		let errorMessage = '';
 		let totalUsage: TokenUsage | undefined;
+		// Track all user messages injected from the main session
+		const collectedInjectedMessages: string[] = [];
 
 		// 此子代理执行的本地会话批准工具列表
 		// 确保执行期间批准的工具立即被识别
@@ -548,7 +547,39 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 				};
 			}
 
-			// 获取当前会话
+			// Inject any pending user messages from the main flow.
+			// The main flow enqueues messages via runningSubAgentTracker.enqueueMessage()
+			// when the user directs a pending message to this specific sub-agent instance.
+			if (instanceId) {
+				const {runningSubAgentTracker} = await import(
+					'./runningSubAgentTracker.js'
+				);
+				const injectedMessages =
+					runningSubAgentTracker.dequeueMessages(instanceId);
+				for (const injectedMsg of injectedMessages) {
+					// Collect for inclusion in the final result
+					collectedInjectedMessages.push(injectedMsg);
+
+					messages.push({
+						role: 'user',
+						content: `[User message from main session]\\n${injectedMsg}`,
+					});
+
+					// Notify UI about the injected message
+					if (onMessage) {
+						onMessage({
+							type: 'sub_agent_message',
+							agentId: agent.id,
+							agentName: agent.name,
+							message: {
+								type: 'user_injected',
+								content: injectedMsg,
+							},
+						});
+					}
+				}
+			}
+
 			const currentSession = sessionManager.getCurrentSession();
 			messages = await refreshSubAgentSpecialUserMessages(
 				messages,
@@ -814,50 +845,8 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 					error: errorMessage,
 				};
 			}
-			// 没有工具调用时,优先处理待发送消息
+			// 没有工具调用时,执行 onSubAgentComplete 钩子（在子代理任务完成前）
 			if (toolCalls.length === 0) {
-				if (getPendingMessages && clearPendingMessages) {
-					const pendingMessages = getPendingMessages();
-					if (pendingMessages.length > 0) {
-						const combinedMessage = pendingMessages
-							.map(m => m.text)
-							.join('\n\n');
-						const allPendingImages = pendingMessages
-							.flatMap(m => m.images || [])
-							.map(img => ({
-								type: 'image' as const,
-								data: img.data,
-								mimeType: img.mimeType,
-							}));
-						messages.push({
-							role: 'user',
-							content: combinedMessage,
-							...(allPendingImages.length > 0 && {
-								images: allPendingImages,
-							}),
-						});
-
-						if (onMessage) {
-							onMessage({
-								type: 'sub_agent_message',
-								agentId: agent.id,
-								agentName: agent.name,
-								message: {
-									type: 'content',
-									content: combinedMessage,
-									role: 'user',
-									...(allPendingImages.length > 0 && {
-										images: allPendingImages,
-									}),
-								},
-							});
-						}
-
-						clearPendingMessages();
-						continue;
-					}
-				}
-				// 执行 onSubAgentComplete 钩子（在子代理任务完成前）
 				try {
 					const hookResult = await unifiedHooksExecutor.executeHooks(
 						'onSubAgentComplete',
@@ -1218,52 +1207,6 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 
 			// 将工具结果添加到对话
 			messages.push(...toolResults);
-			// 检查并处理用户待发送消息
-			if (getPendingMessages && clearPendingMessages) {
-				const pendingMessages = getPendingMessages();
-				if (pendingMessages.length > 0) {
-					// Merge multiple pending messages with \n\n separator
-					const combinedMessage = pendingMessages.map(m => m.text).join('\n\n');
-
-					// 收集所有待发送消息中的所有图片
-					const allPendingImages = pendingMessages
-						.flatMap(m => m.images || [])
-						.map(img => ({
-							type: 'image' as const,
-							data: img.data,
-							mimeType: img.mimeType,
-						}));
-
-					// Insert user message to conversation context (without any prefix or mark)
-					messages.push({
-						role: 'user',
-						content: combinedMessage,
-						...(allPendingImages.length > 0 && {
-							images: allPendingImages,
-						}),
-					});
-
-					// Notify UI to display user message in sub-agent conversation
-					if (onMessage) {
-						onMessage({
-							type: 'sub_agent_message',
-							agentId: agent.id,
-							agentName: agent.name,
-							message: {
-								type: 'content',
-								content: combinedMessage,
-								role: 'user',
-								...(allPendingImages.length > 0 && {
-									images: allPendingImages,
-								}),
-							},
-						});
-					}
-
-					// Clear the pending messages queue immediately
-					clearPendingMessages();
-				}
-			}
 
 			// Continue to next iteration if there were tool calls
 			// The loop will continue until no more tool calls
@@ -1273,6 +1216,10 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 			success: true,
 			result: finalResponse,
 			usage: totalUsage,
+			injectedUserMessages:
+				collectedInjectedMessages.length > 0
+					? collectedInjectedMessages
+					: undefined,
 		};
 	} catch (error) {
 		// 移除空回复错误处理，因为现在由子代理内部处理
