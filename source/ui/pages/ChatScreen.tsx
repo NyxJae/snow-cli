@@ -821,7 +821,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		handleReindexCodebase,
 		handleToggleCodebase,
 		handleReviewCommitConfirm,
-		getSubAgentExecutionTarget,
 	} = useChatLogic({
 		messages,
 		setMessages,
@@ -1370,10 +1369,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			/>
 
 			<Box paddingX={1} width={terminalWidth}>
-				<PendingMessages
-					pendingMessages={pendingMessages}
-					{...getSubAgentExecutionTarget()}
-				/>
+				<PendingMessages pendingMessages={pendingMessages} />
 			</Box>
 
 			{/* Display Hook error in chat area */}

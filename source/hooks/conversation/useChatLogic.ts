@@ -183,7 +183,6 @@ export function useChatLogic(props: UseChatLogicProps) {
 		isToolAutoApproved,
 
 		setSubAgentRunState,
-		subAgentRunState,
 		addMultipleToAlwaysApproved,
 		setRestoreInputContent,
 		setIsCompressing,
@@ -215,19 +214,6 @@ export function useChatLogic(props: UseChatLogicProps) {
 				hideUserMessage?: boolean,
 			) => Promise<void>
 		>();
-
-	const getSubAgentExecutionTarget = () => {
-		if (subAgentRunState && !subAgentRunState.parallel) {
-			return {
-				expectedTarget: 'subagent' as const,
-				expectedTargetName: subAgentRunState.agentName,
-			};
-		}
-		return {
-			expectedTarget: 'main' as const,
-			expectedTargetName: undefined,
-		};
-	};
 
 	const handleMessageSubmit = async (
 		message: string,
@@ -1626,6 +1612,5 @@ Please provide your review in a clear, structured format.`;
 		handleReindexCodebase,
 		handleToggleCodebase,
 		handleReviewCommitConfirm,
-		getSubAgentExecutionTarget,
 	};
 }

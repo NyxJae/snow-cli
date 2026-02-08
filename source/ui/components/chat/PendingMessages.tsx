@@ -10,21 +10,11 @@ interface PendingMessage {
 
 interface Props {
 	pendingMessages: PendingMessage[];
-	expectedTarget?: 'main' | 'subagent';
-	expectedTargetName?: string;
 }
 
-export default function PendingMessages({
-	pendingMessages,
-	expectedTarget = 'main',
-	expectedTargetName,
-}: Props) {
+export default function PendingMessages({pendingMessages}: Props) {
 	const {theme} = useTheme();
 	const {t} = useI18n();
-	const targetLabel =
-		expectedTarget === 'subagent'
-			? `子代理${expectedTargetName ? ` (${expectedTargetName})` : ''}`
-			: '主代理';
 
 	if (pendingMessages.length === 0) {
 		return null;
@@ -39,9 +29,6 @@ export default function PendingMessages({
 		>
 			<Text color={theme.colors.warning} bold>
 				{t.chatScreen.pendingMessagesTitle} ({pendingMessages.length})
-			</Text>
-			<Text color={theme.colors.warning} dimColor>
-				预计目标: {targetLabel}
 			</Text>
 			{pendingMessages.map((message, index) => (
 				<Box key={index} marginLeft={1} marginY={0} flexDirection="column">

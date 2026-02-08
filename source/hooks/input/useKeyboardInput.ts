@@ -1242,11 +1242,11 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				) {
 					const selectedCommand = filteredCommands[commandSelectedIndex];
 					if (selectedCommand) {
-						// Replace input with "/" + selected command name
+						// 将当前输入替换为选中的命令名,方便用户继续补全参数后回车执行.
 						buffer.setText('/' + selectedCommand.name);
-						// Move cursor to end
+						// 光标移到末尾,保持与普通输入体验一致.
 						buffer.setCursorPosition(buffer.text.length);
-						// Close command panel
+						// 选中后立即关闭面板,避免后续按键被面板继续拦截.
 						setShowCommands(false);
 						setCommandSelectedIndex(0);
 						triggerUpdate();
@@ -1256,7 +1256,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// Enter - select command
+			// Enter: 选择并执行命令(而不是插入文本).
 			if (key.return) {
 				if (
 					filteredCommands.length > 0 &&
@@ -1264,7 +1264,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				) {
 					const selectedCommand = filteredCommands[commandSelectedIndex];
 					if (selectedCommand) {
-						// Special handling for todo- command
+						// todo-,agent-,skills- 是带交互选择器的复合命令,这里转交给对应 picker 处理.
 						if (selectedCommand.name === 'todo-') {
 							buffer.setText('');
 							setShowCommands(false);
@@ -1273,7 +1273,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 							triggerUpdate();
 							return;
 						}
-						// Special handling for agent- command
 						if (selectedCommand.name === 'agent-') {
 							buffer.setText('');
 							setShowCommands(false);
@@ -1282,7 +1281,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 							triggerUpdate();
 							return;
 						}
-						// Special handling for skills- command
 						if (selectedCommand.name === 'skills-') {
 							buffer.setText('');
 							setShowCommands(false);
@@ -1291,15 +1289,15 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 							triggerUpdate();
 							return;
 						}
-						// Block command execution if AI is processing
-						// Only block if it's a valid command (not a path like /usr/bin)
+						// AI 正在处理时,不执行有效命令,避免并发状态下触发重复的会话操作.
+						// 但类似 /usr/bin 这种路径输入不应被当作命令拦截.
 						if (isProcessing && getAllCommands) {
 							const allCommands = getAllCommands();
 							const isValidCommand = allCommands.some(
 								cmd => cmd.name === selectedCommand.name,
 							);
 							if (isValidCommand) {
-								// Don't execute command, just close the panel
+								// 仅关闭面板并清空缓冲,避免用户误以为命令已执行.
 								buffer.setText('');
 								setShowCommands(false);
 								setCommandSelectedIndex(0);
@@ -1308,16 +1306,15 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 							}
 						}
 
-						// Execute command instead of inserting text
 						// 用户可能输入了命令参数,这里解析并透传,以支持从命令面板执行带参数的命令.
 						const fullText = buffer.getFullText();
 						const commandMatch = fullText.match(/^\/([^\s]+)(?:\s+(.+))?$/);
 						const commandArgs = commandMatch?.[2];
 						executeCommand(selectedCommand.name, commandArgs).then(result => {
-							// Record command usage for frequency-based sorting
+							// 记录使用频次,用于后续按常用程度排序.
 							commandUsageManager.recordUsage(selectedCommand.name);
 							if (onCommand) {
-								// Ensure onCommand errors are caught
+								// 捕获 onCommand 异常,避免未处理 Promise 影响输入循环.
 								Promise.resolve(onCommand(selectedCommand.name, result)).catch(
 									error => {
 										console.error('Command execution error:', error);
@@ -1332,11 +1329,11 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 						return;
 					}
 				}
-				// If no commands available, fall through to normal Enter handling
+				// 没有可选命令时,继续走输入框默认的回车逻辑.
 			}
 		}
 
-		// Ctrl+Enter - Insert newline
+		// Ctrl+Enter: 插入换行,用于在输入框内编辑多行内容.
 		if (key.ctrl && key.return) {
 			flushPendingInput();
 			buffer.insert('\n');
