@@ -168,6 +168,19 @@ export function resetOpenAIClient(): void {
 	// No-op: kept for backward compatibility
 }
 
+function toResponseImageUrl(image: {data: string; mimeType?: string}): string {
+	const data = image.data?.trim() || '';
+	if (!data) return '';
+
+	// Keep remote URLs and existing data URLs unchanged.
+	if (/^https?:\/\//i.test(data) || /^data:/i.test(data)) {
+		return data;
+	}
+
+	const mimeType = image.mimeType?.trim() || 'image/png';
+	return `data:${mimeType};base64,${data}`;
+}
+
 function convertToResponseInput(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
@@ -236,17 +249,10 @@ function convertToResponseInput(
 			if (msg.images && msg.images.length > 0) {
 				for (const image of msg.images) {
 					// Responses API 的 input_image.image_url 必须是 http(s) URL 或 data URL.
-					// 但当前项目里 image.data 有时会是“裸 base64”(不带 data: 前缀),会触发 OpenAI 400.
-					// 临时修复等上游修正后跟从上游方案
-					const raw = image.data;
-					const imageUrl =
-						raw.startsWith('data:') || /^https?:\/\//i.test(raw)
-							? raw
-							: `data:${image.mimeType || 'image/png'};base64,${raw}`;
-
+					// 使用 toResponseImageUrl 函数处理图片 URL
 					contentParts.push({
 						type: 'input_image',
-						image_url: imageUrl,
+						image_url: toResponseImageUrl(image),
 					});
 				}
 			}
@@ -325,14 +331,9 @@ function convertToResponseInput(
 					text: `[Tool Result Image] The tool "${msg.tool_call_id}" returned the following image(s):`,
 				});
 				for (const image of msg.images) {
-					const raw = image.data;
-					const imageUrl =
-						raw.startsWith('data:') || /^https?:\/\//i.test(raw)
-							? raw
-							: `data:${image.mimeType || 'image/png'};base64,${raw}`;
 					imageContentParts.push({
 						type: 'input_image',
-						image_url: imageUrl,
+						image_url: toResponseImageUrl(image),
 					});
 				}
 				result.push({
