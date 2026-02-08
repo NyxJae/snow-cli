@@ -300,40 +300,45 @@ function convertToResponseInput(
 
 		// Tool 消息：转换为 function_call_output
 		if (msg.role === 'tool' && msg.tool_call_id) {
-			// Handle multimodal tool results with images
+			// 处理含图片的多模态工具结果
 			if (msg.images && msg.images.length > 0) {
-				// For Responses API, we need to include images in a structured way
-				// The output can be an array of content items
-				const outputContent: any[] = [];
+				// [TEMP_FIX] 中转/代理 API 不支持 function_call_output.output 多模态数组
+				// 策略: output 放纯文本, 图片通过追加 user message(input_image) 传递
+				const timestamp = formatTimestamp(msg.timestamp);
+				const textOutput = msg.content
+					? timestamp
+						? `[${timestamp}] ${msg.content}`
+						: msg.content
+					: msg.content;
 
-				// Add text content
-				if (msg.content) {
-					const timestamp = formatTimestamp(msg.timestamp);
-					outputContent.push({
-						type: 'input_text',
-						text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
-					});
-				}
+				// 1. Push function_call_output with text-only output
+				result.push({
+					type: 'function_call_output',
+					call_id: msg.tool_call_id,
+					output: textOutput || '[Tool returned image(s)]',
+				});
 
-				// Add images (Responses API: input_image.image_url must be http(s) URL or data URL)
-				// 临时修复等上游修正后跟从上游方案
+				// 2. Append a user message with images so the model can see them
+				const imageContentParts: any[] = [];
+				imageContentParts.push({
+					type: 'input_text',
+					text: `[Tool Result Image] The tool "${msg.tool_call_id}" returned the following image(s):`,
+				});
 				for (const image of msg.images) {
 					const raw = image.data;
 					const imageUrl =
 						raw.startsWith('data:') || /^https?:\/\//i.test(raw)
 							? raw
 							: `data:${image.mimeType || 'image/png'};base64,${raw}`;
-
-					outputContent.push({
+					imageContentParts.push({
 						type: 'input_image',
 						image_url: imageUrl,
 					});
 				}
-
 				result.push({
-					type: 'function_call_output',
-					call_id: msg.tool_call_id,
-					output: outputContent,
+					type: 'message',
+					role: 'user',
+					content: imageContentParts,
 				});
 			} else {
 				const timestamp = formatTimestamp(msg.timestamp);

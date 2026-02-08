@@ -761,7 +761,7 @@ export class FilesystemMCPService {
 					return {
 						content: [
 							{
-								type: 'text',
+								type: 'text' as const,
 								text: `🖼️  Image: ${filePath} (${imageContent.mimeType})`,
 							},
 							imageContent,
@@ -779,7 +779,7 @@ export class FilesystemMCPService {
 					return {
 						content: [
 							{
-								type: 'text',
+								type: 'text' as const,
 								text: `📄 ${docContent.fileType.toUpperCase()} Document: ${filePath}`,
 							},
 							docContent,

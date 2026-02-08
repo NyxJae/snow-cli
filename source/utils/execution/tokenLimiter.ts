@@ -131,18 +131,40 @@ async function truncateToTokenLimit(
 }
 
 /**
- * 包装工具结果，在返回前进行 token 限制检查
- * 如果超限，会截断内容并附加提示信息
+ * 检测结果是否包含多模态内容(图片/文档)
+ * 含 base64 等二进制数据的结果不能被截断, 否则下游 extractMultimodalContent 无法提取图片
+ */
+function isMultimodalResult(result: any): boolean {
+	if (!result || typeof result !== 'object') return false;
+	const content = result.content;
+	if (!Array.isArray(content)) return false;
+	return content.some(
+		(item: any) =>
+			item &&
+			typeof item === 'object' &&
+			(item.type === 'image' || item.type === 'document'),
+	);
+}
+
+/**
+ * 包装工具结果, 在返回前进行 token 限制检查
+ * 如果超限, 会截断内容并附加提示信息
+ * 多模态结果(图片/文档)跳过 token 截断, 保持数据结构完整
  * @param result - 工具的原始返回结果
- * @param toolName - 工具名称（用于提示）
- * @param maxTokens - 最大允许的 token 数量，默认从配置读取
- * @returns 处理后的结果（如果超限则截断并附加提示）
+ * @param toolName - 工具名称(用于提示)
+ * @param maxTokens - 最大允许的 token 数量, 默认从配置读取
+ * @returns 处理后的结果(如果超限则截断并附加提示)
  */
 export async function wrapToolResultWithTokenLimit(
 	result: any,
 	toolName: string,
 	maxTokens?: number,
 ): Promise<any> {
+	// 多模态结果(图片/文档)跳过截断, 截断会破坏 base64 数据导致图片丢失
+	if (isMultimodalResult(result)) {
+		return result;
+	}
+
 	const limit = maxTokens ?? getToolResultTokenLimit();
 	const validation = await validateTokenLimit(result, limit);
 

@@ -120,7 +120,8 @@ export interface UserInteractionCallback {
 }
 
 /**
- * Check if a value is a multimodal content array
+ * 检测值是否为多模态内容数组
+ * 支持 text/image/document 三种多模态内容类型
  */
 function isMultimodalContent(value: any): value is MultimodalContent {
 	return (
@@ -130,13 +131,15 @@ function isMultimodalContent(value: any): value is MultimodalContent {
 			(item: any) =>
 				item &&
 				typeof item === 'object' &&
-				(item.type === 'text' || item.type === 'image'),
+				(item.type === 'text' ||
+					item.type === 'image' ||
+					item.type === 'document'),
 		)
 	);
 }
 
 /**
- * Extract images and text content from a result that may be multimodal
+ * 从可能包含多模态数据的工具结果中提取图片和文本内容
  */
 function extractMultimodalContent(result: any): {
 	textContent: string;
