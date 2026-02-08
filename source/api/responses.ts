@@ -235,9 +235,18 @@ function convertToResponseInput(
 			// 添加图片内容
 			if (msg.images && msg.images.length > 0) {
 				for (const image of msg.images) {
+					// Responses API 的 input_image.image_url 必须是 http(s) URL 或 data URL.
+					// 但当前项目里 image.data 有时会是“裸 base64”(不带 data: 前缀),会触发 OpenAI 400.
+					// 临时修复等上游修正后跟从上游方案
+					const raw = image.data;
+					const imageUrl =
+						raw.startsWith('data:') || /^https?:\/\//i.test(raw)
+							? raw
+							: `data:${image.mimeType || 'image/png'};base64,${raw}`;
+
 					contentParts.push({
 						type: 'input_image',
-						image_url: image.data,
+						image_url: imageUrl,
 					});
 				}
 			}
@@ -306,11 +315,18 @@ function convertToResponseInput(
 					});
 				}
 
-				// Add images as base64 data URLs (Responses API format)
+				// Add images (Responses API: input_image.image_url must be http(s) URL or data URL)
+				// 临时修复等上游修正后跟从上游方案
 				for (const image of msg.images) {
+					const raw = image.data;
+					const imageUrl =
+						raw.startsWith('data:') || /^https?:\/\//i.test(raw)
+							? raw
+							: `data:${image.mimeType || 'image/png'};base64,${raw}`;
+
 					outputContent.push({
 						type: 'input_image',
-						image_url: `data:${image.mimeType};base64,${image.data}`,
+						image_url: imageUrl,
 					});
 				}
 
