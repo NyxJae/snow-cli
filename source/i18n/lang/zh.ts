@@ -1259,7 +1259,7 @@ export const zh: TranslationKeys = {
 	undoManager: {
 		undoFailedEmpty: '❌ 撤销失败。没有可撤销的编辑操作。',
 		undoSuccess:
-			'✅ 撤销成功。已撤销 {steps} 次编辑操作。如果想修正错误编辑,建议使用 filesystem-edit_search 进行单次编辑并提供更多行的辅助编辑上下文.',
+			'✅ 撤销成功。已撤销 {steps} 次编辑操作,建议使用 filesystem-edit_search 进行单次少量精确编辑并提供更多行的辅助编辑上下文.别一次性改一大片',
 		undoFailed: '❌ 撤销失败。{error}',
 		unknownError: '未知错误',
 		invalidStepsParameter:

@@ -2481,7 +2481,7 @@ export const mcpTools = [
 	{
 		name: 'filesystem-undo',
 		description:
-			'撤销上一个编辑工具(filesystem-edit 或 filesystem-edit_search)的修改.每次撤销恢复整个文件到编辑前的状态.可以多次撤销,类似栈结构(后进先出).\n\n⚠️ 重要提示:\n1. 撤销成功后,必须使用 filesystem-read 重读文件,确认文件现状后才能继续编辑.\n2. 批量编辑多个文件被视为一个原子操作,撤销时会恢复所有被编辑的文件.3. MUST NOT 使用命令还原文件,而是使用此工具进行撤销你的编辑.\n\n适用范围:\n- 仅适用于 filesystem-edit 和 filesystem-edit_search 的撤销\n- 不适用于 filesystem-create 或用户手动编辑等其他情况\n\n参数:\n- steps: 撤销步数(可选,默认 1).表示撤销最近的多少次编辑操作.注意!当你发现你编辑文件出错时,不要尝试使用编辑工具再去修复文件,而是应该使用此工具进行撤销你出错的编辑.尽可能在正确的文件上应用正确的编辑,防止错误累积.撤回重读文件后,建议使用 filesystem-edit_search 进行单次编辑并提供更多行的辅助编辑上下文.',
+			'撤销上一个编辑工具(filesystem-edit 或 filesystem-edit_search)的修改.每次撤销恢复整个文件到编辑前的状态.可以多次撤销,类似栈结构(后进先出).\n\n⚠️ 重要提示:\n1. 撤销成功后,必须使用 filesystem-read 重读文件,确认文件现状后才能继续编辑.\n2. 批量编辑多个文件被视为一个原子操作,撤销时会恢复所有被编辑的文件.3. MUST NOT 使用命令还原文件,而是使用此工具进行撤销你的编辑.\n\n适用范围:\n- 仅适用于 filesystem-edit 和 filesystem-edit_search 的撤销\n- 不适用于 filesystem-create 或用户手动编辑等其他情况\n\n参数:\n- steps: 撤销步数(可选,默认 1).表示撤销最近的多少次编辑操作.注意!当你发现你编辑文件出错时,不要尝试使用编辑工具再去修复文件,而是应该使用此工具进行撤销你出错的编辑.尽可能在正确的文件上应用正确的编辑,防止错误累积.撤回重读文件后,建议使用 filesystem-edit_search 进行单次少量精确编辑并提供更多行的辅助编辑上下文,别一次性改一大片.',
 		inputSchema: {
 			type: 'object',
 			properties: {
