@@ -188,10 +188,14 @@ function convertToOpenAIMessages(
 
 				// 添加 base64 编码的图片数据
 				for (const image of msg.images) {
+					const imageUrl =
+						/^data:/i.test(image.data) || /^https?:\/\//i.test(image.data)
+							? image.data
+							: `data:${image.mimeType};base64,${image.data}`;
 					content.push({
 						type: 'image_url',
 						image_url: {
-							url: `data:${image.mimeType};base64,${image.data}`,
+							url: imageUrl,
 						},
 					});
 				}

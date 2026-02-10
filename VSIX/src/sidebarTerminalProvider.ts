@@ -7,6 +7,8 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 	private view?: vscode.WebviewView;
 	private ptyManager: PtyManager;
 	private startupCommand: string;
+	private webviewReady = false;
+	private restartTimer: NodeJS.Timeout | undefined;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -14,6 +16,16 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 	) {
 		this.ptyManager = new PtyManager();
 		this.startupCommand = startupCommand ?? 'snow';
+	}
+
+	private getWorkspaceFolderForActiveEditor(): string | undefined {
+		const editor = vscode.window.activeTextEditor;
+		const folder = editor
+			? vscode.workspace.getWorkspaceFolder(editor.document.uri)
+			: undefined;
+		return (
+			folder?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+		);
 	}
 
 	/**
@@ -29,6 +41,7 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 		_token: vscode.CancellationToken,
 	): void {
 		this.view = webviewView;
+		this.webviewReady = false;
 
 		webviewView.webview.options = {
 			enableScripts: true,
@@ -64,7 +77,18 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 			this.handleMessage(message);
 		});
 
+		webviewView.onDidChangeVisibility(() => {
+			if (webviewView.visible) {
+				this.scheduleRestart();
+			}
+		});
+
 		webviewView.onDidDispose(() => {
+			this.webviewReady = false;
+			if (this.restartTimer) {
+				clearTimeout(this.restartTimer);
+				this.restartTimer = undefined;
+			}
 			this.ptyManager.kill();
 		});
 	}
@@ -77,7 +101,8 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 	}): void {
 		switch (message.type) {
 			case 'ready':
-				this.startTerminal();
+				this.webviewReady = true;
+				this.scheduleRestart();
 				break;
 			case 'input':
 				if (message.data) {
@@ -93,7 +118,7 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 	}
 
 	private startTerminal(): void {
-		const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		const workspaceFolder = this.getWorkspaceFolderForActiveEditor();
 		const cwd = workspaceFolder || process.cwd();
 
 		this.ptyManager.start(
@@ -108,6 +133,27 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 			},
 			this.startupCommand,
 		);
+	}
+
+	private scheduleRestart(): void {
+		if (!this.view) return;
+		if (!this.webviewReady) {
+			return;
+		}
+
+		if (this.restartTimer) {
+			clearTimeout(this.restartTimer);
+		}
+
+		this.restartTimer = setTimeout(() => {
+			this.restartTimer = undefined;
+			this.restartTerminal();
+		}, 50);
+	}
+
+	private restartTerminal(): void {
+		this.ptyManager.kill();
+		this.startTerminal();
 	}
 
 	private getHtmlForWebview(webview: vscode.Webview): string {
@@ -262,11 +308,24 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
         vscode.postMessage({ type: 'input', data: data });
       });
 
+      // Prevent duplicate paste handling between custom shortcut logic and xterm internals
+      let pasteLock = false;
+      const PASTE_LOCK_TIMEOUT = 80;
+
       // 使用 xterm.js 的自定义键盘事件处理器来处理 Ctrl+V 粘贴
       term.attachCustomKeyEventHandler((e) => {
+        if (e.type !== 'keydown') {
+          return true;
+        }
+
         // 检测粘贴快捷键: Ctrl+V (Windows/Linux) 或 Cmd+V (macOS)
-        const isPasteShortcut = (e.ctrlKey || e.metaKey) && e.key === 'v';
+        const isPasteShortcut = (e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V');
         if (isPasteShortcut) {
+          pasteLock = true;
+          setTimeout(() => {
+            pasteLock = false;
+          }, PASTE_LOCK_TIMEOUT);
+
           e.preventDefault();
           navigator.clipboard.readText().then(text => {
             if (text) {
@@ -277,6 +336,14 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
         }
         return true; // 其他按键让 xterm.js 正常处理
       });
+
+      // Capture native paste to avoid duplicate input when shortcut handler already sent content
+      container.addEventListener('paste', (e) => {
+        if (pasteLock) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
 
       // 选中文本时自动复制到剪贴板
       term.onSelectionChange(() => {

@@ -110,12 +110,6 @@ export type ConversationHandlerOptions = {
 	getCurrentContextPercentage?: () => number; // Get current context percentage from ChatInput
 	setCurrentModel?: React.Dispatch<React.SetStateAction<string | null>>; // Set current model name for display
 	setIsStopping?: React.Dispatch<React.SetStateAction<boolean>>; // Control stopping state
-	setSubAgentRunState?: React.Dispatch<
-		React.SetStateAction<{
-			parallel: boolean;
-			agentName?: string;
-		} | null>
-	>;
 };
 
 /**
@@ -847,25 +841,12 @@ async function executeWithInternalRetry(
 				}
 
 				// Execute approved tools with sub-agent message callback and terminal output callback
-				// Track sub-agent content for token counting
-				const subAgentTools = approvedTools.filter(toolCall =>
-					toolCall.function.name.startsWith('subagent-'),
-				);
-				if (options.setSubAgentRunState) {
-					if (subAgentTools.length === 0) {
-						options.setSubAgentRunState(null);
-					} else {
-						const singleAgentName =
-							subAgentTools.length === 1
-								? subAgentTools[0]?.function.name.substring('subagent-'.length)
-								: undefined;
-						options.setSubAgentRunState({
-							parallel: subAgentTools.length > 1,
-							agentName: singleAgentName,
-						});
-					}
-				}
+				// Track sub-agent content for token counting and throttle UI updates
 				let subAgentContentAccumulator = '';
+				let subAgentContentBuffer = '';
+				let subAgentTokenCount = 0;
+				let lastSubAgentFlushTime = 0;
+				const SUB_AGENT_FLUSH_INTERVAL = 100;
 				const toolResults = await executeToolCalls(
 					approvedTools,
 					controller.signal,
@@ -1183,116 +1164,74 @@ async function executeWithInternalRetry(
 									m.role === 'subagent' &&
 									m.subAgent?.agentId === subAgentMessage.agentId &&
 									!m.subAgent?.isComplete &&
+									m.streaming === true &&
 									!m.pendingToolIds, // Don't match pending tool messages
 							);
 
 							// Extract content from the sub-agent message
-							let content = '';
-							let messageRole = subAgentMessage.message.role || 'assistant'; // Default to assistant if role not specified
+							let contentToApply = '';
 							if (subAgentMessage.message.type === 'content') {
-								content = subAgentMessage.message.content;
-								// Update token count for sub-agent content
-								subAgentContentAccumulator += content;
+								const incomingContent = subAgentMessage.message.content;
+								subAgentContentAccumulator += incomingContent;
+								subAgentContentBuffer += incomingContent;
 								try {
-									const tokens = encoder.encode(subAgentContentAccumulator);
-									setStreamTokenCount(tokens.length);
+									const deltaTokens = encoder.encode(incomingContent);
+									subAgentTokenCount += deltaTokens.length;
 								} catch (e) {
-									// Ignore encoding errors
+									// Ignore encoding errors and continue streaming updates
 								}
-							} else if (
-								subAgentMessage.message.type === 'done' ||
-								subAgentMessage.message.isResult
-							) {
-								// Handle completion message or result message
-								if (subAgentMessage.message.isResult) {
-									// This is a sub-agent result message - add as subagent-result type
-									const resultData = subAgentMessage.message;
-									return [
-										...prev.filter(
-											m =>
-												m.role !== 'subagent' ||
-												m.subAgent?.agentId !== subAgentMessage.agentId ||
-												!m.subAgent?.isComplete,
-										),
-										{
-											role: 'subagent-result' as const,
-											content: resultData.content || '',
-											streaming: false,
-											subAgentResult: {
-												agentType: resultData.agentType || 'general',
-												originalContent: resultData.originalContent,
-												timestamp: resultData.timestamp || Date.now(),
-												executionTime: resultData.executionTime,
-												status: resultData.status || 'success',
-											},
-										},
-									];
+								const now = Date.now();
+								if (now - lastSubAgentFlushTime >= SUB_AGENT_FLUSH_INTERVAL) {
+									setStreamTokenCount(subAgentTokenCount);
+									lastSubAgentFlushTime = now;
+									contentToApply = subAgentContentBuffer;
+									subAgentContentBuffer = '';
 								} else {
-									// Regular done message - mark as complete and reset token counter
-									subAgentContentAccumulator = '';
-									setStreamTokenCount(0);
-									if (existingIndex !== -1) {
-										const updated = [...prev];
-										const existing = updated[existingIndex];
-										if (existing && existing.subAgent) {
-											updated[existingIndex] = {
-												...existing,
-												subAgent: {
-													...existing.subAgent,
-													isComplete: true,
-												},
-											};
-										}
-										return updated;
-									}
 									return prev;
 								}
+							} else if (subAgentMessage.message.type === 'done') {
+								contentToApply = subAgentContentBuffer;
+								subAgentContentAccumulator = '';
+								subAgentContentBuffer = '';
+								subAgentTokenCount = 0;
+								lastSubAgentFlushTime = 0;
+								setStreamTokenCount(0);
+								if (existingIndex !== -1) {
+									const updated = [...prev];
+									const existing = updated[existingIndex];
+									if (existing && existing.subAgent) {
+										updated[existingIndex] = {
+											...existing,
+											content: (existing.content || '') + contentToApply,
+											streaming: false,
+											subAgent: {
+												...existing.subAgent,
+												isComplete: true,
+											},
+										};
+									}
+									return updated;
+								}
+								// Keep original behavior: do not create a new final sub-agent reply on done.
+								return prev;
 							}
 
-							if (existingIndex !== -1) {
+							if (existingIndex !== -1 && contentToApply) {
 								// Update existing message
 								const updated = [...prev];
 								const existing = updated[existingIndex];
 								if (existing) {
 									updated[existingIndex] = {
 										...existing,
-										content: (existing.content || '') + content,
+										content: (existing.content || '') + contentToApply,
 										streaming: true,
 									};
 								}
 								return updated;
-							} else if (content) {
-								// Add new message based on role
-								if (messageRole === 'user') {
-									// 子代理插嘴用户消息,仅用于展示,不进入 ESC 历史回退
-									return [
-										...prev,
-										{
-											role: 'user' as const,
-											content,
-											streaming: false,
-											subAgentUserMessage: true,
-											...(subAgentMessage.message.images && {
-												images: subAgentMessage.message.images,
-											}),
-										},
-									];
-								} else {
-									// Assistant message - display as subagent role
-									return [
-										...prev,
-										{
-											role: 'subagent' as const,
-											content,
-											streaming: true,
-											subAgent: {
-												agentId: subAgentMessage.agentId,
-												agentName: subAgentMessage.agentName,
-												isComplete: false,
-											},
-										},
-									];
-								}
+							} else if (contentToApply) {
+								// Do not create text-only sub-agent message from content chunks.
+								// Sub-agent UI messages are created by tool_calls/tool_result flows only.
+								return prev;
 							}
 
 							return prev;
@@ -1323,7 +1262,6 @@ async function executeWithInternalRetry(
 						);
 					},
 				);
-				options.setSubAgentRunState?.(null);
 
 				// Check if aborted during tool execution
 				if (controller.signal.aborted) {

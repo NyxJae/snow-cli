@@ -82,10 +82,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
 	>([]);
 
-	const [subAgentRunState, setSubAgentRunState] = useState<{
-		parallel: boolean;
-		agentName?: string;
-	} | null>(null);
 	const pendingMessagesRef = useRef<
 		Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
 	>([]);
@@ -843,8 +839,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setCompressionError,
 		currentContextPercentageRef,
 		userInterruptedRef,
-		setSubAgentRunState,
-		subAgentRunState,
 		pendingMessagesRef,
 
 		setBashSensitiveCommand,

@@ -80,18 +80,6 @@ interface UseChatLogicProps {
 	requestUserQuestion: any;
 	isToolAutoApproved: any;
 	addMultipleToAlwaysApproved: any;
-	setSubAgentRunState?: React.Dispatch<
-		React.SetStateAction<{
-			parallel: boolean;
-			agentName?: string;
-		} | null>
-	>;
-
-	subAgentRunState?: {
-		parallel: boolean;
-		agentName?: string;
-	} | null;
-
 	setRestoreInputContent: React.Dispatch<
 		React.SetStateAction<{
 			text: string;
@@ -182,7 +170,6 @@ export function useChatLogic(props: UseChatLogicProps) {
 		requestUserQuestion,
 		isToolAutoApproved,
 
-		setSubAgentRunState,
 		addMultipleToAlwaysApproved,
 		setRestoreInputContent,
 		setIsCompressing,
@@ -529,18 +516,11 @@ export function useChatLogic(props: UseChatLogicProps) {
 				data: img.data,
 				mimeType: img.mimeType,
 			})),
-			...imageFiles.map(f => {
-				let base64Data = f.imageData!;
-				const base64Match = base64Data.match(/^data:[^;]+;base64,(.+)$/);
-				if (base64Match && base64Match[1]) {
-					base64Data = base64Match[1];
-				}
-				return {
-					type: 'image' as const,
-					data: base64Data,
-					mimeType: f.mimeType!,
-				};
-			}),
+			...imageFiles.map(f => ({
+				type: 'image' as const,
+				data: f.imageData!,
+				mimeType: f.mimeType!,
+			})),
 		];
 
 		if (!hideUserMessage) {
@@ -612,7 +592,6 @@ export function useChatLogic(props: UseChatLogicProps) {
 				setSnapshotFileCount: snapshotState.setSnapshotFileCount,
 				getCurrentContextPercentage: () => currentContextPercentageRef.current,
 				setCurrentModel: streamingState.setCurrentModel,
-				setSubAgentRunState,
 			});
 
 			// NOTE: New on-demand backup system - snapshot management is now automatic
@@ -726,7 +705,6 @@ export function useChatLogic(props: UseChatLogicProps) {
 
 		const messagesToProcess = [...pendingMessages];
 		setPendingMessages([]);
-		setSubAgentRunState?.(null);
 
 		const combinedMessage = messagesToProcess.map(m => m.text).join('\n\n');
 
@@ -779,17 +757,10 @@ export function useChatLogic(props: UseChatLogicProps) {
 		const allImages = messagesToProcess
 			.flatMap(m => m.images || [])
 			.concat(
-				imageFiles.map(f => {
-					let base64Data = f.imageData!;
-					const base64Match = base64Data.match(/^data:[^;]+;base64,(.+)$/);
-					if (base64Match && base64Match[1]) {
-						base64Data = base64Match[1];
-					}
-					return {
-						data: base64Data,
-						mimeType: f.mimeType!,
-					};
-				}),
+				imageFiles.map(f => ({
+					data: f.imageData!,
+					mimeType: f.mimeType!,
+				})),
 			);
 
 		const imageContents =
@@ -846,7 +817,6 @@ export function useChatLogic(props: UseChatLogicProps) {
 				setSnapshotFileCount: snapshotState.setSnapshotFileCount,
 				getCurrentContextPercentage: () => currentContextPercentageRef.current,
 				setCurrentModel: streamingState.setCurrentModel,
-				setSubAgentRunState,
 			});
 
 			// Snapshots are now created on-demand during file operations
