@@ -25,11 +25,11 @@ export interface AnthropicOptions {
 	temperature?: number;
 	max_tokens?: number;
 	tools?: ChatCompletionTool[];
-	sessionId?: string; // Session ID for user tracking and caching
+	sessionId?: string; // 用于用户跟踪和缓存的会话 ID
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
 	disableThinking?: boolean; // 禁用 Extended Thinking 功能（用于 agents 等场景，默认 false）
 	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
-	// Sub-agent configuration overrides
+	// 子代理配置覆盖
 	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
 	customSystemPromptId?: string; // 自定义系统提示词 ID
 	customHeaders?: Record<string, string>; // 自定义请求头
@@ -75,8 +75,8 @@ export interface AnthropicMessageParam {
 	content: string | Array<any>;
 }
 
-// Deprecated: No longer used, kept for backward compatibility
-// @ts-ignore - Variable kept for backward compatibility with resetAnthropicClient export
+// 已弃用: 不再使用,保留以向后兼容
+// @ts-ignore - 为向后兼容 resetAnthropicClient 导出而保留的变量
 let anthropicConfig: {
 	apiKey: string;
 	baseUrl: string;
@@ -85,7 +85,7 @@ let anthropicConfig: {
 	thinking?: ThinkingConfig;
 } | null = null;
 
-// Persistent userId that remains the same until application restart
+// 持久化 userId,在应用重启前保持不变
 let persistentUserId: string | null = null;
 
 /**
@@ -132,27 +132,27 @@ function toAnthropicImageSource(image: {
 	};
 }
 
-// Deprecated: Client reset is no longer needed with new config loading approach
+// 已弃用: 新的配置加载方式不再需要客户端重置
 export function resetAnthropicClient(): void {
 	anthropicConfig = null;
-	persistentUserId = null; // Reset userId on client reset
+	persistentUserId = null; // 客户端重置时重置 userId
 }
 
 /**
- * Generate a persistent user_id that remains the same until application restart
- * Format: user_<hash>_account__session_<uuid>
- * This matches Anthropic's expected format for tracking and caching
+ * 生成持久化 user_id,在应用重启前保持不变
+ * 格式: user_<hash>_account__session_<uuid>
+ * 这符合 Anthropic 预期的跟踪和缓存格式
  *
- * In dev mode (--dev flag), uses a persistent userId from ~/.snow/dev-user-id
- * instead of generating a new one each session
+ * 在开发模式(--dev 标志)下,使用 ~/.snow/dev-user-id 中的持久化 userId
+ * 而不是每次会话生成新的
  */
 function getPersistentUserId(): string {
-	// Check if dev mode is enabled
+	// 检查是否启用开发模式
 	if (isDevMode()) {
 		return getDevUserId();
 	}
 
-	// Normal mode: generate userId per session
+	// 普通模式: 每次会话生成 userId
 	if (!persistentUserId) {
 		const sessionId = randomUUID();
 		const hash = createHash('sha256')
@@ -187,12 +187,11 @@ function convertToolsToAnthropic(
 			throw new Error('Invalid tool format');
 		});
 
-	// Do not add cache_control to tools to avoid TTL ordering issues
+	// 不为工具添加 cache_control,以避免 TTL 排序问题
 	// if (convertedTools.length > 0) {
 	// 	const lastTool = convertedTools[convertedTools.length - 1];
 	// 	(lastTool as any).cache_control = {type: 'ephemeral', ttl: '5m'};
 	// }
-
 	return convertedTools;
 }
 
@@ -207,12 +206,11 @@ function convertToolsToAnthropic(
 function convertToAnthropicMessages(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
-	customSystemPromptOverride?: string, // Allow override for sub-agents
-	isSubAgentCall: boolean = false, // Whether this is a sub-agent call
-	subAgentSystemPrompt?: string, // Sub-agent assembled prompt
-	cacheTTL: '5m' | '1h' = '5m', // Cache TTL configuration
-	disableThinking: boolean = false, // When true, strip thinking blocks from messages
-	// When true, use Team mode system prompt (deprecated)
+	customSystemPromptOverride?: string, // 允许子代理覆盖
+	isSubAgentCall: boolean = false, // 是否为子代理调用
+	subAgentSystemPrompt?: string, // 子代理组装的提示词
+	cacheTTL: '5m' | '1h' = '5m', // 缓存 TTL 配置
+	disableThinking: boolean = false, // 为 true 时,从消息中移除 thinking 块
 ): {
 	system?: any;
 	messages: AnthropicMessageParam[];
@@ -228,25 +226,7 @@ function convertToAnthropicMessages(
 	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
 		? false
 		: includeBuiltinSystemPrompt;
-	const formatTimestamp = (timestamp?: number): string | undefined => {
-		if (!timestamp) {
-			return undefined;
-		}
-		const date = new Date(timestamp);
-		return (
-			date.getFullYear() +
-			'-' +
-			String(date.getMonth() + 1).padStart(2, '0') +
-			'-' +
-			String(date.getDate()).padStart(2, '0') +
-			'T' +
-			String(date.getHours()).padStart(2, '0') +
-			':' +
-			String(date.getMinutes()).padStart(2, '0') +
-			':' +
-			String(date.getSeconds()).padStart(2, '0')
-		);
-	};
+
 	let systemContent: string | undefined;
 	const anthropicMessages: AnthropicMessageParam[] = [];
 
@@ -257,23 +237,22 @@ function convertToAnthropicMessages(
 		}
 
 		if (msg.role === 'tool' && msg.tool_call_id) {
-			// Build tool_result content - can be text or array with images
+			// 构建工具结果内容 - 可以是文本或包含图片的数组
 			let toolResultContent: string | any[];
 
 			if (msg.images && msg.images.length > 0) {
-				// Multimodal tool result with images
+				// 包含图片的多模态工具结果
 				const contentArray: any[] = [];
 
-				// Add text content first
+				// 先添加文本内容
 				if (msg.content) {
-					const timestamp = formatTimestamp(msg.timestamp);
 					contentArray.push({
 						type: 'text',
-						text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+						text: msg.content,
 					});
 				}
 
-				// Add images - 使用辅助函数处理各种格式的图片数据
+				// 添加图片 - 使用辅助函数处理各种格式的图片数据
 				for (const image of msg.images) {
 					const imageSource = toAnthropicImageSource(image);
 					if (imageSource) {
@@ -296,13 +275,8 @@ function convertToAnthropicMessages(
 
 				toolResultContent = contentArray;
 			} else {
-				// Text-only tool result
-				const timestamp = formatTimestamp(msg.timestamp);
-				toolResultContent = msg.content
-					? timestamp
-						? `[${timestamp}] ${msg.content}`
-						: msg.content
-					: msg.content;
+				// 纯文本工具结果
+				toolResultContent = msg.content || '';
 			}
 
 			anthropicMessages.push({
@@ -322,10 +296,9 @@ function convertToAnthropicMessages(
 			const content: any[] = [];
 
 			if (msg.content) {
-				const timestamp = formatTimestamp(msg.timestamp);
 				content.push({
 					type: 'text',
-					text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+					text: msg.content,
 				});
 			}
 
@@ -364,18 +337,17 @@ function convertToAnthropicMessages(
 		) {
 			const content: any[] = [];
 
-			// When thinking is enabled, thinking block must come first
-			// Skip thinking block when disableThinking is true
+			// 启用 thinking 时,thinking 块必须放在最前面
+			// 当 disableThinking 为 true 时跳过 thinking 块
 			if (msg.thinking && !disableThinking) {
-				// Use the complete thinking block object (includes signature)
+				// 使用完整的 thinking 块对象(包含签名)
 				content.push(msg.thinking);
 			}
 
 			if (msg.content) {
-				const timestamp = formatTimestamp(msg.timestamp);
 				content.push({
 					type: 'text',
-					text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+					text: msg.content,
 				});
 			}
 
@@ -396,20 +368,19 @@ function convertToAnthropicMessages(
 		}
 
 		if (msg.role === 'user' || msg.role === 'assistant') {
-			// For assistant messages with thinking, convert to structured format
-			// Skip thinking block when disableThinking is true
+			// 对于包含 thinking 的助手消息,转换为结构化格式
+			// 当 disableThinking 为 true 时跳过 thinking 块
 			if (msg.role === 'assistant' && msg.thinking && !disableThinking) {
 				const content: any[] = [];
 
-				// Thinking block must come first - use complete block object (includes signature)
+				// Thinking 块必须放在最前面 - 使用完整的块对象(包含签名)
 				content.push(msg.thinking);
 
-				// Then text content
+				// 然后是文本内容
 				if (msg.content) {
-					const timestamp = formatTimestamp(msg.timestamp);
 					content.push({
 						type: 'text',
-						text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+						text: msg.content,
 					});
 				}
 
@@ -418,14 +389,9 @@ function convertToAnthropicMessages(
 					content,
 				});
 			} else {
-				const timestamp = formatTimestamp(msg.timestamp);
 				anthropicMessages.push({
 					role: msg.role,
-					content: msg.content
-						? timestamp
-							? `[${timestamp}] ${msg.content}`
-							: msg.content
-						: msg.content,
+					content: msg.content,
 				});
 			}
 		}
@@ -542,7 +508,7 @@ async function* parseSSEStream(
 					return;
 				}
 
-				// Handle both "event: " and "event:" formats
+				// 处理 "event: " 和 "event:" 两种格式
 				if (trimmed.startsWith('event:')) {
 					// 记录事件类型用于断点恢复
 					lastEventType = trimmed.startsWith('event: ')
@@ -551,7 +517,7 @@ async function* parseSSEStream(
 					continue;
 				}
 
-				// Handle both "data: " and "data:" formats
+				// 处理 "data: " 和 "data:" 两种格式
 				if (trimmed.startsWith('data:')) {
 					const data = trimmed.startsWith('data: ')
 						? trimmed.slice(6)
@@ -598,7 +564,7 @@ export async function* createStreamingAnthropicCompletion(
 ): AsyncGenerator<AnthropicStreamChunk, void, unknown> {
 	yield* withRetryGenerator(
 		async function* () {
-			// Load configuration: if configProfile is specified, load it; otherwise use main config
+			// 加载配置: 如果指定了 configProfile,则加载它; 否则使用主配置
 			let config: ReturnType<typeof getOpenAiConfig>;
 			if (options.configProfile) {
 				try {
@@ -609,14 +575,14 @@ export async function* createStreamingAnthropicCompletion(
 					if (profileConfig?.snowcfg) {
 						config = profileConfig.snowcfg;
 					} else {
-						// Profile not found, fallback to main config
+						// 配置文件未找到,回退到主配置
 						config = getOpenAiConfig();
 						logger.warn(
 							`Profile ${options.configProfile} not found, using main config`,
 						);
 					}
 				} catch (error) {
-					// If loading profile fails, fallback to main config
+					// 如果加载配置文件失败,回退到主配置
 					config = getOpenAiConfig();
 					logger.warn(
 						`Failed to load profile ${options.configProfile}, using main config:`,
@@ -624,11 +590,11 @@ export async function* createStreamingAnthropicCompletion(
 					);
 				}
 			} else {
-				// No configProfile specified, use main config
+				// 未指定 configProfile, 使用主配置
 				config = getOpenAiConfig();
 			}
 
-			// Get system prompt (with custom override support)
+			// 获取系统提示词(支持自定义覆盖)
 			let customSystemPromptContent: string | undefined;
 			if (options.customSystemPromptId) {
 				const {getSystemPromptConfig} = await import(
@@ -653,11 +619,11 @@ export async function* createStreamingAnthropicCompletion(
 				!!options.customSystemPromptId || !!options.subAgentSystemPrompt, // 子代理调用的判断：只要有customSystemPromptId或subAgentSystemPrompt就认为是子代理调用
 				options.subAgentSystemPrompt,
 				config.anthropicCacheTTL || '5m', // 使用配置的 TTL，默认 5m
-				options.disableThinking || false, // Strip thinking blocks when thinking is disabled
-				// Use Team mode system prompt if enabled (deprecated)
+				options.disableThinking || false, // 当 thinking 被禁用时移除 thinking 块
+				// 如果启用,使用 Team 模式系统提示词(已弃用)
 			);
 
-			// Use persistent userId that remains the same until application restart
+			// 使用持久化 userId,在应用重启前保持不变
 			const userId = getPersistentUserId();
 
 			const requestBody: any = {
@@ -672,10 +638,10 @@ export async function* createStreamingAnthropicCompletion(
 				stream: true,
 			};
 
-			// Add thinking configuration if enabled and not explicitly disabled
-			// When thinking is enabled, temperature must be 1
-			// Note: agents and other internal tools should set disableThinking=true
-			// Debug: Log thinking decision for troubleshooting
+			// 如果启用且未明确禁用,则添加 thinking 配置
+			// 启用 thinking 时,temperature 必须为 1
+			// 注意: agents 和其他内部工具应设置 disableThinking=true
+			// Debug: 记录 thinking 决策以供故障排除
 			if (config.thinking) {
 				logger.debug('Thinking config check:', {
 					configThinking: !!config.thinking,
@@ -688,11 +654,11 @@ export async function* createStreamingAnthropicCompletion(
 				requestBody.temperature = 1;
 			}
 
-			// Use custom headers from options if provided, otherwise get from current config (supports profile override)
+			// 如果提供了自定义 headers 则使用,否则从当前配置获取(支持配置文件覆盖)
 			const customHeaders =
 				options.customHeaders || getCustomHeadersForConfig(config);
 
-			// Prepare headers
+			// 准备 headers
 			const headers: Record<string, string> = {
 				'Content-Type': 'application/json',
 				'x-api-key': config.apiKey,
@@ -702,12 +668,12 @@ export async function* createStreamingAnthropicCompletion(
 				...customHeaders,
 			};
 
-			// Add beta parameter if configured
+			// 如果配置了 beta 参数则添加
 			// if (config.anthropicBeta) {
 			// 	headers['anthropic-beta'] = 'prompt-caching-2024-07-31';
 			// }
 
-			// Use configured baseUrl or default Anthropic URL
+			// 使用配置的 baseUrl 或默认 Anthropic URL
 			//移除末尾斜杠，避免拼接时出现双斜杠（如 /v1//messages）
 			const baseUrl = (
 				config.baseUrl && config.baseUrl !== 'https://api.openai.com/v1'
@@ -769,8 +735,8 @@ export async function* createStreamingAnthropicCompletion(
 			}
 
 			let contentBuffer = '';
-			let thinkingTextBuffer = ''; // Accumulate thinking text content
-			let thinkingSignature = ''; // Accumulate thinking signature
+			let thinkingTextBuffer = ''; // 累积 thinking 文本内容
+			let thinkingSignature = ''; // 累积 thinking 签名
 			let toolCallsBuffer: Map<
 				string,
 				{
@@ -785,8 +751,8 @@ export async function* createStreamingAnthropicCompletion(
 			let hasToolCalls = false;
 			let usageData: UsageInfo | undefined;
 			let blockIndexToId: Map<number, string> = new Map();
-			let blockIndexToType: Map<number, string> = new Map(); // Track block types (text, thinking, tool_use)
-			let completedToolBlocks = new Set<string>(); // Track which tool blocks have finished streaming
+			let blockIndexToType: Map<number, string> = new Map(); // 跟踪块类型(text, thinking, tool_use)
+			let completedToolBlocks = new Set<string>(); // 跟踪哪些工具块已完成流式传输
 
 			for await (const event of parseSSEStream(response.body.getReader())) {
 				if (abortSignal?.aborted) {
@@ -796,7 +762,7 @@ export async function* createStreamingAnthropicCompletion(
 					const block = event.content_block;
 					const blockIndex = event.index;
 
-					// Track block type for later reference
+					// 跟踪块类型以供后续参考
 					blockIndexToType.set(blockIndex, block.type);
 
 					if (block.type === 'tool_use') {
@@ -817,9 +783,9 @@ export async function* createStreamingAnthropicCompletion(
 							delta: block.name,
 						};
 					}
-					// Handle thinking block start (Extended Thinking feature)
+					// 处理 thinking 块开始(扩展思考功能)
 					else if (block.type === 'thinking') {
-						// Thinking block started - emit reasoning_started event
+						// Thinking 块已开始 - 发送 reasoning_started 事件
 						yield {
 							type: 'reasoning_started',
 						};
@@ -836,21 +802,21 @@ export async function* createStreamingAnthropicCompletion(
 						};
 					}
 
-					// Handle thinking_delta (Extended Thinking feature)
-					// Emit reasoning_delta event for thinking content
+					// 处理 thinking_delta(扩展思考功能)
+					// 为 thinking 内容发送 reasoning_delta 事件
 					if (delta.type === 'thinking_delta') {
 						const thinkingText = delta.thinking;
-						thinkingTextBuffer += thinkingText; // Accumulate thinking text
+						thinkingTextBuffer += thinkingText; // 累积 thinking 文本
 						yield {
 							type: 'reasoning_delta',
 							delta: thinkingText,
 						};
 					}
 
-					// Handle signature_delta (Extended Thinking feature)
-					// Signature is required for thinking blocks
+					// 处理 signature_delta(扩展思考功能)
+					// 签名是 thinking 块所必需的
 					if (delta.type === 'signature_delta') {
-						thinkingSignature += delta.signature; // Accumulate signature
+						thinkingSignature += delta.signature; // 累积签名
 					}
 
 					if (delta.type === 'input_json_delta') {
@@ -861,10 +827,10 @@ export async function* createStreamingAnthropicCompletion(
 						if (toolId) {
 							const toolCall = toolCallsBuffer.get(toolId);
 							if (toolCall) {
-								// Filter out any XML-like tags that might be mixed in the JSON delta
-								// This can happen when the model output contains XML that gets interpreted as JSON
+								// 过滤掉可能混入 JSON delta 中的任何类 XML 标签
+								// 当模型输出包含被解释为 JSON 的 XML 时,可能会发生这种情况
 								const cleanedDelta = jsonDelta.replace(
-									/<\/?parameter[^>]*>/g,
+									/<\\?\/?parameter[^>]*>/g,
 									'',
 								);
 
@@ -880,7 +846,7 @@ export async function* createStreamingAnthropicCompletion(
 						}
 					}
 				} else if (event.type === 'content_block_stop') {
-					// Mark this block as completed
+					// 标记此块已完成
 					const blockIndex = event.index;
 					const toolId = blockIndexToId.get(blockIndex);
 					if (toolId) {
@@ -909,7 +875,7 @@ export async function* createStreamingAnthropicCompletion(
 								total_tokens: 0,
 							};
 						}
-						// Update prompt_tokens if present in message_delta
+						// 如果 message_delta 中存在 prompt_tokens,则更新
 						if (event.usage.input_tokens !== undefined) {
 							usageData.prompt_tokens = event.usage.input_tokens;
 						}
@@ -935,17 +901,17 @@ export async function* createStreamingAnthropicCompletion(
 			if (hasToolCalls && toolCallsBuffer.size > 0) {
 				const toolCalls = Array.from(toolCallsBuffer.values());
 				for (const toolCall of toolCalls) {
-					// Normalize the arguments
+					// 规范化参数
 					let args = toolCall.function.arguments.trim();
 
-					// If arguments is empty, use empty object
+					// 如果参数为空,使用空对象
 					if (!args) {
 						args = '{}';
 					}
 
-					// Try to parse the JSON using the unified parseJsonWithFix utility
+					// 尝试使用统一的 parseJsonWithFix 工具解析 JSON
 					if (completedToolBlocks.has(toolCall.id)) {
-						// Tool block was completed, parse with fix and logging
+						// 工具块已完成,使用修复和日志记录进行解析
 						const parseResult = parseJsonWithFix(args, {
 							toolName: toolCall.function.name,
 							fallbackValue: {},
@@ -953,11 +919,11 @@ export async function* createStreamingAnthropicCompletion(
 							logError: true,
 						});
 
-						// Use the parsed data or fallback value
+						// 使用解析的数据或回退值
 						toolCall.function.arguments = JSON.stringify(parseResult.data);
 					} else {
-						// Tool block wasn't completed, likely interrupted stream
-						// Try to parse without logging errors (incomplete data is expected)
+						// 工具块未完成,可能是中断的流
+						// 尝试解析而不记录错误(预期会有不完整的数据)
 						const parseResult = parseJsonWithFix(args, {
 							toolName: toolCall.function.name,
 							fallbackValue: {},
@@ -982,7 +948,7 @@ export async function* createStreamingAnthropicCompletion(
 			}
 
 			if (usageData) {
-				// Save usage to file system at API layer
+				// 在 API 层将使用情况保存到文件系统
 				saveUsageToFile(options.model, usageData);
 
 				yield {
@@ -990,7 +956,7 @@ export async function* createStreamingAnthropicCompletion(
 					usage: usageData,
 				};
 			}
-			// Return complete thinking block with signature if thinking content exists
+			// 如果存在 thinking 内容,则返回带签名的完整 thinking 块
 			const thinkingBlock = thinkingTextBuffer
 				? {
 						type: 'thinking' as const,

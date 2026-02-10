@@ -156,6 +156,23 @@ export function createSystemContext(): string {
 	const platform = getPlatformDisplayName();
 	const shell = getShellDisplayName();
 
+	// 获取本地时间并格式化为 ISO 格式 (YYYY-MM-DD HH:mm)
+	const year = now.getFullYear();
+	const month = String(now.getMonth() + 1).padStart(2, '0');
+	const day = String(now.getDate()).padStart(2, '0');
+	const hours = String(now.getHours()).padStart(2, '0');
+	const minutes = String(now.getMinutes()).padStart(2, '0');
+
+	// 计算时区偏移 (格式: UTC±HH:mm)
+	const timezoneOffset = -now.getTimezoneOffset();
+	const offsetHours = Math.floor(Math.abs(timezoneOffset) / 60);
+	const offsetMinutes = Math.abs(timezoneOffset) % 60;
+	const offsetSign = timezoneOffset >= 0 ? '+' : '-';
+	const offsetStr = `UTC${offsetSign}${String(offsetHours).padStart(
+		2,
+		'0',
+	)}:${String(offsetMinutes).padStart(2, '0')}`;
+
 	let context = `## System Environment
 
 Platform: ${platform}
@@ -164,8 +181,7 @@ Working Directory: ${process.cwd()}
 
 ## Current Time
 
-Year: ${now.getFullYear()}
-Month: ${now.getMonth() + 1}`;
+DateTime: ${year}-${month}-${day} ${hours}:${minutes} (${offsetStr})`;
 
 	// 添加平台特定命令指导
 	const platformCommands = getPlatformCommandsSection();
@@ -208,7 +224,7 @@ export function getAgentsPrompt(): string {
 }
 /**
  * 获取任务完成标识提示词
- * 
+ *
  */
 export function getTaskCompletionPrompt(): string {
 	return `你要不停的使用工具直到完成任务,才可进行一般回复,且MUST在任务完成后的最终回复的最开头或最结尾中添加 \`[Mission_Accomplished!]\` 标记.若想提问必须使用\`askuser-ask_question\`工具提问(若你无此工具则说明你不可提问MUST自主决策)

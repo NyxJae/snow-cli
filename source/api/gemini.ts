@@ -23,7 +23,7 @@ export interface GeminiOptions {
 	tools?: ChatCompletionTool[];
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
 	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
-	// Sub-agent configuration overrides
+	// 子代理配置覆盖
 	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
 	customSystemPromptId?: string; // 自定义系统提示词 ID
 	customHeaders?: Record<string, string>; // 自定义请求头
@@ -70,7 +70,7 @@ let geminiConfig: {
 		budget: number;
 	};
 } | null = null;
-// Deprecated: Client reset is no longer needed with new config loading approach
+// 已弃用:新的配置加载方式不再需要客户端重置
 export function resetGeminiClient(): void {
 	geminiConfig = null;
 }
@@ -135,7 +135,7 @@ function convertToolsToGemini(tools?: ChatCompletionTool[]): any[] | undefined {
 		.filter(tool => tool.type === 'function' && 'function' in tool)
 		.map(tool => {
 			if (tool.type === 'function' && 'function' in tool) {
-				// Convert OpenAI parameters schema to Gemini format
+				// 将 OpenAI 参数 schema 转换为 Gemini 格式
 				const params = tool.function.parameters as any;
 
 				return {
@@ -167,10 +167,10 @@ function convertToolsToGemini(tools?: ChatCompletionTool[]): any[] | undefined {
 function convertToGeminiMessages(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
-	customSystemPromptOverride?: string, // Allow override for sub-agents
-	isSubAgentCall: boolean = false, // Whether this is a sub-agent call
-	subAgentSystemPrompt?: string, // Sub-agent assembled prompt
-	// When true, use Team mode system prompt (deprecated)
+	customSystemPromptOverride?: string, // 允许子代理覆盖
+	isSubAgentCall: boolean = false, // 是否为子代理调用
+	subAgentSystemPrompt?: string, // 子代理组装的提示词
+	// 当为 true 时,使用 Team 模式系统提示词(已弃用)
 ): {
 	systemInstruction?: string;
 	contents: any[];
@@ -186,42 +186,24 @@ function convertToGeminiMessages(
 	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
 		? false
 		: includeBuiltinSystemPrompt;
-	const formatTimestamp = (timestamp?: number): string | undefined => {
-		if (!timestamp) {
-			return undefined;
-		}
-		const date = new Date(timestamp);
-		return (
-			date.getFullYear() +
-			'-' +
-			String(date.getMonth() + 1).padStart(2, '0') +
-			'-' +
-			String(date.getDate()).padStart(2, '0') +
-			'T' +
-			String(date.getHours()).padStart(2, '0') +
-			':' +
-			String(date.getMinutes()).padStart(2, '0') +
-			':' +
-			String(date.getSeconds()).padStart(2, '0')
-		);
-	};
+
 	let systemInstruction: string | undefined;
 	const contents: any[] = [];
 
-	// Build tool_call_id to function_name mapping for parallel calls
+	// 构建 tool_call_id 到 function_name 的映射,用于并行调用
 	const toolCallIdToFunctionName = new Map<string, string>();
 
 	for (let i = 0; i < messages.length; i++) {
 		const msg = messages[i];
 		if (!msg) continue;
 
-		// Extract system message as systemInstruction
+		// 提取 system 消息作为 systemInstruction
 		if (msg.role === 'system') {
 			systemInstruction = msg.content;
 			continue;
 		}
 
-		// Handle tool calls in assistant messages - build mapping first
+		// 处理 assistant 消息中的工具调用 - 先构建映射
 		if (
 			msg.role === 'assistant' &&
 			msg.tool_calls &&
@@ -229,7 +211,7 @@ function convertToGeminiMessages(
 		) {
 			const parts: any[] = [];
 
-			// Add thinking content first if exists (required by Gemini thinking mode)
+			// 如果存在 thinking 内容,先添加(Gemini thinking 模式要求)
 			if (msg.thinking) {
 				parts.push({
 					thought: true,
@@ -237,16 +219,15 @@ function convertToGeminiMessages(
 				});
 			}
 
-			// Add text content
+			// 添加文本内容
 			if (msg.content) {
-				const timestamp = formatTimestamp(msg.timestamp);
 				parts.push({
-					text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+					text: msg.content,
 				});
 			}
 
 			for (const toolCall of msg.tool_calls) {
-				// Store tool_call_id -> function_name mapping
+				// 存储 tool_call_id -> function_name 映射
 				toolCallIdToFunctionName.set(toolCall.id, toolCall.function.name);
 
 				const argsParseResult = parseJsonWithFix(toolCall.function.arguments, {
@@ -263,8 +244,8 @@ function convertToGeminiMessages(
 					},
 				};
 
-				// Include thoughtSignature at part level (sibling to functionCall, not inside it)
-				// According to Gemini docs, thoughtSignature is required for function calls in thinking mode
+				// 在 part 级别包含 thoughtSignature(与 functionCall 同级,不在其内部)
+				// 根据 Gemini 文档,thinking 模式下的函数调用需要 thoughtSignature
 				const signature =
 					(toolCall as any).thoughtSignature ||
 					(toolCall as any).thought_signature;
@@ -282,9 +263,9 @@ function convertToGeminiMessages(
 			continue;
 		}
 
-		// Handle tool results - collect consecutive tool messages
+		// 处理工具结果 - 收集连续的工具消息
 		if (msg.role === 'tool') {
-			// Collect all consecutive tool messages starting from current position
+			// 从当前位置开始收集所有连续的工具消息
 			const toolResponses: Array<{
 				tool_call_id: string;
 				content: string;
@@ -306,30 +287,28 @@ function convertToGeminiMessages(
 				j++;
 			}
 
-			// Update loop index to skip processed tool messages
+			// 更新循环索引以跳过已处理的工具消息
 			i = j - 1;
 
-			// Build a single user message with multiple functionResponse parts
+			// 构建包含多个 functionResponse 部分的单个 user 消息
 			const parts: any[] = [];
 
 			for (const toolResp of toolResponses) {
-				// Use tool_call_id to find the correct function name
+				// 使用 tool_call_id 查找正确的函数名
 				const functionName =
 					toolCallIdToFunctionName.get(toolResp.tool_call_id) ||
 					'unknown_function';
 
-				// Tool response must be a valid object for Gemini API
+				// 工具响应必须是 Gemini API 的有效对象
 				let responseData: any;
 
 				if (!toolResp.content) {
 					responseData = {};
 				} else {
-					const timestamp = formatTimestamp(toolResp.timestamp);
-
 					let contentToParse = toolResp.content;
 
-					// Sometimes the content is double-encoded as JSON
-					// First, try to parse it once
+					// 有时内容会被双重编码为 JSON
+					// 首先,尝试解析一次
 					const firstParseResult = parseJsonWithFix(contentToParse, {
 						toolName: 'Gemini tool response (first parse)',
 						logWarning: false,
@@ -340,11 +319,11 @@ function convertToGeminiMessages(
 						firstParseResult.success &&
 						typeof firstParseResult.data === 'string'
 					) {
-						// If it's a string, it might be double-encoded, try parsing again
+						// 如果是字符串,可能是双重编码,再次尝试解析
 						contentToParse = firstParseResult.data;
 					}
 
-					// Now parse or wrap the final content
+					// 现在解析或包装最终内容
 					const finalParseResult = parseJsonWithFix(contentToParse, {
 						toolName: 'Gemini tool response (final parse)',
 						logWarning: false,
@@ -353,37 +332,24 @@ function convertToGeminiMessages(
 
 					if (finalParseResult.success) {
 						const parsed = finalParseResult.data;
-						// If parsed result is an object (not array, not null), use it directly
+						// 如果解析结果是对象(非数组、非 null),直接使用
 						if (
 							typeof parsed === 'object' &&
 							parsed !== null &&
 							!Array.isArray(parsed)
 						) {
-							// Add timestamp to the response object when available
-							responseData = timestamp
-								? {...parsed, _timestamp: timestamp}
-								: parsed;
+							responseData = parsed;
 						} else {
-							// If it's a primitive, array, or null, wrap it
-							responseData = timestamp
-								? {
-										_timestamp: timestamp,
-										content: parsed,
-								  }
-								: {content: parsed};
+							// 如果是基本类型、数组或 null,包装它
+							responseData = {content: parsed};
 						}
 					} else {
-						// Not valid JSON, wrap the raw string
-						responseData = timestamp
-							? {
-									_timestamp: timestamp,
-									content: contentToParse,
-							  }
-							: {content: contentToParse};
+						// 不是有效的 JSON,包装原始字符串
+						responseData = {content: contentToParse};
 					}
 				}
 
-				// Add functionResponse part
+				// 添加 functionResponse 部分
 				parts.push({
 					functionResponse: {
 						name: functionName,
@@ -391,7 +357,7 @@ function convertToGeminiMessages(
 					},
 				});
 
-				// Handle images from tool result
+				// 处理工具结果中的图片
 				if (toolResp.images && toolResp.images.length > 0) {
 					for (const image of toolResp.images) {
 						const imagePart = toGeminiImagePart(image);
@@ -402,7 +368,7 @@ function convertToGeminiMessages(
 				}
 			}
 
-			// Push single user message with all function responses
+			// 推送包含所有函数响应的单个 user 消息
 			contents.push({
 				role: 'user',
 				parts,
@@ -410,18 +376,17 @@ function convertToGeminiMessages(
 			continue;
 		}
 
-		// Build message parts for regular user/assistant messages
+		// 为常规 user/assistant 消息构建消息部分
 		const parts: any[] = [];
 
-		// Add text content if exists
+		// 如果存在文本内容则添加
 		if (msg.content) {
-			const timestamp = formatTimestamp(msg.timestamp);
 			parts.push({
-				text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+				text: msg.content,
 			});
 		}
 
-		// Add images for user messages
+		// 为 user 消息添加图片
 		if (msg.role === 'user' && msg.images && msg.images.length > 0) {
 			for (const image of msg.images) {
 				const imagePart = toGeminiImagePart(image);
@@ -431,7 +396,7 @@ function convertToGeminiMessages(
 			}
 		}
 
-		// Add to contents
+		// 添加到 contents
 		const role = msg.role === 'assistant' ? 'model' : 'user';
 		contents.push({role, parts});
 	}
@@ -474,7 +439,7 @@ export async function* createStreamingGeminiCompletion(
 	abortSignal?: AbortSignal,
 	onRetry?: (error: Error, attempt: number, nextDelay: number) => void,
 ): AsyncGenerator<GeminiStreamChunk, void, unknown> {
-	// Load configuration: if configProfile is specified, load it; otherwise use main config
+	// 加载配置:如果指定了 configProfile,则加载它;否则使用主配置
 	let config: ReturnType<typeof getOpenAiConfig>;
 	if (options.configProfile) {
 		try {
@@ -483,7 +448,7 @@ export async function* createStreamingGeminiCompletion(
 			if (profileConfig?.snowcfg) {
 				config = profileConfig.snowcfg;
 			} else {
-				// Profile not found, fallback to main config
+				// 未找到配置文件,回退到主配置
 				config = getOpenAiConfig();
 				const {logger} = await import('../utils/core/logger.js');
 				logger.warn(
@@ -491,7 +456,7 @@ export async function* createStreamingGeminiCompletion(
 				);
 			}
 		} catch (error) {
-			// If loading profile fails, fallback to main config
+			// 如果加载配置文件失败,回退到主配置
 			config = getOpenAiConfig();
 			const {logger} = await import('../utils/core/logger.js');
 			logger.warn(
@@ -500,11 +465,11 @@ export async function* createStreamingGeminiCompletion(
 			);
 		}
 	} else {
-		// No configProfile specified, use main config
+		// 未指定 configProfile,使用主配置
 		config = getOpenAiConfig();
 	}
 
-	// Get system prompt (with custom override support)
+	// 获取系统提示词(支持自定义覆盖)
 	let customSystemPromptContent: string | undefined;
 	if (options.customSystemPromptId) {
 		const {getSystemPromptConfig} = await import(
@@ -531,10 +496,10 @@ export async function* createStreamingGeminiCompletion(
 				customSystemPromptContent, // 传递自定义系统提示词
 				!!options.customSystemPromptId || !!options.subAgentSystemPrompt, // 子代理调用的判断：只要有customSystemPromptId或subAgentSystemPrompt就认为是子代理调用
 				options.subAgentSystemPrompt,
-				// Pass teamMode to use correct system prompt (deprecated)
+				// 传递 teamMode 以使用正确的系统提示词(已弃用)
 			);
 
-			// Build request payload
+			// 构建请求负载
 			const requestBody: any = {
 				contents,
 				systemInstruction: systemInstruction
@@ -542,8 +507,8 @@ export async function* createStreamingGeminiCompletion(
 					: undefined,
 			};
 
-			// Add thinking configuration if enabled
-			// Only include generationConfig when thinking is enabled
+			// 如果启用了 thinking 配置则添加
+			// 仅在 thinking 启用时包含 generationConfig
 			if (config.geminiThinking?.enabled) {
 				requestBody.generationConfig = {
 					thinkingConfig: {
@@ -552,19 +517,19 @@ export async function* createStreamingGeminiCompletion(
 				};
 			}
 
-			// Add tools if provided
+			// 如果提供了工具则添加
 			const geminiTools = convertToolsToGemini(options.tools);
 			if (geminiTools) {
 				requestBody.tools = geminiTools;
 			}
 
-			// Extract model name from options.model (e.g., "gemini-pro" or "models/gemini-pro")
+			// 从 options.model 中提取模型名称(例如 "gemini-pro" 或 "models/gemini-pro")
 			const effectiveModel = options.model || config.advancedModel || '';
 			const modelName = effectiveModel.startsWith('models/')
 				? effectiveModel
 				: `models/${effectiveModel}`;
 
-			// Use configured baseUrl or default Gemini URL
+			// 使用配置的 baseUrl 或默认 Gemini URL
 			const baseUrl =
 				config.baseUrl && config.baseUrl !== 'https://api.openai.com/v1'
 					? config.baseUrl
@@ -574,7 +539,7 @@ export async function* createStreamingGeminiCompletion(
 			urlObj.searchParams.set('alt', 'sse');
 			const url = urlObj.toString();
 
-			// Use custom headers from options if provided, otherwise get from current config (supports profile override)
+			// 如果提供了自定义请求头则使用,否则从当前配置获取(支持配置文件覆盖)
 			const customHeaders =
 				options.customHeaders || getCustomHeadersForConfig(config);
 
@@ -634,8 +599,8 @@ export async function* createStreamingGeminiCompletion(
 			}
 
 			let contentBuffer = '';
-			let thinkingTextBuffer = ''; // Accumulate thinking text content
-			let sharedThoughtSignature: string | undefined; // Store first thoughtSignature for reuse
+			let thinkingTextBuffer = ''; // 累积 thinking 文本内容
+			let sharedThoughtSignature: string | undefined; // 存储第一个 thoughtSignature 以供重用
 			let toolCallsBuffer: Array<{
 				id: string;
 				type: 'function';
@@ -643,13 +608,13 @@ export async function* createStreamingGeminiCompletion(
 					name: string;
 					arguments: string;
 				};
-				thoughtSignature?: string; // For Gemini thinking mode
+				thoughtSignature?: string; // 用于 Gemini thinking 模式
 			}> = [];
 			let hasToolCalls = false;
 			let toolCallIndex = 0;
 			let totalTokens = {prompt: 0, completion: 0, total: 0};
 
-			// Parse SSE stream
+			// 解析 SSE 流
 			const reader = response.body.getReader();
 			const decoder = new TextDecoder();
 			let buffer = '';
@@ -689,13 +654,13 @@ export async function* createStreamingGeminiCompletion(
 							break;
 						}
 
-						// Handle both "event: " and "event:" formats
+						// 处理 "event: " 和 "event:" 两种格式
 						if (trimmed.startsWith('event:')) {
-							// Event type, will be followed by data
+							// 事件类型,后面会跟随数据
 							continue;
 						}
 
-						// Handle both "data: " and "data:" formats
+						// 处理 "data: " 和 "data:" 两种格式
 						if (trimmed.startsWith('data:')) {
 							const data = trimmed.startsWith('data: ')
 								? trimmed.slice(6)
@@ -709,13 +674,13 @@ export async function* createStreamingGeminiCompletion(
 							if (parseResult.success) {
 								const chunk = parseResult.data;
 
-								// Process candidates
+								// 处理候选结果
 								if (chunk.candidates && chunk.candidates.length > 0) {
 									const candidate = chunk.candidates[0];
 									if (candidate.content && candidate.content.parts) {
 										for (const part of candidate.content.parts) {
-											// Process thought content (Gemini thinking)
-											// When part.thought === true, the text field contains thinking content
+											// 处理 thought 内容(Gemini thinking)
+											// 当 part.thought === true 时,text 字段包含 thinking 内容
 											if (part.thought === true && part.text) {
 												thinkingTextBuffer += part.text;
 												yield {
@@ -723,7 +688,7 @@ export async function* createStreamingGeminiCompletion(
 													delta: part.text,
 												};
 											}
-											// Process regular text content (when thought is not true)
+											// 处理常规文本内容(当 thought 不为 true 时)
 											else if (part.text) {
 												contentBuffer += part.text;
 												yield {
@@ -732,7 +697,7 @@ export async function* createStreamingGeminiCompletion(
 												};
 											}
 
-											// Process function calls
+											// 处理函数调用
 											if (part.functionCall) {
 												hasToolCalls = true;
 												const fc = part.functionCall;
@@ -746,26 +711,26 @@ export async function* createStreamingGeminiCompletion(
 													},
 												};
 
-												// Capture thoughtSignature from part level (Gemini thinking mode)
-												// According to Gemini docs, thoughtSignature is at part level, sibling to functionCall
-												// IMPORTANT: Gemini only returns thoughtSignature on the FIRST function call
-												// We need to save it and reuse for all subsequent function calls
+												// 从 part 级别捕获 thoughtSignature(Gemini thinking 模式)
+												// 根据 Gemini 文档,thoughtSignature 在 part 级别,与 functionCall 同级
+												// 重要提示:Gemini 只在第一个函数调用时返回 thoughtSignature
+												// 我们需要保存它并在所有后续函数调用中重用
 												const partSignature =
 													part.thoughtSignature || part.thought_signature;
 												if (partSignature) {
-													// Save the first signature for reuse
+													// 保存第一个签名以供重用
 													if (!sharedThoughtSignature) {
 														sharedThoughtSignature = partSignature;
 													}
 													toolCall.thoughtSignature = partSignature;
 												} else if (sharedThoughtSignature) {
-													// Use shared signature for subsequent function calls
+													// 对后续函数调用使用共享签名
 													toolCall.thoughtSignature = sharedThoughtSignature;
 												}
 
 												toolCallsBuffer.push(toolCall);
 
-												// Yield delta for token counting
+												// 产出 delta 用于 token 计数
 												const deltaText =
 													fc.name + JSON.stringify(fc.args || {});
 												yield {
@@ -777,7 +742,7 @@ export async function* createStreamingGeminiCompletion(
 									}
 								}
 
-								// Track usage info
+								// 跟踪使用量信息
 								if (chunk.usageMetadata) {
 									totalTokens = {
 										prompt: chunk.usageMetadata.promptTokenCount || 0,
@@ -800,7 +765,7 @@ export async function* createStreamingGeminiCompletion(
 				throw error;
 			}
 
-			// Yield tool calls if any
+			// 如果有工具调用则产出
 			if (hasToolCalls && toolCallsBuffer.length > 0) {
 				yield {
 					type: 'tool_calls',
@@ -808,7 +773,7 @@ export async function* createStreamingGeminiCompletion(
 				};
 			}
 
-			// Yield usage info
+			// 产出使用量信息
 			if (totalTokens.total > 0) {
 				const usageData = {
 					prompt_tokens: totalTokens.prompt,
@@ -816,16 +781,15 @@ export async function* createStreamingGeminiCompletion(
 					total_tokens: totalTokens.total,
 				};
 
-				// Save usage to file system at API layer
+				// 在 API 层保存使用量到文件系统
 				saveUsageToFile(options.model, usageData);
-
 				yield {
 					type: 'usage',
 					usage: usageData,
 				};
 			}
 
-			// Return complete thinking block if thinking content exists
+			// 如果存在 thinking 内容则返回完整的 thinking 块
 			const thinkingBlock = thinkingTextBuffer
 				? {
 						type: 'thinking' as const,
@@ -833,7 +797,7 @@ export async function* createStreamingGeminiCompletion(
 				  }
 				: undefined;
 
-			// Signal completion
+			// 发送完成信号
 			yield {
 				type: 'done',
 				thinking: thinkingBlock,

@@ -106,7 +106,7 @@ function convertToOpenAIMessages(
 	customSystemPromptOverride?: string,
 	isSubAgentCall: boolean = false,
 	subAgentSystemPrompt?: string,
-	// When true, use Team mode system prompt (deprecated)
+	// 为 true 时,使用 Team 模式系统提示词(已弃用)
 ): ChatCompletionMessageParam[] {
 	// 子代理调用：使用传递的 customSystemPrompt（由全局配置决定）
 	// 如果没有 customSystemPrompt，则使用子代理自己组装的提示词
@@ -120,26 +120,6 @@ function convertToOpenAIMessages(
 		? false
 		: includeBuiltinSystemPrompt;
 
-	const formatTimestamp = (timestamp?: number): string | undefined => {
-		if (!timestamp) {
-			return undefined;
-		}
-		const date = new Date(timestamp);
-		return (
-			date.getFullYear() +
-			'-' +
-			String(date.getMonth() + 1).padStart(2, '0') +
-			'-' +
-			String(date.getDate()).padStart(2, '0') +
-			'T' +
-			String(date.getHours()).padStart(2, '0') +
-			':' +
-			String(date.getMinutes()).padStart(2, '0') +
-			':' +
-			String(date.getSeconds()).padStart(2, '0')
-		);
-	};
-
 	let result = messages.map(msg => {
 		// 如果消息包含图片，使用 content 数组格式
 		if (msg.role === 'user' && msg.images && msg.images.length > 0) {
@@ -151,10 +131,9 @@ function convertToOpenAIMessages(
 
 			// 添加文本内容
 			if (msg.content) {
-				const timestamp = formatTimestamp(msg.timestamp);
 				contentParts.push({
 					type: 'text',
-					text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+					text: msg.content,
 				});
 			}
 
@@ -174,21 +153,16 @@ function convertToOpenAIMessages(
 			} as ChatCompletionMessageParam;
 		}
 
-		const timestamp = formatTimestamp(msg.timestamp);
 		const baseMessage = {
 			role: msg.role,
-			content: msg.content
-				? timestamp
-					? `[${timestamp}] ${msg.content}`
-					: msg.content
-				: msg.content,
+			content: msg.content,
 		};
 		if (msg.role === 'assistant' && msg.tool_calls) {
 			const result: any = {
 				...baseMessage,
 				tool_calls: msg.tool_calls,
 			};
-			// Include reasoning_content for DeepSeek R1 models
+			// 为 DeepSeek R1 模型包含推理内容
 			if ((msg as any).reasoning_content) {
 				result.reasoning_content = (msg as any).reasoning_content;
 			}
@@ -196,7 +170,7 @@ function convertToOpenAIMessages(
 		}
 
 		if (msg.role === 'tool' && msg.tool_call_id) {
-			// Handle multimodal tool results with images
+			// 处理包含图片的多模态工具结果
 			if (msg.images && msg.images.length > 0) {
 				const content: Array<{
 					type: 'text' | 'image_url';
@@ -204,16 +178,15 @@ function convertToOpenAIMessages(
 					image_url?: {url: string};
 				}> = [];
 
-				// Add text content
+				// 添加文本内容
 				if (msg.content) {
-					const timestamp = formatTimestamp(msg.timestamp);
 					content.push({
 						type: 'text',
-						text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+						text: msg.content,
 					});
 				}
 
-				// Add images as base64 data URLs
+				// 添加 base64 编码的图片数据
 				for (const image of msg.images) {
 					content.push({
 						type: 'image_url',
@@ -230,18 +203,13 @@ function convertToOpenAIMessages(
 				} as ChatCompletionMessageParam;
 			}
 
-			const timestamp = formatTimestamp(msg.timestamp);
 			return {
 				role: 'tool',
-				content: msg.content
-					? timestamp
-						? `[${timestamp}] ${msg.content}`
-						: msg.content
-					: msg.content,
+				content: msg.content,
 				tool_call_id: msg.tool_call_id,
 			} as ChatCompletionMessageParam;
 		}
-		// Include reasoning_content for assistant messages (DeepSeek R1)
+		// 为助手消息包含推理内容(DeepSeek R1)
 		if (msg.role === 'assistant' && (msg as any).reasoning_content) {
 			return {
 				...baseMessage,
@@ -328,9 +296,9 @@ export interface StreamChunk {
 			arguments: string;
 		};
 	}>;
-	delta?: string; // For tool call streaming chunks or reasoning content
-	usage?: UsageInfo; // Token usage information
-	reasoning_content?: string; // Complete reasoning content for DeepSeek R1 models
+	delta?: string; // 用于工具调用流式分块或推理内容
+	usage?: UsageInfo; // Token 使用信息
+	reasoning_content?: string; // DeepSeek R1 模型的完整推理内容
 }
 
 /**

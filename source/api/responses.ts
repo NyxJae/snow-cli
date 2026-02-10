@@ -30,13 +30,13 @@ export interface ResponseOptions {
 	reasoning?: {
 		summary?: 'auto' | 'none';
 		effort?: 'low' | 'medium' | 'high' | 'xhigh';
-	} | null; // null means don't pass reasoning parameter (for small models)
+	} | null; // null 表示不传递 reasoning 参数（用于小模型）
 	prompt_cache_key?: string;
 	store?: boolean;
 	include?: string[];
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
 	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
-	// Sub-agent configuration overrides
+	// 子代理配置覆盖
 	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
 	customSystemPromptId?: string; // 自定义系统提示词 ID
 	customHeaders?: Record<string, string>; // 自定义请求头
@@ -58,7 +58,7 @@ function ensureStrictSchema(
 	// 深拷贝 schema
 	const stringified = JSON.stringify(schema);
 	const parseResult = parseJsonWithFix(stringified, {
-		toolName: 'Schema deep copy',
+		toolName: 'Schema 深拷贝',
 		fallbackValue: schema, // 如果失败，使用原始 schema
 		logWarning: true,
 		logError: true,
@@ -165,14 +165,14 @@ function getResponsesReasoningConfig(): {
 }
 
 export function resetOpenAIClient(): void {
-	// No-op: kept for backward compatibility
+	// 空操作：保留以保持向后兼容性
 }
 
 function toResponseImageUrl(image: {data: string; mimeType?: string}): string {
 	const data = image.data?.trim() || '';
 	if (!data) return '';
 
-	// Keep remote URLs and existing data URLs unchanged.
+	// 保持远程 URL 和现有 data URL 不变
 	if (/^https?:\/\//i.test(data) || /^data:/i.test(data)) {
 		return data;
 	}
@@ -185,9 +185,9 @@ function convertToResponseInput(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
 	customSystemPromptOverride?: string,
-	isSubAgentCall: boolean = false, // Whether this is a sub-agent call
-	subAgentSystemPrompt?: string, // Sub-agent assembled prompt
-	// When true, use Team mode system prompt (deprecated)
+	isSubAgentCall: boolean = false, // 是否为子代理调用
+	subAgentSystemPrompt?: string, // 子代理组装的提示词
+	// 当为 true 时，使用 Team 模式系统提示词（已弃用）
 ): {
 	input: any[];
 	systemInstructions: string;
@@ -203,25 +203,7 @@ function convertToResponseInput(
 	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
 		? false
 		: includeBuiltinSystemPrompt;
-	const formatTimestamp = (timestamp?: number): string | undefined => {
-		if (!timestamp) {
-			return undefined;
-		}
-		const date = new Date(timestamp);
-		return (
-			date.getFullYear() +
-			'-' +
-			String(date.getMonth() + 1).padStart(2, '0') +
-			'-' +
-			String(date.getDate()).padStart(2, '0') +
-			'T' +
-			String(date.getHours()).padStart(2, '0') +
-			':' +
-			String(date.getMinutes()).padStart(2, '0') +
-			':' +
-			String(date.getSeconds()).padStart(2, '0')
-		);
-	};
+
 	const result: any[] = [];
 
 	for (const msg of messages) {
@@ -238,17 +220,16 @@ function convertToResponseInput(
 
 			// 添加文本内容
 			if (msg.content) {
-				const timestamp = formatTimestamp(msg.timestamp);
 				contentParts.push({
 					type: 'input_text',
-					text: timestamp ? `[${timestamp}] ${msg.content}` : msg.content,
+					text: msg.content,
 				});
 			}
 
 			// 添加图片内容
 			if (msg.images && msg.images.length > 0) {
 				for (const image of msg.images) {
-					// Responses API 的 input_image.image_url 必须是 http(s) URL 或 data URL.
+					// Responses API 的 input_image.image_url 必须是 http(s) URL 或 data URL
 					// 使用 toResponseImageUrl 函数处理图片 URL
 					contentParts.push({
 						type: 'input_image',
@@ -286,18 +267,13 @@ function convertToResponseInput(
 
 		// Assistant 消息（纯文本）
 		if (msg.role === 'assistant') {
-			const timestamp = formatTimestamp(msg.timestamp);
 			result.push({
 				type: 'message',
 				role: 'assistant',
 				content: [
 					{
 						type: 'output_text',
-						text: msg.content
-							? timestamp
-								? `[${timestamp}] ${msg.content}`
-								: msg.content
-							: msg.content,
+						text: msg.content,
 					},
 				],
 			});
@@ -310,21 +286,16 @@ function convertToResponseInput(
 			if (msg.images && msg.images.length > 0) {
 				// [TEMP_FIX] 中转/代理 API 不支持 function_call_output.output 多模态数组
 				// 策略: output 放纯文本, 图片通过追加 user message(input_image) 传递
-				const timestamp = formatTimestamp(msg.timestamp);
-				const textOutput = msg.content
-					? timestamp
-						? `[${timestamp}] ${msg.content}`
-						: msg.content
-					: msg.content;
+				const textOutput = msg.content || '[Tool returned image(s)]';
 
-				// 1. Push function_call_output with text-only output
+				// 1. 推送仅包含文本输出的 function_call_output
 				result.push({
 					type: 'function_call_output',
 					call_id: msg.tool_call_id,
-					output: textOutput || '[Tool returned image(s)]',
+					output: textOutput,
 				});
 
-				// 2. Append a user message with images so the model can see them
+				// 2. 追加包含图片的用户消息,以便模型可以看到它们
 				const imageContentParts: any[] = [];
 				imageContentParts.push({
 					type: 'input_text',
@@ -342,15 +313,10 @@ function convertToResponseInput(
 					content: imageContentParts,
 				});
 			} else {
-				const timestamp = formatTimestamp(msg.timestamp);
 				result.push({
 					type: 'function_call_output',
 					call_id: msg.tool_call_id,
-					output: msg.content
-						? timestamp
-							? `[${timestamp}] ${msg.content}`
-							: msg.content
-						: msg.content,
+					output: msg.content || '',
 				});
 			}
 			continue;
@@ -429,19 +395,19 @@ async function* parseSSEStream(
 					return;
 				}
 
-				// Handle both "event: " and "event:" formats
+				// 处理 "event: " 和 "event:" 两种格式
 				if (trimmed.startsWith('event:')) {
-					// Event type, will be followed by data
+					// 事件类型，后面会跟随数据
 					continue;
 				}
 
-				// Handle both "data: " and "data:" formats
+				// 处理 "data: " 和 "data:" 两种格式
 				if (trimmed.startsWith('data:')) {
 					const data = trimmed.startsWith('data: ')
 						? trimmed.slice(6)
 						: trimmed.slice(5);
 					const parseResult = parseJsonWithFix(data, {
-						toolName: 'Responses API SSE stream',
+						toolName: 'Responses API SSE 流',
 						logWarning: false,
 						logError: true,
 					});
@@ -475,7 +441,7 @@ export async function* createStreamingResponse(
 	abortSignal?: AbortSignal,
 	onRetry?: (error: Error, attempt: number, nextDelay: number) => void,
 ): AsyncGenerator<ResponseStreamChunk, void, unknown> {
-	// Load configuration: if configProfile is specified, load it; otherwise use main config
+	// 加载配置：如果指定了 configProfile，则加载它；否则使用主配置
 	let config: ReturnType<typeof getOpenAiConfig>;
 	if (options.configProfile) {
 		try {
@@ -484,7 +450,7 @@ export async function* createStreamingResponse(
 			if (profileConfig?.snowcfg) {
 				config = profileConfig.snowcfg;
 			} else {
-				// Profile not found, fallback to main config
+				// 未找到配置文件，回退到主配置
 				config = getOpenAiConfig();
 				const {logger} = await import('../utils/core/logger.js');
 				logger.warn(
@@ -492,7 +458,7 @@ export async function* createStreamingResponse(
 				);
 			}
 		} catch (error) {
-			// If loading profile fails, fallback to main config
+			// 如果加载配置文件失败，回退到主配置
 			config = getOpenAiConfig();
 			const {logger} = await import('../utils/core/logger.js');
 			logger.warn(
@@ -501,11 +467,11 @@ export async function* createStreamingResponse(
 			);
 		}
 	} else {
-		// No configProfile specified, use main config
+		// 未指定 configProfile，使用主配置
 		config = getOpenAiConfig();
 	}
 
-	// Get system prompt (with custom override support)
+	// 获取系统提示词（支持自定义覆盖）
 	let customSystemPromptContent: string | undefined;
 	if (options.customSystemPromptId) {
 		const {getSystemPromptConfig} = await import(
@@ -530,7 +496,7 @@ export async function* createStreamingResponse(
 		customSystemPromptContent,
 		!!options.customSystemPromptId || !!options.subAgentSystemPrompt, // 子代理调用的判断：只要有customSystemPromptId或subAgentSystemPrompt就认为是子代理调用
 		options.subAgentSystemPrompt,
-		// Pass teamMode to use correct system prompt (deprecated)
+		// 传递 teamMode 以使用正确的系统提示词（已弃用）
 	);
 
 	// 获取配置的 reasoning 设置
@@ -558,7 +524,7 @@ export async function* createStreamingResponse(
 
 			const url = `${config.baseUrl}/responses`;
 
-			// Use custom headers from options if provided, otherwise get from current config (supports profile override)
+			// 如果提供了选项中的自定义请求头，则使用它们；否则从当前配置获取（支持配置文件覆盖）
 			const customHeaders =
 				options.customHeaders || getCustomHeadersForConfig(config);
 
@@ -594,7 +560,7 @@ export async function* createStreamingResponse(
 								? 'Network/Connection Error'
 								: 'Unknown Error'
 						}\n` +
-						`Possible causes: Network unavailable, DNS resolution failed, proxy issues, or server unreachable`,
+						`可能原因：网络不可用、DNS 解析失败、代理问题或服务器无法访问`,
 				);
 			}
 
@@ -739,7 +705,7 @@ export async function* createStreamingResponse(
 							prompt_tokens: chunk.response.usage.input_tokens || 0,
 							completion_tokens: chunk.response.usage.output_tokens || 0,
 							total_tokens: chunk.response.usage.total_tokens || 0,
-							// OpenAI Responses API: cached_tokens in input_tokens_details (note: tokenS)
+							// OpenAI Responses API: cached_tokens 在 input_tokens_details 中
 							cached_tokens: (chunk.response.usage as any).input_tokens_details
 								?.cached_tokens,
 						};
@@ -768,7 +734,7 @@ export async function* createStreamingResponse(
 				};
 			}
 
-			// Yield reasoning data if available
+			// 如果有推理数据，返回它们
 			if (reasoningData) {
 				yield {
 					type: 'reasoning_data',
@@ -776,9 +742,9 @@ export async function* createStreamingResponse(
 				};
 			}
 
-			// Yield usage information if available
+			// 如果有使用信息，返回它们
 			if (usageData) {
-				// Save usage to file system at API layer
+				// 在 API 层保存使用信息到文件系统
 				saveUsageToFile(options.model, usageData);
 
 				yield {
@@ -787,7 +753,7 @@ export async function* createStreamingResponse(
 				};
 			}
 
-			// 发送完成信号 - For Responses API, thinking content is in reasoning object, not separate thinking field
+			// 发送完成信号 - 对于 Responses API，思考内容在 reasoning 对象中，不是单独的 thinking 字段
 			yield {
 				type: 'done',
 			};
