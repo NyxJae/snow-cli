@@ -1158,6 +1158,24 @@ async function executeWithInternalRetry(
 								return prev;
 							}
 
+							// Handle subagent_result - display full result
+							if (subAgentMessage.message.type === 'subagent_result') {
+								const resultMsg = subAgentMessage.message as any;
+								const uiMsg = {
+									role: 'subagent-result' as const,
+									content: resultMsg.content || '',
+									streaming: false,
+									subAgentResult: {
+										agentType: resultMsg.agentType || 'general',
+										originalContent: resultMsg.originalContent,
+										timestamp: resultMsg.timestamp || Date.now(),
+										status: resultMsg.status || 'success',
+									},
+									subAgentInternal: true,
+								};
+								return [...prev, uiMsg];
+							}
+
 							// Check if we already have a message for this agent
 							const existingIndex = prev.findIndex(
 								m =>
