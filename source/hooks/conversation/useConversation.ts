@@ -82,8 +82,7 @@ export type ConversationHandlerOptions = {
 	) => Promise<UserQuestionResult>;
 	isToolAutoApproved: (toolName: string) => boolean;
 	addMultipleToAlwaysApproved: (toolNames: string[]) => void;
-	yoloMode: boolean;
-	// planMode 和 vulnerabilityHuntingMode 已整合为 currentAgentName，不再需要独立状态
+	yoloModeRef: React.MutableRefObject<boolean>;
 	setContextUsage: React.Dispatch<React.SetStateAction<any>>;
 	useBasicModel?: boolean; // Optional flag to use basicModel instead of advancedModel
 	getPendingMessages?: () => Array<{
@@ -122,10 +121,7 @@ export async function handleConversationWithTools(
 	const {controller, setRetryStatus, saveMessage, userContent, imageContents} =
 		options;
 
-	// Save user message ONCE before retry loop
-	// This prevents duplicate user messages when network errors trigger retries
-	// BUG FIX: Previously saved inside executeWithInternalRetry, causing duplicates
-	// when retry delay (5s) aligned with dedup time window (5s)
+	// Save user message before retry loop to prevent duplicates caused by timing alignment
 	try {
 		await saveMessage({
 			role: 'user',
@@ -290,7 +286,7 @@ async function executeWithInternalRetry(
 		requestUserQuestion,
 		isToolAutoApproved,
 		addMultipleToAlwaysApproved,
-		yoloMode,
+		yoloModeRef,
 		setContextUsage,
 		setIsReasoning,
 		setRetryStatus,
@@ -719,10 +715,13 @@ async function executeWithInternalRetry(
 				let approvedTools: ToolCall[] = [...autoApprovedTools];
 
 				// In YOLO mode, auto-approve all tools EXCEPT sensitive commands
-				if (yoloMode) {
+				if (yoloModeRef.current) {
 					// Use the unified permission checker to filter tools
 					const {sensitiveTools, nonSensitiveTools} =
-						await filterToolsBySensitivity(toolsNeedingConfirmation, yoloMode);
+						await filterToolsBySensitivity(
+							toolsNeedingConfirmation,
+							yoloModeRef.current,
+						);
 
 					// Auto-approve non-sensitive tools
 					approvedTools.push(...nonSensitiveTools);
@@ -1257,7 +1256,7 @@ async function executeWithInternalRetry(
 					},
 					requestToolConfirmation,
 					isToolAutoApproved,
-					yoloMode,
+					yoloModeRef.current,
 					addToAlwaysApproved,
 					//添加 onUserInteractionNeeded 回调用于子代理 askuser 工具
 					async (

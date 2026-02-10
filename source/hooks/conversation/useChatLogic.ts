@@ -1,4 +1,4 @@
-import {useRef} from 'react';
+import {useRef, useEffect} from 'react';
 import {useI18n} from '../../i18n/index.js';
 import {type Message} from '../../ui/components/chat/MessageList.js';
 import type {ReviewCommitSelection} from '../../ui/components/panels/ReviewCommitPanel.js';
@@ -447,6 +447,12 @@ export function useChatLogic(props: UseChatLogicProps) {
 		}
 	};
 
+	// Use ref to avoid closure stale value, enabling real-time YOLO mode switching during conversation
+	const yoloModeRef = useRef(yoloMode);
+	useEffect(() => {
+		yoloModeRef.current = yoloMode;
+	}, [yoloMode]);
+
 	const processMessage = async (
 		message: string,
 		images?: Array<{data: string; mimeType: string}>,
@@ -566,37 +572,38 @@ export function useChatLogic(props: UseChatLogicProps) {
 				}
 			};
 
-			await handleConversationWithTools({
-				userContent: messageForAI.content,
-				editorContext: messageForAI.editorContext,
-				imageContents,
-				controller,
-				messages,
-				saveMessage: saveMessageWithOriginal,
-				setMessages,
-				setStreamTokenCount: streamingState.setStreamTokenCount,
-				requestToolConfirmation,
-				requestUserQuestion,
-				isToolAutoApproved,
-				addMultipleToAlwaysApproved,
-				yoloMode,
-				setContextUsage: streamingState.setContextUsage,
-				useBasicModel,
-				getPendingMessages: () => pendingMessagesRef.current,
-				clearPendingMessages: () => setPendingMessages([]),
-				setIsStreaming: streamingState.setIsStreaming,
-				setIsStopping: streamingState.setIsStopping,
-				setIsReasoning: streamingState.setIsReasoning,
-				setRetryStatus: streamingState.setRetryStatus,
-				clearSavedMessages,
-				setSnapshotFileCount: snapshotState.setSnapshotFileCount,
-				getCurrentContextPercentage: () => currentContextPercentageRef.current,
-				setCurrentModel: streamingState.setCurrentModel,
-			});
-
-			// NOTE: New on-demand backup system - snapshot management is now automatic
-			// Files are backed up when they are created/modified
-			// No need for manual commit process
+			try {
+				await handleConversationWithTools({
+					userContent: messageForAI.content,
+					editorContext: messageForAI.editorContext,
+					imageContents,
+					controller,
+					messages,
+					saveMessage: saveMessageWithOriginal,
+					setMessages,
+					setStreamTokenCount: streamingState.setStreamTokenCount,
+					requestToolConfirmation,
+					requestUserQuestion,
+					isToolAutoApproved,
+					addMultipleToAlwaysApproved,
+					yoloModeRef,
+					setContextUsage: streamingState.setContextUsage,
+					useBasicModel,
+					getPendingMessages: () => pendingMessagesRef.current,
+					clearPendingMessages: () => setPendingMessages([]),
+					setIsStreaming: streamingState.setIsStreaming,
+					setIsReasoning: streamingState.setIsReasoning,
+					setRetryStatus: streamingState.setRetryStatus,
+					clearSavedMessages,
+					setRemountKey,
+					setSnapshotFileCount: snapshotState.setSnapshotFileCount,
+					getCurrentContextPercentage: () =>
+						currentContextPercentageRef.current,
+					setCurrentModel: streamingState.setCurrentModel,
+				});
+			} finally {
+				// No cleanup needed - on-demand backup handles snapshots automatically
+			}
 		} catch (error) {
 			if (!controller.signal.aborted && !userInterruptedRef.current) {
 				const errorMessage =
@@ -792,35 +799,37 @@ export function useChatLogic(props: UseChatLogicProps) {
 				vscodeState.vscodeConnected ? vscodeState.editorContext : undefined,
 			);
 
-			await handleConversationWithTools({
-				userContent: messageForAI.content,
-				editorContext: messageForAI.editorContext,
-				imageContents,
-				controller,
-				messages,
-				saveMessage,
-				setMessages,
-				setStreamTokenCount: streamingState.setStreamTokenCount,
-				requestToolConfirmation,
-				requestUserQuestion,
-				isToolAutoApproved,
-				addMultipleToAlwaysApproved,
-				yoloMode,
-				setContextUsage: streamingState.setContextUsage,
-				getPendingMessages: () => pendingMessagesRef.current,
-				clearPendingMessages: () => setPendingMessages([]),
-				setIsStreaming: streamingState.setIsStreaming,
-				setIsStopping: streamingState.setIsStopping,
-				setIsReasoning: streamingState.setIsReasoning,
-				setRetryStatus: streamingState.setRetryStatus,
-				clearSavedMessages,
-				setSnapshotFileCount: snapshotState.setSnapshotFileCount,
-				getCurrentContextPercentage: () => currentContextPercentageRef.current,
-				setCurrentModel: streamingState.setCurrentModel,
-			});
-
-			// Snapshots are now created on-demand during file operations
-			// No global commit needed
+			try {
+				await handleConversationWithTools({
+					userContent: messageForAI.content,
+					editorContext: messageForAI.editorContext,
+					imageContents,
+					controller,
+					messages,
+					saveMessage,
+					setMessages,
+					setStreamTokenCount: streamingState.setStreamTokenCount,
+					requestToolConfirmation,
+					requestUserQuestion,
+					isToolAutoApproved,
+					addMultipleToAlwaysApproved,
+					yoloModeRef,
+					setContextUsage: streamingState.setContextUsage,
+					getPendingMessages: () => pendingMessagesRef.current,
+					clearPendingMessages: () => setPendingMessages([]),
+					setIsStreaming: streamingState.setIsStreaming,
+					setIsReasoning: streamingState.setIsReasoning,
+					setRetryStatus: streamingState.setRetryStatus,
+					clearSavedMessages,
+					setRemountKey,
+					setSnapshotFileCount: snapshotState.setSnapshotFileCount,
+					getCurrentContextPercentage: () =>
+						currentContextPercentageRef.current,
+					setCurrentModel: streamingState.setCurrentModel,
+				});
+			} finally {
+				// No cleanup needed - on-demand backup handles snapshots automatically
+			}
 		} catch (error) {
 			if (!controller.signal.aborted && !userInterruptedRef.current) {
 				const errorMessage =
