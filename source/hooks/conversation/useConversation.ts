@@ -41,6 +41,10 @@ import {
 	shouldAutoCompress,
 	performAutoCompression,
 } from '../../utils/core/autoCompress.js';
+import {
+	estimateTokenCount,
+	stringifyForTokenEstimate,
+} from '../../utils/core/tokenEstimator.js';
 import {cleanOrphanedToolCalls} from './utils/messageCleanup.js';
 import {extractThinkingContent} from './utils/thinkingExtractor.js';
 import {buildEditorContextContent} from './core/editorContextBuilder.js';
@@ -373,6 +377,10 @@ async function executeWithInternalRetry(
 	}
 	setStreamTokenCount(0);
 
+	// 注意:这里不要清空 contextUsage.
+	// 原因:底部状态栏会立刻显示 0/消失,造成 UI 抖动.
+	// 自动压缩的判断依赖的是 ChatInput 上报的 percentage(ref),它会在新请求开始后很快更新.
+
 	const config = getOpenAiConfig();
 	const model = options.useBasicModel
 		? config.basicModel || config.advancedModel || 'gpt-5'
@@ -452,6 +460,27 @@ async function executeWithInternalRetry(
 					});
 				}
 			};
+
+			// UI 的 contextUsage 以"本次会话完整上下文"口径展示,避免受 provider usage 缺失/单次口径影响.
+			// 因此在请求前写入本地估算的上下文 token 数,保证显示与压缩判断稳定.
+			try {
+				const requestPayload = {
+					model,
+					messages: conversationMessages,
+					tools: mcpTools.length > 0 ? mcpTools : undefined,
+				};
+				const estimatedPromptTokens = await estimateTokenCount(
+					stringifyForTokenEstimate(requestPayload),
+					model,
+				);
+				setContextUsage({
+					prompt_tokens: estimatedPromptTokens,
+					completion_tokens: 0,
+					total_tokens: estimatedPromptTokens,
+				});
+			} catch {
+				// Ignore estimation failures - keep previous contextUsage.
+			}
 
 			const streamGenerator =
 				config.requestMethod === 'anthropic'
@@ -594,45 +623,150 @@ async function executeWithInternalRetry(
 						receivedReasoningContent = (chunk as any).reasoning_content;
 					}
 				} else if (chunk.type === 'usage' && chunk.usage) {
-					// Capture usage information both in state and locally
-					setContextUsage(chunk.usage);
+					const usage = chunk.usage;
 
-					// Usage已在API层保存，此处仅用于UI显示
+					// provider usage 仍然记录到 accumulatedUsage(用于返回/持久化统计等).
+					// 优先使用"正常"的服务端 usage(>=1000)校准 prompt_tokens,同时保留本地估算兜底.
 
-					// Accumulate for final return (UI display purposes)
+					const isNormalProviderUsage = (usage.prompt_tokens || 0) >= 1000;
+					const hasAnyCacheField =
+						usage.cache_creation_input_tokens !== undefined ||
+						usage.cache_read_input_tokens !== undefined ||
+						usage.cached_tokens !== undefined;
+
+					if (isNormalProviderUsage || hasAnyCacheField) {
+						setContextUsage((prev: any) => {
+							// 若当前 UI 还没有基线(prompt_tokens),不要仅凭 cache 字段把 prompt_tokens 写成 0.
+							if (prev === null && !isNormalProviderUsage) {
+								return prev;
+							}
+
+							const safePrev =
+								prev ??
+								({
+									prompt_tokens: 0,
+									completion_tokens: 0,
+									total_tokens: 0,
+								} as any);
+
+							const nextPromptTokens = isNormalProviderUsage
+								? Math.max(
+										safePrev.prompt_tokens || 0,
+										usage.prompt_tokens || 0,
+								  )
+								: safePrev.prompt_tokens || 0;
+
+							const nextCompletionTokens =
+								isNormalProviderUsage && (usage.completion_tokens || 0) > 0
+									? Math.max(
+											safePrev.completion_tokens || 0,
+											usage.completion_tokens || 0,
+									  )
+									: safePrev.completion_tokens || 0;
+
+							const nextTotalTokens =
+								isNormalProviderUsage && (usage.total_tokens || 0) > 0
+									? Math.max(
+											safePrev.total_tokens || 0,
+											usage.total_tokens || 0,
+									  )
+									: safePrev.total_tokens || 0;
+
+							const nextCacheCreation = Math.max(
+								safePrev.cache_creation_input_tokens || 0,
+								usage.cache_creation_input_tokens || 0,
+							);
+							const nextCacheRead = Math.max(
+								safePrev.cache_read_input_tokens || 0,
+								usage.cache_read_input_tokens || 0,
+							);
+							const nextCached = Math.max(
+								safePrev.cached_tokens || 0,
+								usage.cached_tokens || 0,
+							);
+
+							// 若字段没有任何变化,避免无意义的 state 更新.
+							if (
+								nextPromptTokens === (safePrev.prompt_tokens || 0) &&
+								nextCompletionTokens === (safePrev.completion_tokens || 0) &&
+								nextTotalTokens === (safePrev.total_tokens || 0) &&
+								nextCacheCreation ===
+									(safePrev.cache_creation_input_tokens || 0) &&
+								nextCacheRead === (safePrev.cache_read_input_tokens || 0) &&
+								nextCached === (safePrev.cached_tokens || 0)
+							) {
+								return safePrev;
+							}
+
+							return {
+								...safePrev,
+								prompt_tokens: nextPromptTokens,
+								completion_tokens: nextCompletionTokens,
+								total_tokens: nextTotalTokens,
+								cache_creation_input_tokens: nextCacheCreation,
+								cache_read_input_tokens: nextCacheRead,
+								cached_tokens: nextCached,
+							};
+						});
+					}
+
 					if (!accumulatedUsage) {
 						accumulatedUsage = {
-							prompt_tokens: chunk.usage.prompt_tokens || 0,
-							completion_tokens: chunk.usage.completion_tokens || 0,
-							total_tokens: chunk.usage.total_tokens || 0,
-							cache_creation_input_tokens:
-								chunk.usage.cache_creation_input_tokens,
-							cache_read_input_tokens: chunk.usage.cache_read_input_tokens,
-							cached_tokens: chunk.usage.cached_tokens,
+							prompt_tokens: usage.prompt_tokens || 0,
+							completion_tokens: usage.completion_tokens || 0,
+							total_tokens: usage.total_tokens || 0,
+							cache_creation_input_tokens: usage.cache_creation_input_tokens,
+							cache_read_input_tokens: usage.cache_read_input_tokens,
+							cached_tokens: usage.cached_tokens,
 						};
 					} else {
-						// Add to existing usage for UI display
-						accumulatedUsage.prompt_tokens += chunk.usage.prompt_tokens || 0;
-						accumulatedUsage.completion_tokens +=
-							chunk.usage.completion_tokens || 0;
-						accumulatedUsage.total_tokens += chunk.usage.total_tokens || 0;
+						(accumulatedUsage.prompt_tokens += usage.prompt_tokens || 0),
+							(accumulatedUsage.completion_tokens +=
+								usage.completion_tokens || 0);
+						accumulatedUsage.total_tokens += usage.total_tokens || 0;
 
-						if (chunk.usage.cache_creation_input_tokens !== undefined) {
+						if (usage.cache_creation_input_tokens !== undefined) {
 							accumulatedUsage.cache_creation_input_tokens =
 								(accumulatedUsage.cache_creation_input_tokens || 0) +
-								chunk.usage.cache_creation_input_tokens;
+								usage.cache_creation_input_tokens;
 						}
-						if (chunk.usage.cache_read_input_tokens !== undefined) {
+						if (usage.cache_read_input_tokens !== undefined) {
 							accumulatedUsage.cache_read_input_tokens =
 								(accumulatedUsage.cache_read_input_tokens || 0) +
-								chunk.usage.cache_read_input_tokens;
+								usage.cache_read_input_tokens;
 						}
-						if (chunk.usage.cached_tokens !== undefined) {
+						if (usage.cached_tokens !== undefined) {
 							accumulatedUsage.cached_tokens =
-								(accumulatedUsage.cached_tokens || 0) +
-								chunk.usage.cached_tokens;
+								(accumulatedUsage.cached_tokens || 0) + usage.cached_tokens;
 						}
 					}
+				}
+			}
+
+			// 当 provider 不返回 usage,或返回的 prompt_tokens 过小(按需求: <1000)时,
+			// 仍然进行本地估算,但仅用于内部 accumulatedUsage(返回/统计),不再覆盖 UI 的 contextUsage.
+			// UI 显示的是"本次会话完整上下文"的估算值,已在请求发送前写入.
+			if (!accumulatedUsage || (accumulatedUsage.prompt_tokens || 0) < 1000) {
+				try {
+					const requestPayload = {
+						model,
+						messages: conversationMessages,
+						tools: mcpTools.length > 0 ? mcpTools : undefined,
+					};
+					const estimatedPromptTokens = await estimateTokenCount(
+						stringifyForTokenEstimate(requestPayload),
+						model,
+					);
+
+					accumulatedUsage = {
+						prompt_tokens: estimatedPromptTokens,
+						completion_tokens: accumulatedUsage?.completion_tokens || 0,
+						total_tokens:
+							estimatedPromptTokens +
+							(accumulatedUsage?.completion_tokens || 0),
+					};
+				} catch {
+					// Ignore estimation failures - keep usage as-is.
 				}
 			}
 

@@ -60,8 +60,32 @@ export function useStreamingState() {
 	const [isReasoning, setIsReasoning] = useState(false);
 	const [abortController, setAbortController] =
 		useState<AbortController | null>(null);
-	const [contextUsage, setContextUsage] = useState<UsageInfo | null>(null);
+	const [contextUsage, _setContextUsage] = useState<UsageInfo | null>(null);
 	const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+	const setContextUsage: React.Dispatch<
+		React.SetStateAction<UsageInfo | null>
+	> = action => {
+		_setContextUsage(prev => {
+			const next = typeof action === 'function' ? action(prev) : action;
+
+			// 仅允许显式清空(null).如果收到全 0 的 usage,大概率是 provider 的占位/异常值,
+			// 会导致底部状态栏从有效值跳回 0,造成 UI 抖动,因此忽略.
+			if (
+				next &&
+				(next.prompt_tokens || 0) === 0 &&
+				(next.completion_tokens || 0) === 0 &&
+				(next.total_tokens || 0) === 0 &&
+				(next.cache_creation_input_tokens || 0) === 0 &&
+				(next.cache_read_input_tokens || 0) === 0 &&
+				(next.cached_tokens || 0) === 0
+			) {
+				return prev;
+			}
+
+			return next;
+		});
+	};
 	const [timerStartTime, setTimerStartTime] = useState<number | null>(null);
 	const [retryStatus, setRetryStatus] = useState<RetryStatus | null>(null);
 	const [animationFrame, setAnimationFrame] = useState(0);
