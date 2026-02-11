@@ -6,7 +6,6 @@
  * 注意：内置主代理配置已拆分为独立文件：
  * - source/config/mainAgents/generalConfig.ts
  * - source/config/mainAgents/requirementAnalyzerConfig.ts
- * - source/config/mainAgents/architectConfig.ts
  * - source/config/mainAgents/debuggerConfig.ts
  * - source/config/mainAgents/index.ts
  */
@@ -15,7 +14,6 @@ import type {MainAgentConfig} from '../types/MainAgentConfig.js';
 import {
 	getSnowGeneralConfig,
 	getSnowRequirementAnalyzerConfig,
-	getSnowArchitectConfig,
 	getSnowDebuggerConfig,
 	getBuiltinMainAgentConfigs,
 } from './mainAgents/index.js';
@@ -23,7 +21,6 @@ import {
 export {
 	getSnowGeneralConfig,
 	getSnowRequirementAnalyzerConfig,
-	getSnowArchitectConfig,
 	getSnowDebuggerConfig,
 	getBuiltinMainAgentConfigs,
 };
@@ -61,13 +58,11 @@ export function validateMainAgentConfig(config: MainAgentConfig): {
 	}
 	if (
 		!config.basicInfo?.type ||
-		!['general', 'requirement_analyzer', 'Architect', 'debugger'].includes(
+		!['general', 'requirement_analyzer', 'debugger'].includes(
 			config.basicInfo.type,
 		)
 	) {
-		errors.push(
-			'主代理类型必须是general、requirement_analyzer、Architect、debugger',
-		);
+		errors.push('主代理类型必须是general、requirement_analyzer、debugger');
 	}
 
 	// 验证工具权限配置

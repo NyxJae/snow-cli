@@ -137,8 +137,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					return 'General';
 				case 'requirement_analyzer':
 					return 'Requirement Analyzer';
-				case 'Architect':
-					return 'Architect';
 				case 'debugger':
 					return 'Debugger';
 				default:
@@ -551,9 +549,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						break;
 					case 'requirement_analyzer':
 						newAgentName = 'Requirement Analyzer';
-						break;
-					case 'Architect':
-						newAgentName = 'Architect';
 						break;
 					case 'debugger':
 						newAgentName = 'Debugger';

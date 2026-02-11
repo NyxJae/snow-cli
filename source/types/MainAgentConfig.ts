@@ -18,7 +18,7 @@ export interface MainAgentBasicInfo {
 	/** 主代理描述信息 */
 	description: string;
 	/** 主代理类型 */
-	type: 'general' | 'requirement_analyzer' | 'Architect' | 'debugger';
+	type: 'general' | 'requirement_analyzer' | 'debugger';
 	/** 是否为内置主代理 */
 	builtin?: boolean;
 	/** 创建时间 */
@@ -95,7 +95,6 @@ export interface MainAgentConfigOptions {
 export enum MainAgentType {
 	GENERAL = 'general',
 	REQUIREMENT_ANALYZER = 'requirement_analyzer',
-	ARCHITECT = 'Architect',
 	DEBUGGER = 'debugger',
 }
 
@@ -105,6 +104,5 @@ export enum MainAgentType {
 export const BUILTIN_MAIN_AGENTS = {
 	GENERAL: 'general',
 	REQUIREMENT_ANALYZER: 'requirement_analyzer',
-	ARCHITECT: 'Architect',
 	DEBUGGER: 'debugger',
 } as const;

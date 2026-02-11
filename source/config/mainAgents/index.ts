@@ -6,14 +6,12 @@
 
 export {getSnowGeneralConfig} from './generalConfig.js';
 export {getSnowRequirementAnalyzerConfig} from './requirementAnalyzerConfig.js';
-export {getSnowArchitectConfig} from './architectConfig.js';
 export {getSnowDebuggerConfig} from './debuggerConfig.js';
 
 import type {MainAgentConfig} from '../../types/MainAgentConfig.js';
 import {BUILTIN_MAIN_AGENTS} from '../../types/MainAgentConfig.js';
 import {getSnowGeneralConfig} from './generalConfig.js';
 import {getSnowRequirementAnalyzerConfig} from './requirementAnalyzerConfig.js';
-import {getSnowArchitectConfig} from './architectConfig.js';
 import {getSnowDebuggerConfig} from './debuggerConfig.js';
 
 /**
@@ -26,7 +24,6 @@ export function getBuiltinMainAgentConfigs(): Record<string, MainAgentConfig> {
 		[BUILTIN_MAIN_AGENTS.GENERAL]: getSnowGeneralConfig(),
 		[BUILTIN_MAIN_AGENTS.REQUIREMENT_ANALYZER]:
 			getSnowRequirementAnalyzerConfig(),
-		[BUILTIN_MAIN_AGENTS.ARCHITECT]: getSnowArchitectConfig(),
 		[BUILTIN_MAIN_AGENTS.DEBUGGER]: getSnowDebuggerConfig(),
 	};
 }
