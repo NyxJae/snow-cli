@@ -36,6 +36,7 @@ import {
 	findInsertPositionAfterNthToolFromEnd,
 	insertMessagesAtPosition,
 } from '../message/messageUtils.js';
+import {formatLocalDateTime} from '../core/dateUtils.js';
 
 export interface SubAgentMessage {
 	type: 'sub_agent_message';
@@ -508,6 +509,12 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 			currentSession?.id,
 			finalPrompt,
 		);
+
+		// 在子代理系统提示词后添加任务开始时间
+		messages.push({
+			role: 'user',
+			content: `任务开始时间: ${formatLocalDateTime()}`,
+		});
 
 		// 流式执行子代理
 		let finalResponse = '';

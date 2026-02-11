@@ -14,6 +14,7 @@ import {
 	isDateFolder,
 	isProjectFolder,
 } from './projectUtils.js';
+import {formatLocalDateTime} from '../core/dateUtils.js';
 // Session 中直接使用 API 的消息格式,额外添加 timestamp 用于会话管理
 export interface ChatMessage extends APIChatMessage {
 	timestamp: number;
@@ -742,8 +743,21 @@ class SessionManager {
 		this.currentSession.messageCount = this.currentSession.messages.length;
 		this.currentSession.updatedAt = Date.now();
 
-		// Generate simple title and summary from first user message
+		// 在第一条用户消息后插入任务开始时间消息
 		if (this.currentSession.messageCount === 1 && message.role === 'user') {
+			const timeStr = formatLocalDateTime(new Date());
+
+			const taskStartMessage: ChatMessage = {
+				role: 'user',
+				content: `任务开始时间: ${timeStr}`,
+				timestamp: Date.now(),
+			};
+			this.currentSession.messages.push(taskStartMessage);
+			this.currentSession.messageCount = this.currentSession.messages.length;
+		}
+
+		// Generate simple title and summary from first user message
+		if (this.currentSession.messageCount >= 1 && message.role === 'user') {
 			// Use first 50 chars as title, first 100 chars as summary
 			const title =
 				message.content.slice(0, 50) +

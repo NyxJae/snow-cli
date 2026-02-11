@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import {formatLocalDateTime, getTimezoneOffset} from './core/dateUtils.js';
 
 /**
  * 读取指定路径的文件内容(如果存在)
@@ -157,21 +158,8 @@ export function createSystemContext(): string {
 	const shell = getShellDisplayName();
 
 	// 获取本地时间并格式化为 ISO 格式 (YYYY-MM-DD HH:mm)
-	const year = now.getFullYear();
-	const month = String(now.getMonth() + 1).padStart(2, '0');
-	const day = String(now.getDate()).padStart(2, '0');
-	const hours = String(now.getHours()).padStart(2, '0');
-	const minutes = String(now.getMinutes()).padStart(2, '0');
-
-	// 计算时区偏移 (格式: UTC±HH:mm)
-	const timezoneOffset = -now.getTimezoneOffset();
-	const offsetHours = Math.floor(Math.abs(timezoneOffset) / 60);
-	const offsetMinutes = Math.abs(timezoneOffset) % 60;
-	const offsetSign = timezoneOffset >= 0 ? '+' : '-';
-	const offsetStr = `UTC${offsetSign}${String(offsetHours).padStart(
-		2,
-		'0',
-	)}:${String(offsetMinutes).padStart(2, '0')}`;
+	const timeStr = formatLocalDateTime(now, 'YYYY-MM-DD HH:mm');
+	const offsetStr = getTimezoneOffset(now);
 
 	let context = `## System Environment
 
@@ -181,7 +169,7 @@ Working Directory: ${process.cwd()}
 
 ## Current Time
 
-DateTime: ${year}-${month}-${day} ${hours}:${minutes} (${offsetStr})`;
+DateTime: ${timeStr} (${offsetStr})`;
 
 	// 添加平台特定命令指导
 	const platformCommands = getPlatformCommandsSection();
