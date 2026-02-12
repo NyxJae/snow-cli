@@ -4,6 +4,7 @@ import TextInput from 'ink-text-input';
 import {Alert, Spinner} from '@inkjs/ui';
 import {getMCPServicesInfo} from '../../utils/execution/mcpToolsManager.js';
 import type {MCPServiceTools} from '../../utils/execution/mcpToolsManager.js';
+import {filterToolsByEnabledServices} from '../../utils/config/disabledBuiltInTools.js';
 import {
 	createSubAgent,
 	updateSubAgent,
@@ -119,8 +120,8 @@ export default function SubAgentConfigScreen({
 	const [confirmedConfigProfileIndex, setConfirmedConfigProfileIndex] =
 		useState(-1);
 
-	// Tool categories with translations
-	const toolCategories: ToolCategory[] = [
+	// 所有工具分类定义（包括被禁用的服务）
+	const allToolCategoriesDefinition: ToolCategory[] = [
 		{
 			name: t.subAgentConfig.filesystemTools,
 			tools: [
@@ -185,6 +186,16 @@ export default function SubAgentConfigScreen({
 		},
 	];
 
+	// 过滤掉被禁用服务的工具
+	const toolCategories: ToolCategory[] = useMemo(() => {
+		return allToolCategoriesDefinition
+			.map(category => ({
+				...category,
+				tools: filterToolsByEnabledServices(category.tools),
+			}))
+			.filter(category => category.tools.length > 0);
+	}, []);
+
 	// 获取可用的配置文件列表
 	const availableProfiles = useMemo(() => {
 		const profiles = getAllProfiles();
@@ -229,7 +240,10 @@ export default function SubAgentConfigScreen({
 		setAgentName(agent.name);
 		setDescription(agent.description);
 		setSubAgentRole(agent.subAgentRole || '');
-		setSelectedTools(new Set(agent.tools || []));
+		// 过滤掉被禁用服务的工具
+		const tools = agent.tools || [];
+		const enabledTools = filterToolsByEnabledServices(tools);
+		setSelectedTools(new Set(enabledTools));
 		setEditableFileSuffixesInput(
 			stringifyEditableFileSuffixes(agent.editableFileSuffixes),
 		);
@@ -451,11 +465,15 @@ export default function SubAgentConfigScreen({
 			if (isEditMode && agentId) {
 				// Update existing agent
 				// 构建更新对象,只包含实际需要更新的字段
+				// 过滤掉被禁用服务的工具
+				const enabledTools = filterToolsByEnabledServices(
+					Array.from(selectedTools),
+				);
 				const updateData: any = {
 					name: agentName,
 					description: description,
 					subAgentRole: subAgentRole || undefined,
-					tools: Array.from(selectedTools),
+					tools: enabledTools,
 					configProfile: selectedProfile || undefined,
 					editableFileSuffixes: parseEditableFileSuffixesInput(
 						editableFileSuffixesInput,
@@ -465,10 +483,14 @@ export default function SubAgentConfigScreen({
 				updateSubAgent(agentId, updateData);
 			} else {
 				// Create new agent
+				// 过滤掉被禁用服务的工具
+				const enabledTools = filterToolsByEnabledServices(
+					Array.from(selectedTools),
+				);
 				createSubAgent(
 					agentName,
 					description,
-					Array.from(selectedTools),
+					enabledTools,
 					subAgentRole || undefined,
 					selectedProfile || undefined,
 					parseEditableFileSuffixesInput(editableFileSuffixesInput),

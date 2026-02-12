@@ -235,6 +235,10 @@ export const en: TranslationKeys = {
 		requestMethodSelectHint: '↑↓ to select, Enter to confirm, Esc to cancel',
 		newProfile: '+ New',
 		deleteProfileShort: '🆇 Delete',
+		mark: '✓ Mark',
+		noProfilesMarked: 'Please use Space to select profiles to delete',
+		confirmDeleteProfiles:
+			'Are you sure you want to delete the following {count} profiles?',
 		fetchingModels: 'Fetching models from API...',
 		fetchingHint:
 			'This may take a few seconds depending on your network connection',
@@ -1267,6 +1271,8 @@ export const en: TranslationKeys = {
 		statusFailed: 'Failed',
 		navigationHint: '↑↓ Navigate • Enter Reconnect • Tab Toggle Service',
 		pleaseWait: 'Please wait...',
+		toolPermissionHint:
+			'Hint: After enabling a service, you need to configure tool permissions in the Main/Sub Agent settings',
 	},
 	runningAgentsPanel: {
 		title: 'Running Sub-Agents',

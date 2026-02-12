@@ -214,6 +214,9 @@ export type TranslationKeys = {
 		requestMethodSelectHint: string;
 		newProfile: string;
 		deleteProfileShort: string;
+		mark: string;
+		noProfilesMarked: string;
+		confirmDeleteProfiles: string;
 		fetchingModels: string;
 		fetchingHint: string;
 		systemPrompt: string;
@@ -1203,6 +1206,7 @@ export type TranslationKeys = {
 		statusFailed: string;
 		navigationHint: string;
 		pleaseWait: string;
+		toolPermissionHint: string;
 	};
 	// Running Agents Panel
 	runningAgentsPanel: {

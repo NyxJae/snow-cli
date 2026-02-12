@@ -213,6 +213,9 @@ export const zh: TranslationKeys = {
 		requestMethodSelectHint: '↑↓ 选择,Enter 确认,Esc 取消',
 		newProfile: '+ 新建',
 		deleteProfileShort: '🆇 删除',
+		mark: '✓ 标记',
+		noProfilesMarked: '请先使用空格键选中要删除的配置',
+		confirmDeleteProfiles: '确定要删除以下 {count} 个配置吗？',
 		fetchingModels: '从 API 获取模型...',
 		fetchingHint: '根据网络连接情况,这可能需要几秒钟',
 		systemPrompt: '系统提示词（选填）',
@@ -1203,6 +1206,8 @@ export const zh: TranslationKeys = {
 		statusFailed: '失败',
 		navigationHint: '↑↓ 导航 • Enter 重连服务 • Tab 启停服务',
 		pleaseWait: '请稍候...',
+		toolPermissionHint:
+			'提示: 服务启用后,需在主代理/子代理配置中设置具体工具权限',
 	},
 	runningAgentsPanel: {
 		title: '运行中的子智能体',

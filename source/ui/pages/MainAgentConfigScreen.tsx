@@ -5,6 +5,7 @@ import TextInput from 'ink-text-input';
 import {Alert, Spinner} from '@inkjs/ui';
 import {getMCPServicesInfo} from '../../utils/execution/mcpToolsManager.js';
 import type {MCPServiceTools} from '../../utils/execution/mcpToolsManager.js';
+import {filterToolsByEnabledServices} from '../../utils/config/disabledBuiltInTools.js';
 import {
 	loadMainAgentConfig,
 	saveMainAgentConfig,
@@ -112,7 +113,8 @@ export default function MainAgentConfigScreen({
 	const [mcpServices, setMcpServices] = useState<MCPServiceTools[]>([]);
 	const [loadError, setLoadError] = useState<string | null>(null);
 
-	const toolCategories: ToolCategory[] = [
+	// 所有工具分类定义（包括被禁用的服务）
+	const allToolCategoriesDefinition: ToolCategory[] = [
 		{
 			name: t.subAgentConfig.filesystemTools,
 			tools: [
@@ -177,6 +179,16 @@ export default function MainAgentConfigScreen({
 		},
 	];
 
+	// 过滤掉被禁用服务的工具
+	const toolCategories: ToolCategory[] = useMemo(() => {
+		return allToolCategoriesDefinition
+			.map(category => ({
+				...category,
+				tools: filterToolsByEnabledServices(category.tools),
+			}))
+			.filter(category => category.tools.length > 0);
+	}, []);
+
 	// Load available sub-agents
 	const availableSubAgents = useMemo(() => {
 		const agents = getSubAgents();
@@ -223,8 +235,10 @@ export default function MainAgentConfigScreen({
 			setEditableFileSuffixesInput(
 				stringifyEditableFileSuffixes(agent.editableFileSuffixes),
 			);
+			// 过滤掉被禁用服务的工具
 			const tools = Array.isArray(agent.tools) ? agent.tools : [];
-			setSelectedTools(new Set(tools));
+			const enabledTools = filterToolsByEnabledServices(tools);
+			setSelectedTools(new Set(enabledTools));
 
 			const availableSubAgents = getSubAgents();
 			const availableSubAgentIds = new Set(
@@ -573,6 +587,8 @@ export default function MainAgentConfigScreen({
 				const validTools = mappedSelectedTools.filter(toolId =>
 					availableToolIds.has(toolId),
 				);
+				// 额外过滤：移除被禁用服务的工具
+				const finalValidTools = filterToolsByEnabledServices(validTools);
 
 				// 清理配置文件中所有代理的无效子代理ID和工具ID
 				for (const [existingAgentId, existingAgentConfig] of Object.entries(
@@ -642,7 +658,7 @@ export default function MainAgentConfigScreen({
 							baseAgent.basicInfo?.createdAt || new Date().toISOString(),
 						updatedAt: new Date().toISOString(),
 					},
-					tools: validTools,
+					tools: finalValidTools,
 					availableSubAgents: validSubAgents,
 					mainAgentRole: mainAgentRole,
 					editableFileSuffixes: parseEditableFileSuffixesInput(
