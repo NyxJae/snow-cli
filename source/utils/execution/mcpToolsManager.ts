@@ -1130,9 +1130,57 @@ export async function closeAllMCPConnections(): Promise<void> {
 	}
 	persistentClients.clear();
 }
-
 export interface MCPExecutionContext {
 	editableFileSuffixes?: string[];
+	/**
+	 * Skip beforeToolCall/afterToolCall execution in executeMCPTool.
+	 * Use this when the caller already executes tool hooks.
+	 */
+	skipToolHooks?: boolean;
+}
+
+/**
+ * Normalize tool arguments by parsing JSON-like string values for known array/object fields.
+ * This keeps hook payloads and tool execution payloads consistent.
+ */
+export function normalizeToolArgs(args: any): any {
+	if (!args || typeof args !== 'object') {
+		return args;
+	}
+
+	const normalizedArgs = args;
+	const arrayOrObjectParams = [
+		'filePath',
+		'files',
+		'paths',
+		'items',
+		'options',
+	];
+
+	for (const [key, value] of Object.entries(normalizedArgs)) {
+		if (arrayOrObjectParams.includes(key) && typeof value === 'string') {
+			const trimmed = value.trim();
+			if (
+				(trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+				(trimmed.startsWith('{') && trimmed.endsWith('}'))
+			) {
+				try {
+					const parsed = JSON.parse(value);
+					if (
+						parsed !== null &&
+						typeof parsed === 'object' &&
+						(Array.isArray(parsed) || parsed.constructor === Object)
+					) {
+						normalizedArgs[key] = parsed;
+					}
+				} catch {
+					// Keep original value if parsing fails
+				}
+			}
+		}
+	}
+
+	return normalizedArgs;
 }
 
 /**
@@ -1146,97 +1194,62 @@ export async function executeMCPTool(
 	onTokenUpdate?: (tokenCount: number) => void,
 	executionContext?: MCPExecutionContext,
 ): Promise<any> {
-	// Some AI models (e.g., Anthropic) may serialize array/object parameters as JSON strings
-	// Only parse parameters that are EXPECTED to be arrays/objects (whitelist approach)
-	if (args && typeof args === 'object') {
-		// Whitelist: parameters that may legitimately be arrays or objects
-		const arrayOrObjectParams = [
-			'filePath',
-			'files',
-			'paths',
-			'items',
-			'options',
-		];
+	args = normalizeToolArgs(args);
 
-		for (const [key, value] of Object.entries(args)) {
-			// Only process whitelisted parameters
-			if (arrayOrObjectParams.includes(key) && typeof value === 'string') {
-				const trimmed = value.trim();
-				// Only attempt to parse if it looks like JSON array or object
-				if (
-					(trimmed.startsWith('[') && trimmed.endsWith(']')) ||
-					(trimmed.startsWith('{') && trimmed.endsWith('}'))
-				) {
-					try {
-						const parsed = JSON.parse(value);
-						// Type safety: Only replace if parsed result is array or plain object
-						if (
-							parsed !== null &&
-							typeof parsed === 'object' &&
-							(Array.isArray(parsed) || parsed.constructor === Object)
-						) {
-							args[key] = parsed;
-						}
-					} catch {
-						// Keep original value if parsing fails
-					}
-				}
-			}
-		}
-	}
-
-	// Execute beforeToolCall hook
-	try {
-		const {unifiedHooksExecutor} = await import('./unifiedHooksExecutor.js');
-		const hookResult = await unifiedHooksExecutor.executeHooks(
-			'beforeToolCall',
-			{
-				toolName,
-				args,
-			},
-		);
-
-		// Handle hook exit codes: 0=continue, 1=continue, 2+=throw
-		if (hookResult && !hookResult.success) {
-			// Find failed command hook
-			const commandError = hookResult.results.find(
-				(r: any) => r.type === 'command' && !r.success,
+	if (!executionContext?.skipToolHooks) {
+		// Execute beforeToolCall hook
+		try {
+			const {unifiedHooksExecutor} = await import('./unifiedHooksExecutor.js');
+			const hookResult = await unifiedHooksExecutor.executeHooks(
+				'beforeToolCall',
+				{
+					toolName,
+					args,
+				},
 			);
 
-			if (commandError && commandError.type === 'command') {
-				const {exitCode, command, output, error} = commandError;
+			// Handle hook exit codes: 0=continue, 1=continue, 2+=throw
+			if (hookResult && !hookResult.success) {
+				// Find failed command hook
+				const commandError = hookResult.results.find(
+					(r: any) => r.type === 'command' && !r.success,
+				);
 
-				// Exit code 2+: Throw error to stop AI conversation
-				if (exitCode >= 2 || exitCode < 0) {
-					const combinedOutput =
-						[output, error].filter(Boolean).join('\n\n') || '(no output)';
-					const hookError = new Error(
-						`beforeToolCall hook failed with exit code ${exitCode}\n` +
-							`Command: ${command}\n` +
-							`Output:\n${combinedOutput}`,
-					) as HookError;
-					hookError.isHookFailure = true;
-					throw hookError;
-				} else if (exitCode === 1) {
-					// Exit code 1: Warning, log and continue execution
-					console.warn(
-						`[WARN] beforeToolCall hook warning (exitCode: ${exitCode}):
+				if (commandError && commandError.type === 'command') {
+					const {exitCode, command, output, error} = commandError;
+
+					// Exit code 2+: Throw error to stop AI conversation
+					if (exitCode >= 2 || exitCode < 0) {
+						const combinedOutput =
+							[output, error].filter(Boolean).join('\n\n') || '(no output)';
+						const hookError = new Error(
+							`beforeToolCall hook failed with exit code ${exitCode}\n` +
+								`Command: ${command}\n` +
+								`Output:\n${combinedOutput}`,
+						) as HookError;
+						hookError.isHookFailure = true;
+						throw hookError;
+					} else if (exitCode === 1) {
+						// Exit code 1: Warning, log and continue execution
+						console.warn(
+							`[WARN] beforeToolCall hook warning (exitCode: ${exitCode}):
 ` +
-							`output: ${output || '(empty)'}
+								`output: ${output || '(empty)'}
 ` +
-							`error: ${error || '(empty)'}`,
-					);
+								`error: ${error || '(empty)'}`,
+						);
+					}
+					// Exit code 0: Success, continue silently
 				}
-				// Exit code 0: Success, continue silently
 			}
+		} catch (error) {
+			// Re-throw hook errors to stop AI conversation
+			if ((error as HookError)?.isHookFailure) {
+				throw error;
+			}
+			// Otherwise log and continue - don't block on unexpected errors
+			console.warn('Failed to execute beforeToolCall hook:', error);
 		}
-	} catch (error) {
-		// Re-throw hook errors to stop AI conversation
-		if ((error as HookError)?.isHookFailure) {
-			throw error;
-		}
-		// Otherwise log and continue - don't block on unexpected errors
-		console.warn('Failed to execute beforeToolCall hook:', error);
 	}
 
 	let result: any;
@@ -1798,83 +1811,87 @@ export async function executeMCPTool(
 		executionError = error instanceof Error ? error : new Error(String(error));
 		throw executionError;
 	} finally {
-		// Execute afterToolCall hook
-		try {
-			const {unifiedHooksExecutor} = await import('./unifiedHooksExecutor.js');
-			const hookResult = await unifiedHooksExecutor.executeHooks(
-				'afterToolCall',
-				{
-					toolName,
-					args,
-					result,
-					error: executionError,
-				},
-			);
-
-			// Handle hook result based on exit code strategy
-			if (hookResult && !hookResult.success) {
-				// Find failed command hook
-				const commandError = hookResult.results.find(
-					(r: any) => r.type === 'command' && !r.success,
+		if (!executionContext?.skipToolHooks) {
+			// Execute afterToolCall hook
+			try {
+				const {unifiedHooksExecutor} = await import(
+					'./unifiedHooksExecutor.js'
+				);
+				const hookResult = await unifiedHooksExecutor.executeHooks(
+					'afterToolCall',
+					{
+						toolName,
+						args,
+						result,
+						error: executionError,
+					},
 				);
 
-				if (commandError && commandError.type === 'command') {
-					const {exitCode, command, output, error} = commandError;
+				// Handle hook result based on exit code strategy
+				if (hookResult && !hookResult.success) {
+					// Find failed command hook
+					const commandError = hookResult.results.find(
+						(r: any) => r.type === 'command' && !r.success,
+					);
 
-					if (exitCode === 1) {
-						// Exit code 1: Warning - log and append to tool result
-						console.warn(
-							`[WARN] afterToolCall hook warning (exitCode: ${exitCode}):
-` +
-								`output: ${output || '(empty)'}
-` +
-								`error: ${error || '(empty)'}`,
-						);
+					if (commandError && commandError.type === 'command') {
+						const {exitCode, command, output, error} = commandError;
 
-						const combinedOutput =
-							[output, error].filter(Boolean).join('\n\n') || '(no output)';
-						const warningMessage = `
+						if (exitCode === 1) {
+							// Exit code 1: Warning - log and append to tool result
+							console.warn(
+								`[WARN] afterToolCall hook warning (exitCode: ${exitCode}):
+` +
+									`output: ${output || '(empty)'}
+` +
+									`error: ${error || '(empty)'}`,
+							);
+
+							const combinedOutput =
+								[output, error].filter(Boolean).join('\n\n') || '(no output)';
+							const warningMessage = `
 
 [afterToolCall Hook Warning]
 Command: ${command}
 Output:
 ${combinedOutput}`;
 
-						// Append warning to result
-						if (typeof result === 'string') {
-							result = result + warningMessage;
-						} else if (result && typeof result === 'object') {
-							// For object results, try to append to content field or convert to string
-							if ('content' in result && typeof result.content === 'string') {
-								result.content = result.content + warningMessage;
-							} else {
-								result = JSON.stringify(result, null, 2) + warningMessage;
+							// Append warning to result
+							if (typeof result === 'string') {
+								result = result + warningMessage;
+							} else if (result && typeof result === 'object') {
+								// For object results, try to append to content field or convert to string
+								if ('content' in result && typeof result.content === 'string') {
+									result.content = result.content + warningMessage;
+								} else {
+									result = JSON.stringify(result, null, 2) + warningMessage;
+								}
 							}
-						}
-					} else if (exitCode >= 2 || exitCode < 0) {
-						// Exit code 2+: Critical error - throw exception
-						const combinedOutput =
-							[output, error].filter(Boolean).join('\n\n') || '(no output)';
-						throw new Error(
-							`afterToolCall hook failed with exit code ${exitCode}
+						} else if (exitCode >= 2 || exitCode < 0) {
+							// Exit code 2+: Critical error - throw exception
+							const combinedOutput =
+								[output, error].filter(Boolean).join('\n\n') || '(no output)';
+							throw new Error(
+								`afterToolCall hook failed with exit code ${exitCode}
 ` +
-								`Command: ${command}\n` +
-								`Output:\n${combinedOutput}`,
-						);
+									`Command: ${command}\n` +
+									`Output:\n${combinedOutput}`,
+							);
+						}
+						// Exit code 0: Success, continue silently
 					}
-					// Exit code 0: Success, continue silently
 				}
+			} catch (error) {
+				// Re-throw if it's a critical hook error (exit code 2+)
+				if (
+					error instanceof Error &&
+					error.message.includes('afterToolCall hook failed')
+				) {
+					throw error;
+				}
+				// Otherwise just warn - don't block tool execution on unexpected errors
+				logger.warn('Failed to execute afterToolCall hook:', error);
 			}
-		} catch (error) {
-			// Re-throw if it's a critical hook error (exit code 2+)
-			if (
-				error instanceof Error &&
-				error.message.includes('afterToolCall hook failed')
-			) {
-				throw error;
-			}
-			// Otherwise just warn - don't block tool execution on unexpected errors
-			logger.warn('Failed to execute afterToolCall hook:', error);
 		}
 	}
 

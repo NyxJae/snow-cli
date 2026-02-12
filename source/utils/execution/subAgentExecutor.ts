@@ -1182,6 +1182,7 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 					// 构建执行上下文，传递子代理的可编辑文件后缀配置
 					const executionContext: MCPExecutionContext = {
 						editableFileSuffixes,
+						skipToolHooks: false,
 					};
 					const result = await executeMCPTool(
 						toolCall.function.name,

@@ -1,4 +1,8 @@
-import {executeMCPTool, type MCPExecutionContext} from './mcpToolsManager.js';
+import {
+	executeMCPTool,
+	normalizeToolArgs,
+	type MCPExecutionContext,
+} from './mcpToolsManager.js';
 export type {MCPExecutionContext};
 import {subAgentService} from '../../mcp/subagent.js';
 import {runningSubAgentTracker} from './runningSubAgentTracker.js';
@@ -245,9 +249,11 @@ export async function executeToolCall(
 		}
 	}
 
-	try {
-		const args = safeParseToolArguments(toolCall.function.arguments);
+	const args = safeParseToolArguments(toolCall.function.arguments);
+	const normalizedArgsForHooks =
+		args && typeof args === 'object' ? normalizeToolArgs({...args}) : args;
 
+	try {
 		// Execute beforeToolCall hook
 		try {
 			const {unifiedHooksExecutor} = await import(
@@ -257,10 +263,10 @@ export async function executeToolCall(
 				'beforeToolCall',
 				{
 					toolName: toolCall.function.name,
-					args,
+					args: normalizedArgsForHooks,
 				},
 			);
-			// Handle hook exit codes: 0=continue, 1=continue, 2+=set hookFailed and return
+
 			if (hookResult && !hookResult.success) {
 				// Find failed command hook
 				const commandError = hookResult.results.find(
@@ -399,7 +405,10 @@ export async function executeToolCall(
 				args,
 				abortSignal,
 				onTokenUpdate,
-				executionContext,
+				{
+					...executionContext,
+					skipToolHooks: true,
+				},
 			);
 
 			// Extract multimodal content (text + images)
@@ -484,7 +493,7 @@ export async function executeToolCall(
 				'afterToolCall',
 				{
 					toolName: toolCall.function.name,
-					args: safeParseToolArguments(toolCall.function.arguments),
+					args: normalizedArgsForHooks,
 					result,
 					error: executionError,
 				},

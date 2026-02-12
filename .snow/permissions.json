@@ -1,9 +1,0 @@
-{
-  "alwaysApprovedTools": [
-    "websearch-search",
-    "filesystem-read",
-    "codebase-search",
-    "terminal-execute",
-    "ace-text_search"
-  ]
-}
