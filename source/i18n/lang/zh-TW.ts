@@ -302,6 +302,8 @@ export const zhTW: TranslationKeys = {
 		userInteractionTools: '用戶交互工具',
 		skillTools: '技能工具',
 		configProfile: '配置文件(可選):',
+		editableFileSuffixes: '可編輯文件後綴(可選):',
+		editableFileSuffixesPlaceholder: '.ts, .tsx, .js (留空=不限制)',
 		customSystemPrompt: '自定義系統提示詞(可選):',
 		customHeaders: '自定義請求頭(可選):',
 		noItems: '暫無可用項',

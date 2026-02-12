@@ -14,6 +14,7 @@ import {
 	getUsefulInfoService,
 	getTodoService,
 } from './mcpToolsManager.js';
+import type {MCPExecutionContext} from './mcpToolsManager.js';
 import {
 	getModelSpecificPromptForConfig,
 	getOpenAiConfig,
@@ -100,8 +101,7 @@ async function refreshSubAgentSpecialUserMessages(
 	const baseMessages = stripSpecialUserMessages(messages);
 	const specialUserMessages: ChatMessage[] = [];
 
-	// finalPrompt 必须作为 specialUserMessage 注入,否则 stripSpecialUserMessages() 无法识别并移除它,
-	// 会导致 while 循环每轮刷新时出现重复/顺序异常,也无法和 TODO/有用信息/文件夹笔记一起动态重排.
+	// finalPrompt must be injected as specialUserMessage to be properly filtered by stripSpecialUserMessages
 	if (finalPrompt) {
 		specialUserMessages.push({
 			role: 'user',
@@ -188,12 +188,10 @@ export async function executeSubAgent(
 	requestUserQuestion?: UserQuestionCallback,
 	instanceId?: string,
 ): Promise<SubAgentResult> {
-	// 保存主代理readFolders状态，子代理以空的readFolders状态开始
 	const mainAgentReadFolders = getReadFolders();
 	clearReadFolders();
 
 	try {
-		// 处理内置代理（硬编码或用户复制的版本）
 		let agent: any;
 
 		// 首先检查用户是否有内置代理的自定义副本
@@ -349,6 +347,9 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 				};
 			}
 		}
+
+		// 获取子代理的可编辑文件后缀配置
+		const editableFileSuffixes = agent.editableFileSuffixes;
 
 		// 获取所有可用工具
 		const allTools = await collectAllMCPTools();
@@ -1154,10 +1155,16 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 
 				try {
 					const args = JSON.parse(toolCall.function.arguments);
+					// 构建执行上下文，传递子代理的可编辑文件后缀配置
+					const executionContext: MCPExecutionContext = {
+						editableFileSuffixes,
+					};
 					const result = await executeMCPTool(
 						toolCall.function.name,
 						args,
 						abortSignal,
+						undefined, // onTokenUpdate
+						executionContext,
 					);
 
 					const toolResult = {

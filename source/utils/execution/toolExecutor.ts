@@ -1,11 +1,11 @@
-import {executeMCPTool} from './mcpToolsManager.js';
+import {executeMCPTool, type MCPExecutionContext} from './mcpToolsManager.js';
+export type {MCPExecutionContext};
 import {subAgentService} from '../../mcp/subagent.js';
 import {runningSubAgentTracker} from './runningSubAgentTracker.js';
 import type {SubAgentMessage} from './subAgentExecutor.js';
 import type {ConfirmationResult} from '../../ui/components/tools/ToolConfirmation.js';
 import type {ImageContent} from '../../api/types.js';
 import type {MultimodalContent} from '../../mcp/types/filesystem.types.js';
-//安全解析JSON，处理可能被拼接的多个JSON对象
 function safeParseToolArguments(argsString: string): Record<string, any> {
 	if (!argsString || argsString.trim() === '') {
 		return {};
@@ -14,8 +14,6 @@ function safeParseToolArguments(argsString: string): Record<string, any> {
 	try {
 		return JSON.parse(argsString);
 	} catch (error) {
-		//尝试只解析第一个完整的JSON对象
-		//这处理了多个工具调用参数被错误拼接的情况
 		const firstBraceIndex = argsString.indexOf('{');
 		if (firstBraceIndex === -1) {
 			return {};
@@ -49,7 +47,6 @@ function safeParseToolArguments(argsString: string): Record<string, any> {
 				} else if (char === '}') {
 					braceCount--;
 					if (braceCount === 0) {
-						//找到第一个完整的JSON对象
 						const firstJsonObject = argsString.substring(
 							firstBraceIndex,
 							i + 1,
@@ -120,8 +117,7 @@ export interface UserInteractionCallback {
 }
 
 /**
- * 检测值是否为多模态内容数组
- * 支持 text/image/document 三种多模态内容类型
+ * Check if value is a multimodal content array
  */
 function isMultimodalContent(value: any): value is MultimodalContent {
 	return (
@@ -219,6 +215,7 @@ export async function executeToolCall(
 	yoloMode?: boolean,
 	addToAlwaysApproved?: AddToAlwaysApprovedCallback,
 	onUserInteractionNeeded?: UserInteractionCallback,
+	executionContext?: MCPExecutionContext,
 ): Promise<ToolResult> {
 	let result: ToolResult | undefined;
 	let executionError: Error | null = null;
@@ -402,6 +399,7 @@ export async function executeToolCall(
 				args,
 				abortSignal,
 				onTokenUpdate,
+				executionContext,
 			);
 
 			// Extract multimodal content (text + images)
@@ -628,6 +626,7 @@ export async function executeToolCalls(
 	yoloMode?: boolean,
 	addToAlwaysApproved?: AddToAlwaysApprovedCallback,
 	onUserInteractionNeeded?: UserInteractionCallback,
+	executionContext?: MCPExecutionContext,
 ): Promise<ToolResult[]> {
 	// Group tool calls by their resource identifier
 	const resourceGroups = new Map<string, ToolCall[]>();
@@ -655,6 +654,7 @@ export async function executeToolCalls(
 					yoloMode,
 					addToAlwaysApproved,
 					onUserInteractionNeeded,
+					executionContext,
 				);
 				groupResults.push(result);
 

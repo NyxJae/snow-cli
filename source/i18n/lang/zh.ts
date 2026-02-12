@@ -302,6 +302,8 @@ export const zh: TranslationKeys = {
 		userInteractionTools: '用户交互工具',
 		skillTools: '技能工具',
 		configProfile: '配置文件(可选):',
+		editableFileSuffixes: '可编辑文件后缀(可选):',
+		editableFileSuffixesPlaceholder: '.ts, .tsx, .js (留空=不限制)',
 		customSystemPrompt: '自定义系统提示词(可选):',
 		customHeaders: '自定义请求头(可选):',
 		noItems: '暂无可用项',

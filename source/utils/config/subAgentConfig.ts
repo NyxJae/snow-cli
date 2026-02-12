@@ -17,6 +17,7 @@ export interface SubAgent {
 	description: string;
 	systemPrompt?: string;
 	tools?: string[];
+	editableFileSuffixes?: string[];
 	subAgentRole?: string;
 	createdAt?: string;
 	updatedAt?: string;
@@ -52,7 +53,6 @@ function getProjectSubAgentTomlPath(): string {
 function getProjectSubAgentJsonPath(): string {
 	return join(getProjectConfigDir(), 'sub-agents.json');
 }
-
 
 function ensureConfigDirectory(): void {
 	if (!existsSync(CONFIG_DIR)) {
@@ -244,6 +244,7 @@ export function createSubAgent(
 	tools: string[],
 	subAgentRole?: string,
 	configProfile?: string,
+	editableFileSuffixes?: string[],
 ): SubAgent {
 	const userAgents = getUserSubAgents();
 	const now = new Date().toISOString();
@@ -254,6 +255,7 @@ export function createSubAgent(
 		description,
 		subAgentRole,
 		tools,
+		editableFileSuffixes,
 		createdAt: now,
 		updatedAt: now,
 		builtin: false,
@@ -278,6 +280,7 @@ export function updateSubAgent(
 		description?: string;
 		subAgentRole?: string;
 		tools?: string[];
+		editableFileSuffixes?: string[];
 		configProfile?: string;
 		customSystemPrompt?: string;
 		customHeaders?: Record<string, string>;
@@ -309,6 +312,10 @@ export function updateSubAgent(
 				existingUserCopy?.subAgentRole ??
 				agent.subAgentRole,
 			tools: updates.tools ?? existingUserCopy?.tools ?? agent.tools,
+			editableFileSuffixes:
+				updates.editableFileSuffixes ??
+				existingUserCopy?.editableFileSuffixes ??
+				agent.editableFileSuffixes,
 			createdAt: existingUserCopy?.createdAt ?? agent.createdAt ?? now,
 			updatedAt: now,
 			builtin: true, // 保持 true,表示这是内置代理的用户副本
@@ -345,6 +352,8 @@ export function updateSubAgent(
 		description: updates.description ?? existingAgent.description,
 		subAgentRole: updates.subAgentRole ?? existingAgent.subAgentRole,
 		tools: updates.tools ?? existingAgent.tools,
+		editableFileSuffixes:
+			updates.editableFileSuffixes ?? existingAgent.editableFileSuffixes,
 		createdAt: existingAgent.createdAt,
 		updatedAt: now,
 		builtin: existingAgent.builtin,

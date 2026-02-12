@@ -14,6 +14,10 @@ import {
 	getAllProfiles,
 	getActiveProfileName,
 } from '../../utils/config/configManager.js';
+import {
+	parseEditableFileSuffixesInput,
+	stringifyEditableFileSuffixes,
+} from '../../utils/config/editableFileSuffixes.js';
 
 import {useI18n} from '../../i18n/index.js';
 import {useTheme} from '../contexts/ThemeContext.js';
@@ -78,6 +82,7 @@ type FormField =
 	| 'description'
 	| 'subAgentRole'
 	| 'configProfile'
+	| 'editableFileSuffixes'
 	| 'tools';
 
 export default function SubAgentConfigScreen({
@@ -92,6 +97,8 @@ export default function SubAgentConfigScreen({
 	const [description, setDescription] = useState('');
 	const [subAgentRole, setSubAgentRole] = useState('');
 	const [subAgentRoleExpanded, setSubAgentRoleExpanded] = useState(false);
+	const [editableFileSuffixesInput, setEditableFileSuffixesInput] =
+		useState('');
 	const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
 	const [currentField, setCurrentField] = useState<FormField>('name');
 	const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
@@ -189,7 +196,6 @@ export default function SubAgentConfigScreen({
 		if (!agentId) {
 			const activeProfile = getActiveProfileName();
 
-			// 设置配置文件索引（同时设置光标和确认索引）
 			if (activeProfile && availableProfiles.length > 0) {
 				const profileIndex = availableProfiles.findIndex(
 					p => p === activeProfile,
@@ -224,8 +230,10 @@ export default function SubAgentConfigScreen({
 		setDescription(agent.description);
 		setSubAgentRole(agent.subAgentRole || '');
 		setSelectedTools(new Set(agent.tools || []));
+		setEditableFileSuffixesInput(
+			stringifyEditableFileSuffixes(agent.editableFileSuffixes),
+		);
 
-		// 加载配置文件索引
 		if (agent.configProfile) {
 			const profileIndex = availableProfiles.findIndex(
 				p => p === agent.configProfile,
@@ -235,7 +243,6 @@ export default function SubAgentConfigScreen({
 				setConfirmedConfigProfileIndex(profileIndex);
 			}
 		} else if (agent.builtin) {
-			// 第一次编辑内置代理（创建副本），使用全局配置作为默认值
 			const activeProfile = getActiveProfileName();
 			if (activeProfile && availableProfiles.length > 0) {
 				const profileIndex = availableProfiles.findIndex(
@@ -247,8 +254,6 @@ export default function SubAgentConfigScreen({
 				}
 			}
 		}
-		// 编辑已有副本时，如果副本没有设置配置，不自动使用全局配置
-		// 保持 confirmedConfigProfileIndex 为 -1
 	}, [agentId, availableProfiles]);
 
 	// Load MCP services on mount
@@ -445,13 +450,16 @@ export default function SubAgentConfigScreen({
 
 			if (isEditMode && agentId) {
 				// Update existing agent
-				// 构建更新对象，只包含实际需要更新的字段
+				// 构建更新对象,只包含实际需要更新的字段
 				const updateData: any = {
 					name: agentName,
 					description: description,
 					subAgentRole: subAgentRole || undefined,
 					tools: Array.from(selectedTools),
 					configProfile: selectedProfile || undefined,
+					editableFileSuffixes: parseEditableFileSuffixesInput(
+						editableFileSuffixesInput,
+					),
 				};
 
 				updateSubAgent(agentId, updateData);
@@ -463,6 +471,7 @@ export default function SubAgentConfigScreen({
 					Array.from(selectedTools),
 					subAgentRole || undefined,
 					selectedProfile || undefined,
+					parseEditableFileSuffixesInput(editableFileSuffixesInput),
 				);
 			}
 
@@ -480,6 +489,7 @@ export default function SubAgentConfigScreen({
 		agentName,
 		description,
 		subAgentRole,
+		editableFileSuffixesInput,
 		selectedTools,
 		confirmedConfigProfileIndex,
 		availableProfiles,
@@ -510,6 +520,7 @@ export default function SubAgentConfigScreen({
 			'description',
 			'subAgentRole',
 			'configProfile',
+			'editableFileSuffixes',
 			'tools',
 		];
 		const currentFieldIndex = mainFields.indexOf(currentField);
@@ -538,7 +549,7 @@ export default function SubAgentConfigScreen({
 					);
 				} else {
 					// 在 tools 顶部时跳到上一个主字段
-					setCurrentField('configProfile');
+					setCurrentField('editableFileSuffixes');
 				}
 				return;
 			} else {
@@ -557,9 +568,7 @@ export default function SubAgentConfigScreen({
 					selectedConfigProfileIndex >= availableProfiles.length - 1
 				) {
 					// 跳到下一个主字段
-					setCurrentField('tools');
-					setSelectedCategoryIndex(0);
-					setSelectedToolIndex(0);
+					setCurrentField('editableFileSuffixes');
 				} else {
 					setSelectedConfigProfileIndex(prev => prev + 1);
 				}
@@ -1020,6 +1029,30 @@ export default function SubAgentConfigScreen({
 							5,
 							'profile',
 						)}
+					</Box>
+				</Box>
+
+				{/* Editable File Suffixes (Optional) */}
+				<Box flexDirection="column">
+					<Text
+						bold
+						color={
+							currentField === 'editableFileSuffixes'
+								? theme.colors.menuSelected
+								: theme.colors.menuNormal
+						}
+					>
+						{t.subAgentConfig.editableFileSuffixes}
+					</Text>
+					<Box marginLeft={2}>
+						<TextInput
+							value={editableFileSuffixesInput}
+							onChange={value =>
+								setEditableFileSuffixesInput(stripFocusArtifacts(value))
+							}
+							placeholder={t.subAgentConfig.editableFileSuffixesPlaceholder}
+							focus={currentField === 'editableFileSuffixes'}
+						/>
 					</Box>
 				</Box>
 

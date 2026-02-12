@@ -16,6 +16,7 @@ import {filterToolsByMainAgent} from '../../utils/core/toolFilterUtils.js';
 import {
 	executeToolCalls,
 	type ToolCall,
+	type MCPExecutionContext,
 } from '../../utils/execution/toolExecutor.js';
 import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
@@ -136,31 +137,25 @@ export async function handleConversationWithTools(
 		console.error('Failed to save user message:', error);
 	}
 
-	// 外层重试机制：最多10次，5秒间隔，确保流中断时自动重新发起请求
 	const MAX_RETRIES = 10;
-	const RETRY_DELAY = 5000; // 5秒间隔
+	const RETRY_DELAY = 5000;
 	let retryCount = 0;
 	let lastError: Error | null = null;
 
-	// 外层重试循环
 	while (retryCount <= MAX_RETRIES) {
 		try {
-			// 检查用户中止信号
 			if (controller.signal.aborted) {
 				throw new Error('Request aborted by user');
 			}
 
-			// 清除重试状态（如果存在）
 			if (retryCount > 0 && setRetryStatus) {
 				setRetryStatus(null);
 			}
 
-			// 执行内层逻辑（原有代码）
 			return await executeWithInternalRetry(options);
 		} catch (error) {
 			lastError = error as Error;
 
-			// 检查是否为可重试错误
 			const errorMessage = (error as Error).message.toLowerCase();
 			const errorCode = (error as any).code;
 			const isRetriable =
@@ -179,12 +174,10 @@ export async function handleConversationWithTools(
 				errorCode === 'EMPTY_RESPONSE' ||
 				errorMessage.includes('empty response');
 
-			// 如果不可重试或已达到最大重试次数，抛出错误
 			if (!isRetriable || retryCount >= MAX_RETRIES) {
 				throw error;
 			}
 
-			// 更新重试状态
 			retryCount++;
 			if (setRetryStatus) {
 				setRetryStatus({
@@ -196,18 +189,13 @@ export async function handleConversationWithTools(
 				});
 			}
 
-			// 等待重试
 			await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
 		}
 	}
 
-	// 不应该到达这里
 	throw lastError || new Error('Unknown error occurred');
 }
 
-/**
- * 内层重试逻辑（原有代码）
- */
 function stripSpecialUserMessages(messages: ChatMessage[]): ChatMessage[] {
 	return messages.filter(msg => !msg.specialUserMessage);
 }
@@ -376,10 +364,6 @@ async function executeWithInternalRetry(
 		resourceMonitor.trackEncoderCreated();
 	}
 	setStreamTokenCount(0);
-
-	// 注意:这里不要清空 contextUsage.
-	// 原因:底部状态栏会立刻显示 0/消失,造成 UI 抖动.
-	// 自动压缩的判断依赖的是 ChatInput 上报的 percentage(ref),它会在新请求开始后很快更新.
 
 	const config = getOpenAiConfig();
 	const model = options.useBasicModel
@@ -980,6 +964,13 @@ async function executeWithInternalRetry(
 				let subAgentTokenCount = 0;
 				let lastSubAgentFlushTime = 0;
 				const SUB_AGENT_FLUSH_INTERVAL = 100;
+
+				// 获取当前主代理配置的 editableFileSuffixes
+				const currentConfig = mainAgentManager.getCurrentAgentConfig();
+				const executionContext: MCPExecutionContext = {
+					editableFileSuffixes: currentConfig?.editableFileSuffixes,
+				};
+
 				const toolResults = await executeToolCalls(
 					approvedTools,
 					controller.signal,
@@ -1412,6 +1403,7 @@ async function executeWithInternalRetry(
 							multiSelect,
 						);
 					},
+					executionContext,
 				);
 
 				// Check if aborted during tool execution

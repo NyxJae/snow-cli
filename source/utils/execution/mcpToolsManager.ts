@@ -1131,6 +1131,10 @@ export async function closeAllMCPConnections(): Promise<void> {
 	persistentClients.clear();
 }
 
+export interface MCPExecutionContext {
+	editableFileSuffixes?: string[];
+}
+
 /**
  * Execute an MCP tool by parsing the prefixed tool name
  * Only connects to the service when actually needed
@@ -1140,8 +1144,8 @@ export async function executeMCPTool(
 	args: any,
 	abortSignal?: AbortSignal,
 	onTokenUpdate?: (tokenCount: number) => void,
+	executionContext?: MCPExecutionContext,
 ): Promise<any> {
-	// Normalize args: parse stringified JSON parameters for known parameters
 	// Some AI models (e.g., Anthropic) may serialize array/object parameters as JSON strings
 	// Only parse parameters that are EXPECTED to be arrays/objects (whitelist approach)
 	if (args && typeof args === 'object') {
@@ -1432,6 +1436,7 @@ export async function executeMCPTool(
 						args.endLine,
 						args.newContent,
 						args.contextLines,
+						executionContext?.editableFileSuffixes,
 					);
 					break;
 				case 'edit_search':
@@ -1466,11 +1471,12 @@ export async function executeMCPTool(
 						args.replaceContent,
 						args.occurrence,
 						args.contextLines,
+						executionContext?.editableFileSuffixes,
 					);
 					break;
-
 				case 'undo':
 					// Validate steps parameter
+
 					const steps = typeof args.steps === 'number' ? args.steps : 1;
 					if (
 						typeof steps !== 'number' ||

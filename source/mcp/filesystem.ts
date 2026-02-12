@@ -66,8 +66,15 @@ import {
 	readFileWithEncoding,
 	writeFileWithEncoding,
 } from './utils/filesystem/encoding.utils.js';
+import {
+	getEditableTypeDisplayText,
+	isFilePathAllowedByEditableSuffixes,
+} from '../utils/config/editableFileSuffixes.js';
 
 const {resolve, dirname, isAbsolute, extname} = path;
+
+const EDITABLE_SUFFIX_DENIED_MESSAGE_TEMPLATE =
+	'你没有权限编辑 xxx 类型文件的权限,请注意你的任务权限范围';
 
 /**
  * Filesystem MCP Service
@@ -705,8 +712,7 @@ export class FilesystemMCPService {
 				};
 			}
 
-			// 智能修正: AI常在文件路径后误加分隔符,需基于实际类型修正路径
-			// 原因: "file.cs\\" 会被当成目录处理,需要修正为文件路径读取
+			// Handle path correction for trailing separators that might be mistakenly appended by AI
 			let finalPath = filePath;
 			let fullPath = this.resolvePath(filePath);
 
@@ -718,7 +724,7 @@ export class FilesystemMCPService {
 			// Check if the path is a directory, if so, list its contents instead
 			const stats = await fs.stat(fullPath);
 
-			// 如果路径以分隔符结尾但实际是文件,自动修正
+			// Auto-correct path when trailing separator is present but path points to a file
 			if (
 				(filePath.endsWith('/') || filePath.endsWith('\\')) &&
 				!stats.isDirectory()
@@ -726,7 +732,7 @@ export class FilesystemMCPService {
 				const trimmedPath = filePath.replace(/[/\\]+$/, '');
 				const trimmedFullPath = this.resolvePath(trimmedPath);
 
-				// 验证修正后的路径是否为有效文件
+				// Validate that the corrected path points to an existing file
 				try {
 					const trimmedStats = await fs.stat(trimmedFullPath);
 					if (!trimmedStats.isDirectory()) {
@@ -737,11 +743,11 @@ export class FilesystemMCPService {
 						);
 					}
 				} catch {
-					// 修正后的路径无效,使用原始路径
+					// Fall back to original path if correction failed
 				}
 			}
 
-			// 如果最终确认是目录,列出其内容
+			// If the path is a directory, list its contents
 			if (stats.isDirectory()) {
 				const files = await this.listFiles(finalPath);
 				const fileList = files.join('\n');
@@ -1058,6 +1064,7 @@ export class FilesystemMCPService {
 		replaceContent?: string,
 		occurrence: number = 1,
 		contextLines: number = 8,
+		editableFileSuffixes?: string[],
 	): Promise<EditBySearchResult> {
 		// Handle array of files
 		if (Array.isArray(filePath)) {
@@ -1095,7 +1102,14 @@ export class FilesystemMCPService {
 						occurrence,
 					),
 				(path, search, replace, occ) =>
-					this.editFileBySearchSingle(path, search, replace, occ, contextLines),
+					this.editFileBySearchSingle(
+						path,
+						search,
+						replace,
+						occ,
+						contextLines,
+						editableFileSuffixes,
+					),
 				(path, result) => {
 					return {path, ...result};
 				},
@@ -1152,6 +1166,7 @@ export class FilesystemMCPService {
 			replaceContent,
 			occurrence,
 			contextLines,
+			editableFileSuffixes,
 		);
 	}
 
@@ -1165,8 +1180,20 @@ export class FilesystemMCPService {
 		replaceContent: string,
 		occurrence: number,
 		contextLines: number,
+		editableFileSuffixes?: string[],
 	): Promise<EditBySearchSingleResult> {
 		try {
+			if (
+				!isFilePathAllowedByEditableSuffixes(filePath, editableFileSuffixes)
+			) {
+				const editableTypeDisplayText = getEditableTypeDisplayText(filePath);
+				const deniedMessage = EDITABLE_SUFFIX_DENIED_MESSAGE_TEMPLATE.replace(
+					'xxx',
+					editableTypeDisplayText,
+				);
+				throw new Error(deniedMessage);
+			}
+
 			// Check if this is a remote SSH path
 			const isRemote = this.isSSHPath(filePath);
 			let content: string;
@@ -1763,6 +1790,7 @@ export class FilesystemMCPService {
 		endLine?: number,
 		newContent?: string,
 		contextLines: number = 8,
+		editableFileSuffixes?: string[],
 	): Promise<EditByLineResult> {
 		// Handle array of files
 		if (Array.isArray(filePath)) {
@@ -1775,7 +1803,14 @@ export class FilesystemMCPService {
 				fileItem =>
 					parseEditByLineParams(fileItem, startLine, endLine, newContent),
 				(path, start, end, content) =>
-					this.editFileSingle(path, start, end, content, contextLines),
+					this.editFileSingle(
+						path,
+						start,
+						end,
+						content,
+						contextLines,
+						editableFileSuffixes,
+					),
 				(path, result) => {
 					return {path, ...result};
 				},
@@ -1799,6 +1834,7 @@ export class FilesystemMCPService {
 			endLine,
 			newContent,
 			contextLines,
+			editableFileSuffixes,
 		);
 	}
 
@@ -1812,8 +1848,20 @@ export class FilesystemMCPService {
 		endLine: number,
 		newContent: string,
 		contextLines: number,
+		editableFileSuffixes?: string[],
 	): Promise<EditByLineSingleResult> {
 		try {
+			if (
+				!isFilePathAllowedByEditableSuffixes(filePath, editableFileSuffixes)
+			) {
+				const editableTypeDisplayText = getEditableTypeDisplayText(filePath);
+				const deniedMessage = EDITABLE_SUFFIX_DENIED_MESSAGE_TEMPLATE.replace(
+					'xxx',
+					editableTypeDisplayText,
+				);
+				throw new Error(deniedMessage);
+			}
+
 			// Check if this is a remote SSH path
 			const isRemote = this.isSSHPath(filePath);
 			let content: string;

@@ -35,6 +35,8 @@ export interface MainAgentConfig {
 	basicInfo: MainAgentBasicInfo;
 	/** 工具权限配置列表 - 简化为字符串数组格式 */
 	tools: string[];
+	/** 可编辑文件后缀白名单,仅对 filesystem-edit 与 filesystem-edit_search 生效 */
+	editableFileSuffixes?: string[];
 	/** 可用子代理配置列表 */
 	availableSubAgents: string[];
 	/** 主代理角色定义配置 */

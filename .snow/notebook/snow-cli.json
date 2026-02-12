@@ -1,47 +1,128 @@
 {
-  "source/api/anthropic.ts": [
-    {
-      "id": "notebook-1770694883398_3ow0urpes",
-      "filePath": "source/api/anthropic.ts",
-      "note": "**职责**: Anthropic API 适配器,负责将内部 ChatMessage 格式转换为 Anthropic 消息格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: Anthropic 格式的消息和系统提示词\n\n**关键设计决策**:\n- 支持多模态消息(文本+图片)\n- 支持工具调用和工具结果的消息转换\n- 为系统提示词和最后一条 user 消息添加 cache_control 以支持提示词缓存\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- 多模态消息中图片和文本的处理顺序很重要\n- 注意 cache_control 的放置位置影响缓存命中率",
-      "createdAt": "2026-02-10T11:41:23.398",
-      "updatedAt": "2026-02-10T11:41:23.398"
-    }
-  ],
-  "source/api/chat.ts": [
-    {
-      "id": "notebook-1770694883572_4ydxyl8k0",
-      "filePath": "source/api/chat.ts",
-      "note": "**职责**: OpenAI Chat API 适配器,负责将内部 ChatMessage 格式转换为 OpenAI 消息格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: OpenAI 格式的 ChatCompletionMessageParam 数组\n\n**关键设计决策**:\n- 支持多模态消息(文本+图片)使用 content 数组格式\n- 支持 tool_calls 和 tool 角色的消息转换\n- 支持 reasoning_content (DeepSeek R1 模型)\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- 带图片的 user 消息必须使用 content 数组格式\n- tool 角色的消息需要 tool_call_id 字段\n- assistant 带 tool_calls 时需要保留 tool_calls 字段",
-      "createdAt": "2026-02-10T11:41:23.572",
-      "updatedAt": "2026-02-10T11:41:23.572"
-    }
-  ],
-  "source/api/gemini.ts": [
-    {
-      "id": "notebook-1770694883908_ow13cu46t",
-      "filePath": "source/api/gemini.ts",
-      "note": "**职责**: Google Gemini API 适配器,负责将内部 ChatMessage 格式转换为 Gemini 消息格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: Gemini 格式的 contents 数组和 systemInstruction\n\n**关键设计决策**:\n- 使用 parts 数组结构支持多模态内容\n- 支持 functionCalling 工具调用模式\n- 工具结果以 functionResponse 形式返回\n- 支持 thinking 内容(Gemini thinking 模式)\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- Gemini 的 system 消息需要提取为 systemInstruction\n- thinking 内容必须放在 parts 数组的第一位\n- 工具结果需要构建 tool_call_id 到 function_name 的映射\n- 多模态工具结果中文本必须在图片之前",
-      "createdAt": "2026-02-10T11:41:23.908",
-      "updatedAt": "2026-02-10T11:41:23.908"
-    }
-  ],
-  "source/api/responses.ts": [
-    {
-      "id": "notebook-1770694883742_l9t553m1w",
-      "filePath": "source/api/responses.ts",
-      "note": "**职责**: OpenAI Responses API 适配器,负责将内部 ChatMessage 格式转换为 Responses API 格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: Responses API 格式的 input 数组\n\n**关键设计决策**:\n- 使用 type: 'message' 包裹用户消息\n- 文本内容使用 input_text 类型\n- 图片内容使用 input_image 类型\n- 工具调用使用 function.call 和 function.output 类型\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- Responses API 不支持 system 消息在 input 中,需要放在 instructions\n- user 消息的 content 必须是数组格式\n- 图片 URL 必须是 http(s) URL 或 data URL\n- 工具调用和输出需要配对出现",
-      "createdAt": "2026-02-10T11:41:23.741",
-      "updatedAt": "2026-02-10T11:41:23.741"
-    }
-  ],
-  "source/utils/agentsPromptUtils.ts": [
-    {
-      "id": "notebook-1770694245812_aux171dlv",
-      "filePath": "source/utils/agentsPromptUtils.ts",
-      "note": "**职责**: 生成主代理和子代理的系统环境上下文信息，包括平台、shell、工作目录和时间信息\n\n**接口摘要**: \n- 输入: 无参数\n- 输出: 包含系统环境信息的字符串\n\n**关键设计决策**:\n- 时间戳只放置于角色提示词的系统环境信息中(北京时间，精确到分钟)\n- 不在每条工具返回和user消息中添加时间戳，避免破坏KV缓存命中率\n- 角色提示词随对话进度动态更新插入位置，其内容变化不影响缓存\n\n**依赖拓扑**: \n- 被MainAgentManager.ts调用（主代理系统提示词生成）\n- 被subAgentExecutor.ts调用（子代理系统提示词生成）\n- 依赖getPlatformDisplayName(), getShellDisplayName(), getPlatformCommandsSection()\n\n**避坑指南**:\n- MUST使用北京时间(CST/UTC+8)，确保时间准确性\n- 时间戳只应存在于角色提示词的系统环境信息部分",
-      "createdAt": "2026-02-10T11:30:45.812",
-      "updatedAt": "2026-02-10T11:42:35.663"
-    }
-  ]
+	"source/api/anthropic.ts": [
+		{
+			"id": "notebook-1770694883398_3ow0urpes",
+			"filePath": "source/api/anthropic.ts",
+			"note": "**职责**: Anthropic API 适配器,负责将内部 ChatMessage 格式转换为 Anthropic 消息格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: Anthropic 格式的消息和系统提示词\n\n**关键设计决策**:\n- 支持多模态消息(文本+图片)\n- 支持工具调用和工具结果的消息转换\n- 为系统提示词和最后一条 user 消息添加 cache_control 以支持提示词缓存\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- 多模态消息中图片和文本的处理顺序很重要\n- 注意 cache_control 的放置位置影响缓存命中率",
+			"createdAt": "2026-02-10T11:41:23.398",
+			"updatedAt": "2026-02-10T11:41:23.398"
+		}
+	],
+	"source/api/chat.ts": [
+		{
+			"id": "notebook-1770694883572_4ydxyl8k0",
+			"filePath": "source/api/chat.ts",
+			"note": "**职责**: OpenAI Chat API 适配器,负责将内部 ChatMessage 格式转换为 OpenAI 消息格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: OpenAI 格式的 ChatCompletionMessageParam 数组\n\n**关键设计决策**:\n- 支持多模态消息(文本+图片)使用 content 数组格式\n- 支持 tool_calls 和 tool 角色的消息转换\n- 支持 reasoning_content (DeepSeek R1 模型)\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- 带图片的 user 消息必须使用 content 数组格式\n- tool 角色的消息需要 tool_call_id 字段\n- assistant 带 tool_calls 时需要保留 tool_calls 字段",
+			"createdAt": "2026-02-10T11:41:23.572",
+			"updatedAt": "2026-02-10T11:41:23.572"
+		}
+	],
+	"source/api/gemini.ts": [
+		{
+			"id": "notebook-1770694883908_ow13cu46t",
+			"filePath": "source/api/gemini.ts",
+			"note": "**职责**: Google Gemini API 适配器,负责将内部 ChatMessage 格式转换为 Gemini 消息格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: Gemini 格式的 contents 数组和 systemInstruction\n\n**关键设计决策**:\n- 使用 parts 数组结构支持多模态内容\n- 支持 functionCalling 工具调用模式\n- 工具结果以 functionResponse 形式返回\n- 支持 thinking 内容(Gemini thinking 模式)\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- Gemini 的 system 消息需要提取为 systemInstruction\n- thinking 内容必须放在 parts 数组的第一位\n- 工具结果需要构建 tool_call_id 到 function_name 的映射\n- 多模态工具结果中文本必须在图片之前",
+			"createdAt": "2026-02-10T11:41:23.908",
+			"updatedAt": "2026-02-10T11:41:23.908"
+		}
+	],
+	"source/api/responses.ts": [
+		{
+			"id": "notebook-1770694883742_l9t553m1w",
+			"filePath": "source/api/responses.ts",
+			"note": "**职责**: OpenAI Responses API 适配器,负责将内部 ChatMessage 格式转换为 Responses API 格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: Responses API 格式的 input 数组\n\n**关键设计决策**:\n- 使用 type: 'message' 包裹用户消息\n- 文本内容使用 input_text 类型\n- 图片内容使用 input_image 类型\n- 工具调用使用 function.call 和 function.output 类型\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- Responses API 不支持 system 消息在 input 中,需要放在 instructions\n- user 消息的 content 必须是数组格式\n- 图片 URL 必须是 http(s) URL 或 data URL\n- 工具调用和输出需要配对出现",
+			"createdAt": "2026-02-10T11:41:23.741",
+			"updatedAt": "2026-02-10T11:41:23.741"
+		}
+	],
+	"source/mcp/utils/filesystem/batch-operations.utils.ts": [
+		{
+			"id": "notebook-1770864631005_batch",
+			"filePath": "source/mcp/utils/filesystem/batch-operations.utils.ts",
+			"note": "职责: 批量文件操作公共执行器,负责逐文件执行与结果聚合.\n接口摘要: executeBatchOperation 输入 parseParams,executeSingle,mapResult,输出 results,totalFiles,successCount,failureCount.\n依赖拓扑: source/mcp/filesystem.ts 的 editFile 与 editFileBySearch 共用该层.\n避坑指南: 后缀拒绝必须转化为标准失败项返回,不要抛全局异常,否则会破坏需求要求的批量部分成功语义.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-12T10:52:07.194"
+		}
+	],
+	"source/mcp/filesystem.ts": [
+		{
+			"id": "notebook-1770864631004_fsmcp",
+			"filePath": "source/mcp/filesystem.ts",
+			"note": "职责: 文件编辑真实执行层,承载 editableFileSuffixes 拦截规则的统一落点.\n接口摘要: editFile 与 editFileBySearch 支持单文件和批量,输出 diff,diagnostics 与批量统计结果.\n依赖拓扑: 上游由 mcpToolsManager.ts 调用,批量聚合依赖 batch-operations.utils.ts,需求规则来自 requirements/编辑文件后缀名限制.md.\n避坑指南: 抽取统一后缀规范化和判定函数供两个编辑工具共用,拒绝项在批量中落成 success:false + 固定文案,保留部分成功.\n关键边界: 仅当代理具备对应编辑工具权限时才参与后缀校验.拒绝提示中的xxx必须按规则替换,常规文件显示后缀,点开头文件按最后一个点判定后的后缀显示,无后缀文件显示文件名.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-12T10:52:56.524"
+		}
+	],
+	"source/types/MainAgentConfig.ts": [
+		{
+			"id": "notebook-1770864631001_maincfg",
+			"filePath": "source/types/MainAgentConfig.ts",
+			"note": "职责: 定义主代理配置类型边界,承载 editableFileSuffixes 字段语义,不负责执行拦截.\n接口摘要: 输入来自 MainAgentConfigIO 与 MainAgentConfigScreen 的配置写入,输出给 MainAgentManager 作为 currentConfig.\n依赖拓扑: MainAgentManager.ts 与 MainAgentConfigScreen.tsx 依赖该类型,需求基线来自 requirements/编辑文件后缀名限制.md.\n避坑指南: editableFileSuffixes 必须兼容历史配置,[] 与未配置都表示不限制,避免 undefined 和 [] 语义分叉.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-12T10:52:06.417"
+		}
+	],
+	"source/ui/pages/MainAgentConfigScreen.tsx": [
+		{
+			"id": "notebook-1770864631006_mainui",
+			"filePath": "source/ui/pages/MainAgentConfigScreen.tsx",
+			"note": "职责: 主代理配置 TUI 编排层,负责 editableFileSuffixes 的输入,保存和回显.\n接口摘要: FormField 和 state 接收用户文本,handleSave 组装 MainAgentConfig 并通过 MainAgentConfigIO 保存.\n依赖拓扑: 依赖 MainAgentConfig.ts 类型与 MainAgentConfigIO.ts,规则对齐 requirements/编辑文件后缀名限制.md.\n避坑指南: 输入需支持 , 和 ， 分隔,trim,md 补点,去重,非法项忽略,空值展示并保存为不限制.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-12T10:52:07.386"
+		}
+	],
+	"source/ui/pages/SubAgentConfigScreen.tsx": [
+		{
+			"id": "notebook-1770864631007_subui",
+			"filePath": "source/ui/pages/SubAgentConfigScreen.tsx",
+			"note": "职责: 子代理配置 TUI 编排层,负责 editableFileSuffixes 从输入到持久化参数传递.\n接口摘要: state 管理用户输入,handleSave 在 createSubAgent 和 updateSubAgent 路径写入字段.\n依赖拓扑: 下游依赖 source/utils/config/subAgentConfig.ts 持久化,与主代理 UI 共享同一需求规则.\n避坑指南: 创建模式与编辑模式必须复用同一规范化逻辑,空输入必须表达不限制,禁止写入 [''] 等伪空配置.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-12T10:52:07.583"
+		}
+	],
+	"source/utils/config/subAgentConfig.ts": [
+		{
+			"id": "notebook-1770864631002_subcfg",
+			"filePath": "source/utils/config/subAgentConfig.ts",
+			"note": "职责: 管理子代理配置的读取,创建,更新和持久化,是 editableFileSuffixes 的子代理侧存储入口.\n接口摘要: createSubAgent 和 updateSubAgent 接收 UI 字段并写入 TOML,getSubAgent 提供运行态读取.\n依赖拓扑: SubAgentConfigScreen.tsx 调用写入,subAgentExecutor.ts 通过 getSubAgent 读取执行时配置.\n避坑指南: create 和 update 路径必须复用同一规范化规则,内置代理副本与普通代理语义一致,空值表示不限制.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-12T10:52:06.599"
+		}
+	],
+	"source/utils/execution/mcpToolsManager.ts": [
+		{
+			"id": "notebook-1770864631003_mcpmgr",
+			"filePath": "source/utils/execution/mcpToolsManager.ts",
+			"note": "职责: MCP 工具路由与参数校验层,统一分发 filesystem-edit 和 filesystem-edit_search.\n接口摘要: executeMCPTool 输入 toolName,args,输出工具执行结果并调用 filesystemService.editFile 或 editFileBySearch.\n依赖拓扑: 主会话 useConversation.ts 与子代理 subAgentExecutor.ts 共用该入口,下游依赖 source/mcp/filesystem.ts.\n避坑指南: 本层负责传递代理 editableFileSuffixes 上下文最合适,逐文件后缀判定和批量部分成功应下沉 filesystem 执行层.\n关键边界: 仅当代理具备对应编辑工具权限时才传递并触发后缀校验,保持工具权限先于后缀限制.\n提示语义: 拒绝文案中的xxx替换规则由filesystem执行层统一实现,本层只负责上下文透传,避免规则分叉.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-12T10:52:06.802"
+		}
+	],
+	"source/utils/execution/subAgentExecutor.ts": [
+		{
+			"id": "notebook-1770864631008_subexec",
+			"filePath": "source/utils/execution/subAgentExecutor.ts",
+			"note": "职责: 子代理运行时装配器,加载子代理配置并执行工具调用循环.\n接口摘要: getSubAgent 输入 agentId 输出 agent 配置,executeMCPTool 执行具体工具并回传结果.\n依赖拓扑: 上游依赖 subAgentConfig.ts,下游依赖 mcpToolsManager.ts 与 filesystem.ts.\n避坑指南: editableFileSuffixes 不应在本层重复判定,避免主子代理逻辑分叉,应统一复用 filesystem 执行层拦截.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-12T10:52:07.779"
+		}
+	],
+	"source/utils/agentsPromptUtils.ts": [
+		{
+			"id": "notebook-1770694245812_aux171dlv",
+			"filePath": "source/utils/agentsPromptUtils.ts",
+			"note": "**职责**: 生成主代理和子代理的系统环境上下文信息，包括平台、shell、工作目录和时间信息\n\n**接口摘要**: \n- 输入: 无参数\n- 输出: 包含系统环境信息的字符串\n\n**关键设计决策**:\n- 时间戳只放置于角色提示词的系统环境信息中(北京时间，精确到分钟)\n- 不在每条工具返回和user消息中添加时间戳，避免破坏KV缓存命中率\n- 角色提示词随对话进度动态更新插入位置，其内容变化不影响缓存\n\n**依赖拓扑**: \n- 被MainAgentManager.ts调用（主代理系统提示词生成）\n- 被subAgentExecutor.ts调用（子代理系统提示词生成）\n- 依赖getPlatformDisplayName(), getShellDisplayName(), getPlatformCommandsSection()\n\n**避坑指南**:\n- MUST使用北京时间(CST/UTC+8)，确保时间准确性\n- 时间戳只应存在于角色提示词的系统环境信息部分",
+			"createdAt": "2026-02-10T11:30:45.812",
+			"updatedAt": "2026-02-10T11:42:35.663"
+		}
+	],
+	"CurrentTaskPlan.md": [
+		{
+			"id": "notebook-1770864631009_plan",
+			"filePath": "CurrentTaskPlan.md",
+			"note": "职责: 本轮需求的短线实施计划文件,指导后续开发落地 editableFileSuffixes.\n接口摘要: 输入为 requirements/编辑文件后缀名限制.md 与蓝图笔记,输出阶段化实施顺序,风险点,验收和回归检查.\n依赖拓扑: 开发执行与 reviewer 验收依赖该计划,并与 .snow/notebook/snow-cli.json 中相关条目联动维护.\n避坑指南: 阶段必须覆盖配置层,执行拦截层,TUI 输入与持久化,批量返回语义以及 build 验收,每阶段可独立回滚.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-12T10:52:48.002"
+		}
+	]
 }

@@ -12,6 +12,10 @@ import {
 	getMainAgentConfigPath,
 } from '../../utils/MainAgentConfigIO.js';
 import type {MainAgentConfig} from '../../types/MainAgentConfig.js';
+import {
+	parseEditableFileSuffixesInput,
+	stringifyEditableFileSuffixes,
+} from '../../utils/config/editableFileSuffixes.js';
 import {getSubAgents} from '../../utils/config/subAgentConfig.js';
 import {getBuiltinMainAgentConfigs} from '../../config/DefaultMainAgentConfig.js';
 import {useI18n} from '../../i18n/index.js';
@@ -76,6 +80,7 @@ type FormField =
 	| 'name'
 	| 'description'
 	| 'mainAgentRole'
+	| 'editableFileSuffixes'
 	| 'tools'
 	| 'subAgents';
 
@@ -91,6 +96,8 @@ export default function MainAgentConfigScreen({
 	const [description, setDescription] = useState('');
 	const [mainAgentRole, setMainAgentRole] = useState('');
 	const [mainAgentRoleExpanded, setMainAgentRoleExpanded] = useState(false);
+	const [editableFileSuffixesInput, setEditableFileSuffixesInput] =
+		useState('');
 	const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
 	const [selectedSubAgents, setSelectedSubAgents] = useState<Set<string>>(
 		new Set(),
@@ -181,35 +188,30 @@ export default function MainAgentConfigScreen({
 
 	// Load agent data on mount
 	useEffect(() => {
-		// 新增模式：agentId 为 undefined
 		if (!agentId) {
-			// 设置默认值
 			setAgentName('');
 			setDescription('');
 			setMainAgentRole(
 				'你是Snow AI CLI自定义主代理。\n\n请根据用户需求提供帮助。',
 			);
+			setEditableFileSuffixesInput('');
 			setSelectedTools(new Set());
 			setSelectedSubAgents(new Set());
 			return;
 		}
 
-		// 编辑模式：检查配置文件是否存在
 		const hasConfigFile = existsMainAgentConfig();
 		let agent: MainAgentConfig | undefined;
 
 		if (hasConfigFile) {
-			// 有配置文件：先尝试加载用户自定义配置
 			const configFile = loadMainAgentConfig();
 			agent = configFile.agents[agentId];
 
-			// 如果该代理没有被自定义，回退到内置配置
 			if (!agent) {
 				const builtinConfigs = getBuiltinMainAgentConfigs();
 				agent = builtinConfigs[agentId];
 			}
 		} else {
-			// 没有配置文件：直接使用代码内置配置
 			const builtinConfigs = getBuiltinMainAgentConfigs();
 			agent = builtinConfigs[agentId];
 		}
@@ -218,13 +220,12 @@ export default function MainAgentConfigScreen({
 			setAgentName(agent.basicInfo.name);
 			setDescription(agent.basicInfo.description);
 			setMainAgentRole(agent.mainAgentRole || '');
-			// 处理工具配置：MainAgentConfig的tools已经是string[]类型
+			setEditableFileSuffixesInput(
+				stringifyEditableFileSuffixes(agent.editableFileSuffixes),
+			);
 			const tools = Array.isArray(agent.tools) ? agent.tools : [];
-			// 注意：这里不进行反向映射，因为主代理配置界面需要等待MCP服务加载
-			// 反向映射将在MCP服务加载后的useEffect中处理
 			setSelectedTools(new Set(tools));
 
-			// 处理子代理配置：过滤掉不存在的子代理
 			const availableSubAgents = getSubAgents();
 			const availableSubAgentIds = new Set(
 				availableSubAgents.map(sub => sub.id),
@@ -445,10 +446,8 @@ export default function MainAgentConfigScreen({
 		}
 
 		try {
-			// 新增模式：生成新的 agentId
 			let finalAgentId = agentId;
 			if (!agentId) {
-				// 使用 name 作为 agentId（转换为英文格式）
 				finalAgentId = agentName
 					.trim()
 					.toLowerCase()
@@ -462,13 +461,11 @@ export default function MainAgentConfigScreen({
 				}
 			}
 
-			// 确保 finalAgentId 不为 undefined
 			if (!finalAgentId) {
 				setSaveError('代理ID生成失败');
 				return;
 			}
 
-			// 检查是否为重置操作（与内置配置完全相同）
 			const builtinConfigs = getBuiltinMainAgentConfigs();
 			const builtinAgent = builtinConfigs[finalAgentId];
 
@@ -482,54 +479,43 @@ export default function MainAgentConfigScreen({
 				JSON.stringify(Array.from(selectedSubAgents).sort()) ===
 					JSON.stringify((builtinAgent.availableSubAgents || []).sort());
 
-			// 智能加载配置：如果配置文件不存在，只创建当前编辑代理的配置
 			let configFile: import('../../types/MainAgentConfig.js').MainAgentConfigFile;
 			const configExists = existsMainAgentConfig();
 
 			if (configExists) {
-				// 配置文件存在，加载完整配置
 				configFile = loadMainAgentConfig();
 			} else {
-				// 配置文件不存在，创建只包含当前代理的空配置
 				configFile = {
 					agents: {},
 				};
 			}
 
 			if (isResetToBuiltin) {
-				// 重置操作：删除对应的主代理配置
 				if (configFile.agents[finalAgentId]) {
 					delete configFile.agents[finalAgentId];
 
-					// 如果两个主代理都重置了，删除配置文件
 					const remainingAgents = Object.keys(configFile.agents);
 					if (remainingAgents.length === 0) {
-						// 删除配置文件
 						const configPath = getMainAgentConfigPath();
 						if (existsSync(configPath)) {
 							unlinkSync(configPath);
 						}
 					} else {
-						// 保存剩余的配置
 						saveMainAgentConfig(configFile);
 					}
 				}
 			} else {
-				// 正常保存操作：创建或更新配置
 				const existingAgent = configFile.agents[finalAgentId];
 
-				// 新增模式：检查 ID 是否已存在
 				if (!agentId && existingAgent) {
 					setSaveError('代理ID已存在，请使用不同的名称');
 					return;
 				}
-				// 只有在编辑模式下才检查代理是否存在
 				if (agentId && !existingAgent && !builtinAgent) {
 					setSaveError(`Agent ${finalAgentId} not found`);
 					return;
 				}
 
-				// 清理不存在的子代理ID
 				const availableSubAgents = getSubAgents();
 				const availableSubAgentIds = new Set(
 					availableSubAgents.map(sub => sub.id),
@@ -659,6 +645,9 @@ export default function MainAgentConfigScreen({
 					tools: validTools,
 					availableSubAgents: validSubAgents,
 					mainAgentRole: mainAgentRole,
+					editableFileSuffixes: parseEditableFileSuffixesInput(
+						editableFileSuffixesInput,
+					),
 				};
 
 				configFile.agents[finalAgentId] = updatedAgent;
@@ -679,6 +668,7 @@ export default function MainAgentConfigScreen({
 		agentName,
 		description,
 		mainAgentRole,
+		editableFileSuffixesInput,
 		selectedTools,
 		selectedSubAgents,
 		agentId,
@@ -707,6 +697,7 @@ export default function MainAgentConfigScreen({
 			'name',
 			'description',
 			'mainAgentRole',
+			'editableFileSuffixes',
 			'tools',
 			'subAgents',
 		];
@@ -716,6 +707,10 @@ export default function MainAgentConfigScreen({
 			if (currentField === 'mainAgentRole') {
 				// Jump to previous main field
 				setCurrentField('description');
+				return;
+			} else if (currentField === 'editableFileSuffixes') {
+				// Jump to previous main field
+				setCurrentField('mainAgentRole');
 				return;
 			} else if (currentField === 'tools') {
 				// Navigate within tool list
@@ -729,7 +724,7 @@ export default function MainAgentConfigScreen({
 					);
 				} else {
 					// At top of tools, jump to previous field
-					setCurrentField('mainAgentRole');
+					setCurrentField('editableFileSuffixes');
 				}
 				return;
 			} else if (currentField === 'subAgents') {
@@ -752,6 +747,10 @@ export default function MainAgentConfigScreen({
 
 		if (key.downArrow) {
 			if (currentField === 'mainAgentRole') {
+				// Jump to next main field
+				setCurrentField('editableFileSuffixes');
+				return;
+			} else if (currentField === 'editableFileSuffixes') {
 				// Jump to next main field
 				setCurrentField('tools');
 				setSelectedCategoryIndex(0);
@@ -1207,6 +1206,36 @@ export default function MainAgentConfigScreen({
 								focus={currentField === 'mainAgentRole'}
 							/>
 						)}
+					</Box>
+				</Box>
+
+				{/* Editable File Suffixes */}
+				<Box flexDirection="column">
+					<Text
+						bold
+						color={
+							currentField === 'editableFileSuffixes'
+								? theme.colors.menuSelected
+								: theme.colors.menuNormal
+						}
+					>
+						Editable File Suffixes
+					</Text>
+					<Box marginLeft={2}>
+						<TextInput
+							value={editableFileSuffixesInput}
+							onChange={value =>
+								setEditableFileSuffixesInput(stripFocusArtifacts(value))
+							}
+							placeholder="e.g., .ts, .tsx, .js (empty = no limit)"
+							focus={currentField === 'editableFileSuffixes'}
+						/>
+					</Box>
+					<Box marginLeft={2}>
+						<Text color={theme.colors.menuSecondary} dimColor>
+							Separate with commas. Auto-normalizes (adds dots, lowercase,
+							dedup)
+						</Text>
 					</Box>
 				</Box>
 

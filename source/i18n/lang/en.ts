@@ -330,6 +330,8 @@ export const en: TranslationKeys = {
 		userInteractionTools: 'User Interaction Tools',
 		skillTools: 'Skill Tools',
 		configProfile: 'Config Profile (Optional):',
+		editableFileSuffixes: 'Editable File Suffixes (Optional):',
+		editableFileSuffixesPlaceholder: '.ts, .tsx, .js (empty = no limit)',
 		customSystemPrompt: 'Custom System Prompt (Optional):',
 		customHeaders: 'Custom Headers (Optional):',
 		noItems: 'No items available',
