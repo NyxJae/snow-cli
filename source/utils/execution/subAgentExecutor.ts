@@ -34,11 +34,15 @@ import {
 	clearReadFolders,
 } from '../core/folderNotebookPreprocessor.js';
 import {
-	findInsertPositionAfterNthToolFromEnd,
+	findInsertPositionBeforeNthAssistantFromEnd,
 	insertMessagesAtPosition,
 } from '../message/messageUtils.js';
 import {formatLocalDateTime} from '../core/dateUtils.js';
 
+/**
+ * 子智能体消息事件
+ * 用于流式返回子智能体的消息片段
+ */
 export interface SubAgentMessage {
 	type: 'sub_agent_message';
 	agentId: string;
@@ -46,6 +50,9 @@ export interface SubAgentMessage {
 	message: any; // 来自Anthropic API的流事件
 }
 
+/**
+ * Token使用统计
+ */
 export interface TokenUsage {
 	inputTokens: number;
 	outputTokens: number;
@@ -53,23 +60,37 @@ export interface TokenUsage {
 	cacheReadInputTokens?: number;
 }
 
+/**
+ * 子智能体执行结果
+ */
 export interface SubAgentResult {
 	success: boolean;
 	result: string;
 	error?: string;
 	usage?: TokenUsage;
-	/** User messages injected from the main session during sub-agent execution */
+	/** 子代理执行期间从主会话注入的用户消息 */
 	injectedUserMessages?: string[];
 }
 
+/**
+ * 工具确认回调
+ * 用于需要用户确认敏感工具调用时
+ */
 export interface ToolConfirmationCallback {
 	(toolName: string, toolArgs: any): Promise<ConfirmationResult>;
 }
 
+/**
+ * 工具自动批准检查器
+ * 用于检查工具是否已配置为自动批准
+ */
 export interface ToolApprovalChecker {
 	(toolName: string): boolean;
 }
 
+/**
+ * 添加到始终批准列表的回调
+ */
 export interface AddToAlwaysApprovedCallback {
 	(toolName: string): void;
 }
@@ -149,7 +170,10 @@ async function refreshSubAgentSpecialUserMessages(
 		return baseMessages;
 	}
 
-	const insertPosition = findInsertPositionAfterNthToolFromEnd(baseMessages, 3);
+	const insertPosition = findInsertPositionBeforeNthAssistantFromEnd(
+		baseMessages,
+		3,
+	);
 	const safeInsertPosition =
 		baseMessages.length > 0 && baseMessages[0]?.role === 'system'
 			? Math.max(1, insertPosition)

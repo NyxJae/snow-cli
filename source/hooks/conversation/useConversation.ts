@@ -25,7 +25,7 @@ import {formatTodoContext} from '../../utils/core/todoPreprocessor.js';
 import {formatUsefulInfoContext} from '../../utils/core/usefulInfoPreprocessor.js';
 import {formatFolderNotebookContext} from '../../utils/core/folderNotebookPreprocessor.js';
 import {
-	findInsertPositionAfterNthToolFromEnd,
+	findInsertPositionBeforeNthAssistantFromEnd,
 	insertMessagesAtPosition,
 } from '../../utils/message/messageUtils.js';
 import type {Message} from '../../ui/components/chat/MessageList.js';
@@ -253,7 +253,10 @@ async function refreshMainAgentSpecialUserMessages(
 		return baseMessages;
 	}
 
-	const insertPosition = findInsertPositionAfterNthToolFromEnd(baseMessages, 3);
+	const insertPosition = findInsertPositionBeforeNthAssistantFromEnd(
+		baseMessages,
+		3,
+	);
 	const safeInsertPosition = Math.max(1, insertPosition);
 	return insertMessagesAtPosition(
 		baseMessages,

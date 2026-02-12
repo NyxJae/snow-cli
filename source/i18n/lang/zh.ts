@@ -821,7 +821,7 @@ export const zh: TranslationKeys = {
 		ideActiveFile: '| {file}',
 		ideSelectedText: '| 已选择 {count} 个字符',
 		// Input
-		inputPlaceholder: '询问我有关编程的任何问题...',
+		inputPlaceholder: '任何问题...',
 		inputProcessing: '处理中...',
 		inputDisabled: '输入已禁用',
 		// Shortcuts

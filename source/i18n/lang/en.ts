@@ -866,7 +866,7 @@ export const en: TranslationKeys = {
 		ideActiveFile: '| {file}',
 		ideSelectedText: '| {count} chars selected',
 		// Input
-		inputPlaceholder: 'Ask me anything about coding...',
+		inputPlaceholder: 'any question...',
 		inputProcessing: 'Processing...',
 		inputDisabled: 'Input disabled',
 		// Shortcuts

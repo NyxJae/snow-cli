@@ -157,64 +157,58 @@ export function findSafeInsertPosition(
 }
 
 /**
- * 查找倒数第N条tool返回之后的安全插入位置
+ * 查找倒数第N条assistant消息之前的安全插入位置
  *
  * 规则:
- * 1. 从后向前查找倒数第N条tool消息
- * 2. 插入位置默认是该tool消息之后
- * 3. 若该位置仍在工具调用块内,移动到该块之后,避免打断assistant(tool_calls)+tool块
- * 4. 若tool数量不足N条,回退到最早工具调用块之前(若不存在工具块则回退到消息末尾)
+ * 1. 从后向前查找倒数第N条assistant消息
+ * 2. 插入位置默认是该assistant消息之前
+ * 3. 若assistant数量不足N条,回退到第一条assistant之前(若不存在则回退到消息末尾)
  *
  * @param messages - 聊天消息数组
- * @param targetToolFromEnd - 倒数第几条tool消息（默认: 3）
+ * @param targetAssistantFromEnd - 倒数第几条assistant消息（默认: 3）
  * @returns 安全的插入位置
+ *
+ * @example
+ * ```typescript
+ * // 在倒数第3条assistant之前插入
+ * const position = findInsertPositionBeforeNthAssistantFromEnd(messages, 3);
+ * ```
  */
-export function findInsertPositionAfterNthToolFromEnd(
+export function findInsertPositionBeforeNthAssistantFromEnd(
 	messages: ChatMessage[],
-	targetToolFromEnd: number = 3,
+	targetAssistantFromEnd: number = 3,
 ): number {
 	if (messages.length === 0) {
 		return 0;
 	}
 
-	let toolCount = 0;
-	let targetToolIndex = -1;
+	let assistantCount = 0;
+	let targetAssistantIndex = -1;
 
+	// 从后向前查找倒数第N条assistant消息
 	for (let i = messages.length - 1; i >= 0; i--) {
-		if (messages[i]?.role === 'tool') {
-			toolCount++;
-			if (toolCount === targetToolFromEnd) {
-				targetToolIndex = i;
+		if (messages[i]?.role === 'assistant') {
+			assistantCount++;
+			if (assistantCount === targetAssistantFromEnd) {
+				targetAssistantIndex = i;
 				break;
 			}
 		}
 	}
 
-	const toolCallBlocks = identifyToolCallBlocks(messages);
-
-	if (targetToolIndex === -1) {
-		// tool数量不足N条时，回退到最早的工具调用块之前
-		// 这样在“刚开始对话”场景下会得到: system,user,special...,assistant,tool
-		const firstToolCallBlock = toolCallBlocks[0];
-		if (firstToolCallBlock) {
-			return firstToolCallBlock.startIndex;
+	if (targetAssistantIndex === -1) {
+		// assistant数量不足N条时，回退到第一条assistant之前
+		for (let i = 0; i < messages.length; i++) {
+			if (messages[i]?.role === 'assistant') {
+				return i;
+			}
 		}
+		// 没有assistant消息，插入到末尾
 		return messages.length;
 	}
 
-	let insertPosition = targetToolIndex + 1;
-
-	for (const block of toolCallBlocks) {
-		if (
-			targetToolIndex >= block.startIndex &&
-			targetToolIndex <= block.endIndex
-		) {
-			insertPosition = block.endIndex + 1;
-			break;
-		}
-	}
-
-	return insertPosition;
+	// 返回目标assistant消息之前的索引位置
+	return targetAssistantIndex;
 }
 
 /**
