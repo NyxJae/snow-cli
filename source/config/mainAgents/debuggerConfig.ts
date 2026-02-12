@@ -26,13 +26,8 @@ const DEBUGGER_TOOLS: string[] = [
 	'ace-text_search',
 	'useful-info-add',
 	'useful-info-delete',
-	'notebook-add',
 	'askuser-ask_question',
 	'ace-file_outline',
-	'notebook-query',
-	'notebook-update',
-	'notebook-delete',
-	'notebook-list',
 	'skill-execute',
 ];
 

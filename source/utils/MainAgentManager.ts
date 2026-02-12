@@ -23,13 +23,9 @@ import {getModelSpecificPrompt} from './config/apiConfig.js';
 
 /**
  * 内置主代理的固定排序顺序
+ * 顺序与 main-agents.toml 配置文件保持一致
  */
-const BUILTIN_AGENT_ORDER = [
-	'general',
-	'requirement_analyzer',
-	'Architect',
-	'debugger',
-];
+const BUILTIN_AGENT_ORDER = ['general', 'requirement_analyzer', 'debugger'];
 
 /**
  * 主代理管理器类

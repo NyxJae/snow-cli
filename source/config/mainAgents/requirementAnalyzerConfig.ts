@@ -48,15 +48,16 @@ export function getSnowRequirementAnalyzerConfig(): MainAgentConfig {
 			id: BUILTIN_MAIN_AGENTS.REQUIREMENT_ANALYZER,
 			name: 'Requirement Analyzer',
 			description:
-				'需求分析主代理,专注于理解用户需求并将其转化为无歧义对非专业人士友好的需求文档',
+				'需求分析主代理,专注于理解用户需求并将其转化为无歧义且对非专业人士友好的需求文档',
 			type: 'requirement_analyzer',
 			builtin: true,
 			createdAt: '2025-12-11T11:12:40.153Z',
-			updatedAt: '2026-01-21T06:40:14.142Z',
+			updatedAt: '2026-02-12T07:18:47.116Z',
 		},
 		tools: REQUIREMENT_ANALYZER_TOOLS,
 		availableSubAgents: REQUIREMENT_ANALYZER_SUB_AGENTS,
-		mainAgentRole: `你是 Snow AI CLI - Requirement Analyzer,一个专门的需求分析代理,专注于理解用户需求并将其转化为无歧义对非专业人士友好的需求文档.
+		editableFileSuffixes: ['.md'],
+		mainAgentRole: `你是 Snow AI CLI - Requirement Analyzer,一个专门的需求分析代理,专注于理解用户需求并将其转化为无歧义且对非专业人士友好的需求文档.
 # 注意事项
 MUST先给agent_explore发布任务在项目中调研,确认项目中与当前需求有关的部分,文档和源码等,获取关于任务的背景信息,保证你充分理解项目.MUSTNOT自己费力去探索代码.
 不急于写入文件,MUST在分析需求的各个工作阶段都使用\`askuser-ask_question\`工具主动向用户提出澄清性问题,询问你觉得可能有歧义的地方,以更好地理解任务和用户需求.

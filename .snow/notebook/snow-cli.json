@@ -102,9 +102,36 @@
 		{
 			"id": "notebook-1770864631008_subexec",
 			"filePath": "source/utils/execution/subAgentExecutor.ts",
-			"note": "职责: 子代理运行时装配器,加载子代理配置并执行工具调用循环.\n接口摘要: getSubAgent 输入 agentId 输出 agent 配置,executeMCPTool 执行具体工具并回传结果.\n依赖拓扑: 上游依赖 subAgentConfig.ts,下游依赖 mcpToolsManager.ts 与 filesystem.ts.\n避坑指南: editableFileSuffixes 不应在本层重复判定,避免主子代理逻辑分叉,应统一复用 filesystem 执行层拦截.",
+			"note": "职责: 子代理运行时装配器,加载子代理配置并执行工具调用循环.\\n接口摘要: getSubAgent 输入 agentId 输出 agent 配置,executeMCPTool 执行具体工具并回传结果.\\n依赖拓扑: 上游依赖 subAgentConfig.ts,下游依赖 mcpToolsManager.ts 与 filesystem.ts.\\n避坑指南: editableFileSuffixes 不应在本层重复判定,避免主子代理逻辑分叉,应统一复用 filesystem 执行层拦截.",
 			"createdAt": "2026-02-12T10:50:31.000",
 			"updatedAt": "2026-02-12T10:52:07.779"
+		}
+	],
+	"source/utils/config/editableFileSuffixes.ts": [
+		{
+			"id": "notebook-1770864631010_suffixutils",
+			"filePath": "source/utils/config/editableFileSuffixes.ts",
+			"note": "职责: editableFileSuffixes 规则工具层,统一规范化/解析/格式化/后缀提取/权限判定逻辑.\\n接口摘要: 输入原始后缀字符串/数组,输出规范化后缀数组;输入文件路径和后缀白名单,输出权限判定布尔值.关键函数: normalizeSingleEditableSuffix, normalizeEditableFileSuffixes, parseEditableFileSuffixesInput, stringifyEditableFileSuffixes, getFileSuffixByLastDot, isFilePathAllowedByEditableSuffixes, getEditableTypeDisplayText.\\n依赖拓扑: 被 source/mcp/filesystem.ts, source/ui/pages/MainAgentConfigScreen.tsx, source/ui/pages/SubAgentConfigScreen.tsx 调用,需求规则来自 requirements/编辑文件后缀名限制.md.\\n避坑指南: 规范化规则: trim, 补点前缀(.), 小写化, 去重, 非法值忽略.空配置语义: [] 或未配置 = 不限制.后缀判定: 按最后一个点提取,如 .env, .ts; 点开头文件整个文件名作为后缀.无后缀文件直接拒绝.TUI输入: 支持 , 和 中文逗号 分隔.",
+			"createdAt": "2026-02-12T15:30:00.000",
+			"updatedAt": "2026-02-12T15:30:00.000"
+		}
+	],
+	"source/utils/execution/toolExecutor.ts": [
+		{
+			"id": "notebook-1770864631011_toolexec",
+			"filePath": "source/utils/execution/toolExecutor.ts",
+			"note": "职责: 工具执行编排层,负责单个工具调用的完整生命周期管理,包括前置钩子/实际执行/后置钩子.\\n接口摘要: executeToolCall 输入 ToolCall,executionContext,输出 ToolResult.透传 executionContext?.editableFileSuffixes 给 mcpToolsManager.executeMCPTool.\\n依赖拓扑: 上游被 useConversation.ts 和 subAgentExecutor.ts 调用,下游依赖 mcpToolsManager.ts.\\n避坑指南: editableFileSuffixes 不应在本层做任何判定或修改,只负责透传给 mcpToolsManager.保持工具执行的通用性,避免业务逻辑泄露到此层.",
+			"createdAt": "2026-02-12T15:30:00.000",
+			"updatedAt": "2026-02-12T15:30:00.000"
+		}
+	],
+	"source/hooks/conversation/useConversation.ts": [
+		{
+			"id": "notebook-1770864631012_conv",
+			"filePath": "source/hooks/conversation/useConversation.ts",
+			"note": "职责: 主会话管理器,负责 AI 对话流/工具调用循环/消息处理/工具确认/用户插嘴.\\n接口摘要: handleConversationWithTools 输入用户消息和配置,输出 AI 响应和工具执行结果.调用 executeToolCalls 时传递 executionContext 包含主代理的 editableFileSuffixes.\\n依赖拓扑: 依赖 mainAgentManager 获取当前主代理配置(含 editableFileSuffixes),调用 toolExecutor.ts 执行工具.\\n避坑指南: editableFileSuffixes 从 mainAgentManager.currentConfig 获取,通过 executionContext 透传,不在本层做任何判定.确保主子代理使用统一的上下文传递机制.",
+			"createdAt": "2026-02-12T15:30:00.000",
+			"updatedAt": "2026-02-12T15:30:00.000"
 		}
 	],
 	"source/utils/agentsPromptUtils.ts": [
@@ -118,11 +145,11 @@
 	],
 	"CurrentTaskPlan.md": [
 		{
-			"id": "notebook-1770864631009_plan",
+			"id": "notebook-1770864631013_plan",
 			"filePath": "CurrentTaskPlan.md",
-			"note": "职责: 本轮需求的短线实施计划文件,指导后续开发落地 editableFileSuffixes.\n接口摘要: 输入为 requirements/编辑文件后缀名限制.md 与蓝图笔记,输出阶段化实施顺序,风险点,验收和回归检查.\n依赖拓扑: 开发执行与 reviewer 验收依赖该计划,并与 .snow/notebook/snow-cli.json 中相关条目联动维护.\n避坑指南: 阶段必须覆盖配置层,执行拦截层,TUI 输入与持久化,批量返回语义以及 build 验收,每阶段可独立回滚.",
+			"note": "职责: 本轮需求的短线实施计划文件,指导后续开发落地 editableFileSuffixes.\\n接口摘要: 输入为 requirements/编辑文件后缀名限制.md 与蓝图笔记,输出阶段化实施顺序,风险点,验收和回归检查.\\n依赖拓扑: 开发执行与 reviewer 验收依赖该计划,并与 .snow/notebook/snow-cli.json 中相关条目联动维护.\\n避坑指南: 阶段必须覆盖配置层,执行拦截层,TUI 输入与持久化,批量返回语义以及 build 验收,每阶段可独立回滚.",
 			"createdAt": "2026-02-12T10:50:31.000",
-			"updatedAt": "2026-02-12T10:52:48.002"
+			"updatedAt": "2026-02-12T15:35:00.000"
 		}
 	]
 }
