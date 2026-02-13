@@ -12,6 +12,10 @@ import {
 	withRetryGenerator,
 	parseJsonWithFix,
 } from '../utils/core/retryUtils.js';
+import {
+	createIdleTimeoutGuard,
+	StreamIdleTimeoutError,
+} from '../utils/core/streamGuards.js';
 import type {ChatMessage, ChatCompletionTool, UsageInfo} from './types.js';
 import {logger} from '../utils/core/logger.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
@@ -466,18 +470,47 @@ function convertToAnthropicMessages(
  */
 async function* parseSSEStream(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
+	abortSignal?: AbortSignal,
 ): AsyncGenerator<any, void, unknown> {
 	const decoder = new TextDecoder();
 	let buffer = '';
 	let dataCount = 0; // 记录成功解析的数据块数量
 	let lastEventType = ''; // 记录最后一个事件类型
 
+	// 创建空闲超时保护器
+	const guard = createIdleTimeoutGuard({
+		reader,
+		onTimeout: () => {
+			throw new StreamIdleTimeoutError('No data received for 180000ms');
+		},
+	});
+
 	try {
 		while (true) {
+			// 用户主动中断时立即标记丢弃,避免延迟消息外泄
+			if (abortSignal?.aborted) {
+				guard.abandon();
+				return;
+			}
+
 			const {done, value} = await reader.read();
 
+			// 更新活动时间
+			guard.touch();
+
+			// 检查是否有超时错误需要在读取循环中抛出(确保被正确的 try/catch 捕获)
+			const timeoutError = guard.getTimeoutError();
+			if (timeoutError) {
+				throw timeoutError;
+			}
+
+			// 检查是否已被丢弃(竞态条件防护)
+			if (guard.isAbandoned()) {
+				continue;
+			}
+
 			if (done) {
-				// ✅ 关键修复：检查buffer是否有残留数据
+				// 检查buffer是否有残留数据
 				if (buffer.trim()) {
 					// 连接异常中断，抛出明确错误，并包含断点信息
 					const errorContext = {
@@ -530,7 +563,10 @@ async function* parseSSEStream(
 
 					if (parseResult.success) {
 						dataCount++;
-						yield parseResult.data;
+						// yield前检查是否已被丢弃
+						if (!guard.isAbandoned()) {
+							yield parseResult.data;
+						}
 					}
 				}
 			}
@@ -551,6 +587,8 @@ async function* parseSSEStream(
 			errorContext,
 		);
 		throw error;
+	} finally {
+		guard.dispose();
 	}
 }
 
@@ -754,10 +792,11 @@ export async function* createStreamingAnthropicCompletion(
 			let blockIndexToType: Map<number, string> = new Map(); // 跟踪块类型(text, thinking, tool_use)
 			let completedToolBlocks = new Set<string>(); // 跟踪哪些工具块已完成流式传输
 
-			for await (const event of parseSSEStream(response.body.getReader())) {
-				if (abortSignal?.aborted) {
-					return;
-				}
+			for await (const event of parseSSEStream(
+				response.body.getReader(),
+				abortSignal,
+			)) {
+				// 原有外层 abort 检查可移除,已内置于 parseSSEStream
 				if (event.type === 'content_block_start') {
 					const block = event.content_block;
 					const blockIndex = event.index;

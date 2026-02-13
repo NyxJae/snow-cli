@@ -10,6 +10,10 @@ import {
 	withRetryGenerator,
 	parseJsonWithFix,
 } from '../utils/core/retryUtils.js';
+import {
+	createIdleTimeoutGuard,
+	StreamIdleTimeoutError,
+} from '../utils/core/streamGuards.js';
 import type {ChatMessage, ChatCompletionTool, UsageInfo} from './types.js';
 import {logger} from '../utils/core/logger.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
@@ -619,12 +623,39 @@ export async function* createStreamingGeminiCompletion(
 			const decoder = new TextDecoder();
 			let buffer = '';
 
+			// 创建空闲超时保护器
+			const guard = createIdleTimeoutGuard({
+				reader,
+				onTimeout: () => {
+					throw new StreamIdleTimeoutError('No data received for 180000ms');
+				},
+			});
+
 			try {
 				while (true) {
+					if (abortSignal?.aborted) {
+						guard.abandon();
+						return;
+					}
+
 					const {done, value} = await reader.read();
 
+					// 更新活动时间
+					guard.touch();
+
+					// 检查是否有超时错误需要在读取循环中抛出(确保被正确的 try/catch 捕获)
+					const timeoutError = guard.getTimeoutError();
+					if (timeoutError) {
+						throw timeoutError;
+					}
+
+					// 检查是否已被丢弃(竞态条件防护)
+					if (guard.isAbandoned()) {
+						continue;
+					}
+
 					if (done) {
-						// ✅ 关键修复：检查buffer是否有残留数据
+						// 连接异常中断时,残留半包不应被静默丢弃,应抛出可重试错误
 						if (buffer.trim()) {
 							// 连接异常中断，抛出明确错误
 							const errorMsg = `[API_ERROR] [RETRIABLE] Gemini stream terminated unexpectedly with incomplete data`;
@@ -636,10 +667,6 @@ export async function* createStreamingGeminiCompletion(
 							throw new Error(`${errorMsg}: ${bufferPreview}...`);
 						}
 						break; // 正常结束
-					}
-
-					if (abortSignal?.aborted) {
-						return;
 					}
 
 					buffer += decoder.decode(value, {stream: true});
@@ -683,18 +710,22 @@ export async function* createStreamingGeminiCompletion(
 											// 当 part.thought === true 时,text 字段包含 thinking 内容
 											if (part.thought === true && part.text) {
 												thinkingTextBuffer += part.text;
-												yield {
-													type: 'reasoning_delta',
-													delta: part.text,
-												};
+												if (!guard.isAbandoned()) {
+													yield {
+														type: 'reasoning_delta',
+														delta: part.text,
+													};
+												}
 											}
 											// 处理常规文本内容(当 thought 不为 true 时)
 											else if (part.text) {
 												contentBuffer += part.text;
-												yield {
-													type: 'content',
-													content: part.text,
-												};
+												if (!guard.isAbandoned()) {
+													yield {
+														type: 'content',
+														content: part.text,
+													};
+												}
 											}
 
 											// 处理函数调用
@@ -733,10 +764,12 @@ export async function* createStreamingGeminiCompletion(
 												// 产出 delta 用于 token 计数
 												const deltaText =
 													fc.name + JSON.stringify(fc.args || {});
-												yield {
-													type: 'tool_call_delta',
-													delta: deltaText,
-												};
+												if (!guard.isAbandoned()) {
+													yield {
+														type: 'tool_call_delta',
+														delta: deltaText,
+													};
+												}
 											}
 										}
 									}
@@ -763,6 +796,9 @@ export async function* createStreamingGeminiCompletion(
 					},
 				);
 				throw error;
+			} finally {
+				// 清理 idle timeout 定时器
+				guard.dispose();
 			}
 
 			// 如果有工具调用则产出

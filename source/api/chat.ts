@@ -20,6 +20,10 @@ import {logger} from '../utils/core/logger.js';
 import {addProxyToFetchOptions} from '../utils/core/proxyUtils.js';
 import {saveUsageToFile} from '../utils/core/usageLogger.js';
 import {getVersionHeader} from '../utils/core/version.js';
+import {
+	createIdleTimeoutGuard,
+	StreamIdleTimeoutError,
+} from '../utils/core/streamGuards.js';
 
 export type {
 	ChatMessage,
@@ -310,18 +314,47 @@ export interface StreamChunk {
  */
 async function* parseSSEStream(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
+	abortSignal?: AbortSignal,
 ): AsyncGenerator<any, void, unknown> {
 	const decoder = new TextDecoder();
 	let buffer = '';
 	let dataCount = 0; // 记录成功解析的数据块数量
 	let lastEventType = ''; // 记录最后一个事件类型
 
+	// 创建空闲超时保护器
+	const guard = createIdleTimeoutGuard({
+		reader,
+		onTimeout: () => {
+			throw new StreamIdleTimeoutError('No data received for 180000ms');
+		},
+	});
+
 	try {
 		while (true) {
+			// 用户主动中断时立即标记丢弃,避免延迟消息外泄
+			if (abortSignal?.aborted) {
+				guard.abandon();
+				return;
+			}
+
 			const {done, value} = await reader.read();
 
+			// 更新活动时间
+			guard.touch();
+
+			// 检查是否有超时错误需要在读取循环中抛出(确保被正确的 try/catch 捕获)
+			const timeoutError = guard.getTimeoutError();
+			if (timeoutError) {
+				throw timeoutError;
+			}
+
+			// 检查是否已被丢弃(竞态条件防护)
+			if (guard.isAbandoned()) {
+				continue;
+			}
+
 			if (done) {
-				// ✅ 关键修复：检查buffer是否有残留数据
+				// 连接异常中断时,残留半包不应被静默丢弃,应抛出可重试错误
 				if (buffer.trim()) {
 					// 连接异常中断，抛出明确错误，包含更详细的断点信息
 					const errorContext = {
@@ -374,7 +407,10 @@ async function* parseSSEStream(
 
 					if (parseResult.success) {
 						dataCount++;
-						yield parseResult.data;
+						// yield 前检查是否已被丢弃(竞态条件防护)
+						if (!guard.isAbandoned()) {
+							yield parseResult.data;
+						}
 					}
 				}
 			}
@@ -395,6 +431,9 @@ async function* parseSSEStream(
 			errorContext,
 		);
 		throw error;
+	} finally {
+		// 清理 idle timeout 定时器
+		guard.dispose();
 	}
 }
 
@@ -542,11 +581,11 @@ export async function* createStreamingChatCompletion(
 			let usageData: UsageInfo | undefined;
 			let reasoningStarted = false; // Track if reasoning has started
 			let reasoningContentBuffer = ''; // Accumulate complete reasoning content for saving
-			for await (const chunk of parseSSEStream(response.body.getReader())) {
-				if (abortSignal?.aborted) {
-					return;
-				}
-
+			for await (const chunk of parseSSEStream(
+				response.body.getReader(),
+				abortSignal,
+			)) {
+				// 原有外层 abort 检查可移除,已内置于 parseSSEStream
 				// Capture usage information if available (usually in the last chunk)
 				const usageValue = (chunk as any).usage;
 				if (usageValue !== null && usageValue !== undefined) {

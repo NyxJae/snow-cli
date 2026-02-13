@@ -1,96 +1,116 @@
-# CurrentTaskPlan: MCPConfigScreen 添加服务管理入口并按 source 返回
+# CurrentTaskPlan: 流式 API 空闲超时重试 + 断开后延迟消息丢弃
 
-## 需求来源
-- 需求文档: requirements/MCP设置界面添加服务管理入口.md
+## 0. 用户需求与目标
 
-## 目标
-1. 在 MCPConfigScreen 中新增第 3 个菜单项 "MCP 服务管理",可直接打开 MCPInfoPanel.
-2. MCPInfoPanel 支持来源区分:
-   - source='chat': 保持 /mcp 现有行为,Esc 关闭后回到 ChatScreen.
-   - source='mcpConfig': 从 MCP 设置页进入,Esc 关闭后回到 MCPConfigScreen,且保留 MCPConfigScreen 选中态.
-3. i18n 新增 key: mcpConfigScreen.manageServices(及可选 desc).
+需求来源: `requirements/流式API空闲超时重试机制.md`.
 
-## 架构设计(最小侵入式)
+要解决的问题:
+- 流式连接未断开,但长时间(例如几分钟)没有任何新 chunk,UI 持续显示"正在生成"的假死状态.
 
-### 关键约束
-- /mcp 命令注册和触发逻辑不改.
-- MCPInfoPanel 核心功能不改,仅增加关闭/返回的可配置行为.
-- 面板来源(source)只存在于 UI 状态层,不进入执行层(mcpToolsManager 等).
+目标:
+1. 空闲超时检测: 流式读取过程中,监控最后一次收到任何数据的时间,若 3 分钟无数据则判定超时.
+2. 超时后触发重试: 需走 `withRetryGenerator` 的重试逻辑.
+3. 断开后消息丢弃: 任何断开(空闲超时/网络/用户中断/服务端异常)后,若旧连接仍延迟到达 chunk,必须丢弃,不得 yield,防止新旧连接数据混合.
 
-### 推荐状态与 props 方案
-1. usePanelState 增加状态:
-   - mcpPanelSource: 'chat' | 'mcpConfig'
-   - 并提供 setMcpPanelSource.
-   - 约定: setShowMcpPanel(true) 之前必须先设置 source.
-2. PanelsManager 承担 MCPInfoPanel 的 props 透传:
-   - <MCPInfoPanel source={mcpPanelSource} onClose={() => setShowMcpPanel(false)} />
-   - 这样 ChatScreen / MCPConfigScreen 不需要了解 MCPInfoPanel 的内部实现细节.
-3. MCPInfoPanel 增加 props:
-   - source?: 'chat' | 'mcpConfig' (默认 'chat')
-   - onClose?: () => void (默认行为: 调用 usePanelState.setShowMcpPanel(false) 的旧逻辑不可再在组件内硬编码,应由外部注入)
-   - 在 useInput 内部优先拦截 key.escape,并调用 onClose().
+边界:
+- 超时固定 3 分钟(180000ms),不可配置.
+- 不修改非流式 API.
+- 不改变现有的连接超时逻辑(仅新增空闲超时).
 
-### Screen 侧行为
-- ChatScreen:
-  - /mcp 命令执行后,在 setShowMcpPanel(true) 前设置 mcpPanelSource='chat'.
-  - Esc 关闭逻辑: 仍由 panelState.handleEscapeKey 主导,但 MCPInfoPanel 自己也会拦截 Esc 并触发 onClose,避免事件传递导致二次行为.
-- MCPConfigScreen:
-  - 新增第 3 个选项,Enter 时:
-    - panelState.setMcpPanelSource('mcpConfig')
-    - panelState.setShowMcpPanel(true)
-  - Esc 行为:
-    - 若 showMcpPanel 为 true,不执行 onBack,交给 MCPInfoPanel onClose.
-    - 若 showMcpPanel 为 false,保持原行为 onBack().
+## 1. 现状盘点(与需求强相关)
 
-## 实施步骤(建议按顺序提交)
+涉及文件:
+- 重试核心: `source/utils/core/retryUtils.ts`
+  - `withRetryGenerator` 负责流式重试,使用 `hasYielded` 判断是否允许重试.
+  - `isRetriableError` 通过 error.message 关键字判断是否可重试.
+- 流式 API 适配器(均存在 reader.read() + SSE/流解析循环):
+  - `source/api/anthropic.ts`
+  - `source/api/gemini.ts`
+  - `source/api/chat.ts`
+  - `source/api/responses.ts`
 
-### 1. i18n
-- 修改: source/i18n/lang/zh.ts,en.ts,zh-TW.ts
-- 新增:
-  - mcpConfigScreen.manageServices
-  - (可选) mcpConfigScreen.manageServicesDesc
+目前已覆盖的"断开检测":
+- 在 parseSSEStream 中,当 `reader.read()` 返回 done 时,若 `buffer.trim()` 非空则抛出 `stream terminated unexpectedly with incomplete data`(被标记为 [RETRIABLE]),以触发 `withRetryGenerator` 重试.
 
-### 2. UI 状态层
-- 修改: source/hooks/ui/usePanelState.ts
-- 增加:
-  - mcpPanelSource 状态与 setter
-  - handleEscapeKey 中关闭 showMcpPanel 时,保留 source 不变或重置为 'chat'(二选一,建议关闭时重置为 'chat' 以避免脏状态)
+## 2. 总体架构方案(建议)
 
-### 3. PanelsManager 透传 props
-- 修改: source/ui/components/panels/PanelsManager.tsx
-- MCPInfoPanel 调用改为传 source/onClose.
+### 2.1 新增通用 stream wrapper(推荐落点)
 
-### 4. MCPInfoPanel 支持 Esc 优先关闭
-- 修改: source/ui/components/panels/MCPInfoPanel.tsx
-- 新增 props,并在 useInput 内部:
-  - if (key.escape) { onClose?.(); return; }
-- 注意: 需保证 escape 分支在其它键处理之前,以获得最高优先级.
+建议新增文件:
+- `source/utils/core/streamGuards.ts` (或 `source/utils/core/streamUtils.ts`),提供可复用的通用机制,供所有流式 API 适配器调用.
 
-### 5. MCPConfigScreen 增加入口
-- 修改: source/ui/pages/MCPConfigScreen.tsx
-- 要点:
-  - selectedScope 扩展为 union: 'global' | 'project' | 'manageServices'
-  - 上下键循环选择 3 项.
-  - Enter: 若是 manageServices,打开 MCPInfoPanel.
+建议导出能力:
+1. 常量:
+   - `export const STREAM_IDLE_TIMEOUT_MS = 180000;`
 
-### 6. ChatScreen 的 /mcp 触发处设置 source
-- 修改: source/hooks/conversation/useCommandHandler.ts 或 ChatScreen.tsx(取决于 action 分发位置)
-- 在处理 action === 'showMcpPanel' 时,设置:
-  - panelState.setMcpPanelSource('chat')
-  - panelState.setShowMcpPanel(true)
+2. 错误类型:
+   - `export class StreamIdleTimeoutError extends Error { name = 'StreamIdleTimeoutError'; }`
+   - 错误 message 必须包含可被 `isRetriableError` 识别的关键字(例如包含 "timeout" 或显式新增判定).
 
-## 验收清单
-- WelcomeScreen -> MCP 设置 -> 可看到 3 个选项,上下键循环选择无断档.
-- 在 MCPConfigScreen 选中 "MCP 服务管理" Enter:
-  - MCPInfoPanel 打开.
-  - Esc 返回 MCPConfigScreen,选中态仍停留在 "MCP 服务管理".
-  - 再次 Esc 返回 WelcomeScreen.
-- ChatScreen 输入 /mcp:
-  - MCPInfoPanel 打开.
-  - Esc 返回 ChatScreen.
-- MCPInfoPanel 打开期间:
-  - Esc 只关闭面板,不会触发外层 screen 的 onBack.
+3. 包装 AsyncGenerator 的 guard:
+   - 输入: `source: AsyncGenerator<T>`, `abortSignal?`, `onAbandon?`
+   - 输出: `AsyncGenerator<T>`
+   - 行为:
+     - idle timer: 3min 无任何数据(即底层 generator 没有 next)则触发 abandon.
+     - abandon 后:
+       - 设置 `abandoned=true`.
+       - 执行 `reader.cancel()`(由调用方提供 cancel 回调).
+       - 抛出 `StreamIdleTimeoutError` 以触发 `withRetryGenerator`.
+     - yield 前检查 abandoned,若为 true 则丢弃(continue)或直接 return(取决于实现形态),保证延迟消息不外泄.
 
-## 风险点与回归
-- Ink 的 useInput 会多处同时监听同一按键,必须确保 MCPInfoPanel 的 ESC 分支 return,且 PanelsManager/ChatScreen 的 ESC 处理不会产生二次关闭副作用.
-- 如果 usePanelState.handleEscapeKey 仍关闭 showMcpPanel,且 MCPInfoPanel 同时关闭,应保证幂等(关闭已关闭的 panel 不引发异常).
+实现形态建议(更易复用):
+- 以 `AbortController` + `Promise.race(reader.read(), idleTimeoutPromise)` 方式实现,并在超时路径执行 cancel.
+
+### 2.2 在 retryUtils.ts 中对 idle timeout 做可重试判定
+
+改动建议:
+- `isRetriableError` 增加对 `StreamIdleTimeoutError` 的识别,或者识别 message 中的稳定关键字(例如 `stream idle timeout`).
+- `withRetryGenerator` 的 `isStreamInterruption` 判定需把 idle timeout 纳入,以满足"即使 hasYielded=true,也应重试"的需求.
+
+备注:
+- 当前逻辑: `hasYielded && !isStreamInterruption` 时不重试.
+- 目标: idle timeout 归类为 stream interruption.
+
+### 2.3 API 适配器接入方式
+
+每个流式 API 适配器的接入点:
+- 现状均是 `createStreamingXxx` 内部 `yield* withRetryGenerator(() => parseSSEStream(reader), {abortSignal,onRetry})` 这一结构.
+
+推荐接入方式:
+- 把 parseSSEStream 的读取循环,统一改成调用 core wrapper,或在 parseSSEStream 内部用 wrapper 包住 `reader.read()`.
+- 每个连接/每次重试必须创建独立的 abandoned 状态,禁止跨重试共享.
+
+## 3. 分阶段实施步骤(可回滚)
+
+1. 新增 core 层通用实现
+   - 创建 `source/utils/core/streamGuards.ts`.
+   - 提供 `STREAM_IDLE_TIMEOUT_MS` 与 `StreamIdleTimeoutError`.
+   - 提供一个最小可用的 wrapper(先服务 SSE reader.read 循环).
+
+2. 修改重试核心
+   - `source/utils/core/retryUtils.ts`:
+     - `isRetriableError` 支持 StreamIdleTimeoutError.
+     - `withRetryGenerator` 的 stream interruption 判定包含 idle timeout.
+
+3. 逐个接入 4 个流式 API 适配器
+   - `source/api/chat.ts` parseSSEStream
+   - `source/api/responses.ts` parseSSEStream
+   - `source/api/anthropic.ts` parseSSEStream
+   - `source/api/gemini.ts` SSE 读取循环
+
+4. 回归检查与 build
+   - 关注边缘情况: 超时后旧连接延迟 chunk 不得 yield.
+   - `npm run build` 通过即可.
+
+## 4. 验收标准
+
+1. 在无数据超过 3 分钟的流式响应中,触发重试(可见 onRetry/日志变化).
+2. 即使已产出过部分 chunk,仍可在 idle timeout 场景下重试.
+3. 超时断开后,旧连接延迟到达的 chunk 不会被 yield(不会与新连接数据混合).
+4. Anthropic/Gemini/Chat/Responses 4 条流式链路行为一致.
+
+## 5. 风险与注意事项
+
+- 竞态条件的核心是"断开后仍可能读取到旧数据",需要 abandoned 标记+yield 前检查+reader.cancel.
+- 不能依赖 UI 或提示词让模型"别卡住";必须代码层保证.
+- 需要确保 idle timer 不会泄漏(正常结束或 abort 时清理).
