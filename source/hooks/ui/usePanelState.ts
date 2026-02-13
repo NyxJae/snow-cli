@@ -25,6 +25,7 @@ export type PanelState = {
 	showMainAgentPanel: boolean;
 	mainAgentSelectedIndex: number;
 	mainAgentSearchQuery: string;
+	mcpPanelSource: 'chat' | 'mcpConfig';
 };
 
 export type PanelActions = {
@@ -44,6 +45,7 @@ export type PanelActions = {
 	setShowMainAgentPanel: Dispatch<SetStateAction<boolean>>;
 	setMainAgentSelectedIndex: Dispatch<SetStateAction<number>>;
 	setMainAgentSearchQuery: Dispatch<SetStateAction<string>>;
+	setMcpPanelSource: Dispatch<SetStateAction<'chat' | 'mcpConfig'>>;
 	handleSwitchProfile: (options: {
 		isStreaming: boolean;
 		hasPendingRollback: boolean;
@@ -79,6 +81,9 @@ export function usePanelState(): PanelState & PanelActions {
 	const [showMainAgentPanel, setShowMainAgentPanel] = useState(false);
 	const [mainAgentSelectedIndex, setMainAgentSelectedIndex] = useState(0);
 	const [mainAgentSearchQuery, setMainAgentSearchQuery] = useState('');
+	const [mcpPanelSource, setMcpPanelSource] = useState<'chat' | 'mcpConfig'>(
+		'chat',
+	);
 	const [currentProfileName, setCurrentProfileName] = useState(() => {
 		const profiles = getAllProfiles();
 		const activeName = getActiveProfileName();
@@ -285,6 +290,7 @@ export function usePanelState(): PanelState & PanelActions {
 		showMainAgentPanel,
 		mainAgentSelectedIndex,
 		mainAgentSearchQuery,
+		mcpPanelSource,
 		// Actions
 		setShowSessionPanel,
 		setShowMcpPanel,
@@ -302,6 +308,7 @@ export function usePanelState(): PanelState & PanelActions {
 		setShowMainAgentPanel,
 		setMainAgentSelectedIndex,
 		setMainAgentSearchQuery,
+		setMcpPanelSource,
 		handleSwitchProfile,
 		handleProfileSelect,
 		handleSwitchMainAgent,

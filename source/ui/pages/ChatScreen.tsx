@@ -859,6 +859,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setCompressionError,
 		setShowSessionPanel: panelState.setShowSessionPanel,
 		setShowMcpPanel: panelState.setShowMcpPanel,
+		setMcpPanelSource: panelState.setMcpPanelSource,
 		setShowUsagePanel: panelState.setShowUsagePanel,
 		setShowModelsPanel: panelState.setShowModelsPanel,
 		setShowCustomCommandConfig: panelState.setShowCustomCommandConfig,
@@ -1465,12 +1466,14 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				advancedModel={advancedModel}
 				basicModel={basicModel}
 				setShowSessionPanel={panelState.setShowSessionPanel}
+				setShowMcpPanel={panelState.setShowMcpPanel}
 				setShowModelsPanel={panelState.setShowModelsPanel}
 				setShowCustomCommandConfig={panelState.setShowCustomCommandConfig}
 				setShowSkillsCreation={panelState.setShowSkillsCreation}
 				setShowWorkingDirPanel={panelState.setShowWorkingDirPanel}
 				setShowPermissionsPanel={panelState.setShowPermissionsPanel}
 				setShowBranchPanel={panelState.setShowBranchPanel}
+				mcpPanelSource={panelState.mcpPanelSource}
 				handleSessionPanelSelect={handleSessionPanelSelect}
 				alwaysApprovedTools={alwaysApprovedTools}
 				onRemoveTool={removeFromAlwaysApproved}

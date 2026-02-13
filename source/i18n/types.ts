@@ -1192,6 +1192,10 @@ export type TranslationKeys = {
 		renaming: string;
 		renamePlaceholder: string;
 	};
+	mcpConfigScreen: {
+		manageServices: string;
+		manageServicesDesc: string;
+	};
 	mcpInfoPanel: {
 		title: string;
 		loading: string;

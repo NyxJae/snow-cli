@@ -43,6 +43,8 @@ type PanelsManagerProps = {
 	setShowWorkingDirPanel: (show: boolean) => void;
 	setShowPermissionsPanel: (show: boolean) => void;
 	setShowBranchPanel: (show: boolean) => void;
+	mcpPanelSource?: 'chat' | 'mcpConfig';
+	setShowMcpPanel: (show: boolean) => void;
 	handleSessionPanelSelect: (sessionId: string) => Promise<void>;
 
 	onCustomCommandSave: (
@@ -88,6 +90,8 @@ export default function PanelsManager({
 	setShowWorkingDirPanel,
 	setShowPermissionsPanel,
 	setShowBranchPanel,
+	mcpPanelSource,
+	setShowMcpPanel,
 	handleSessionPanelSelect,
 	onCustomCommandSave,
 	onSkillsSave,
@@ -149,13 +153,11 @@ export default function PanelsManager({
 			{showMcpPanel && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<Suspense fallback={loadingFallback}>
-						<MCPInfoPanel />
+						<MCPInfoPanel
+							source={mcpPanelSource}
+							onClose={() => setShowMcpPanel(false)}
+						/>
 					</Suspense>
-					<Box marginTop={1}>
-						<Text color={theme.colors.menuSecondary} dimColor>
-							{t.chatScreen.pressEscToClose}
-						</Text>
-					</Box>
 				</Box>
 			)}
 

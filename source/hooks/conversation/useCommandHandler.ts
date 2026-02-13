@@ -274,6 +274,7 @@ type CommandHandlerOptions = {
 	setCompressionError: React.Dispatch<React.SetStateAction<string | null>>;
 	setShowSessionPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowMcpPanel: React.Dispatch<React.SetStateAction<boolean>>;
+	setMcpPanelSource: (source: 'chat' | 'mcpConfig') => void;
 
 	setShowUsagePanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowModelsPanel: React.Dispatch<React.SetStateAction<boolean>>;
@@ -534,6 +535,8 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				};
 				options.setMessages(prev => [...prev, commandMessage]);
 			} else if (result.success && result.action === 'showMcpPanel') {
+				// Set source before opening panel
+				options.setMcpPanelSource('chat');
 				options.setShowMcpPanel(true);
 				const commandMessage: Message = {
 					role: 'command',

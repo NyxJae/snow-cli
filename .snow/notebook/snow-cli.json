@@ -3,153 +3,162 @@
 		{
 			"id": "notebook-1770694883398_3ow0urpes",
 			"filePath": "source/api/anthropic.ts",
-			"note": "**职责**: Anthropic API 适配器,负责将内部 ChatMessage 格式转换为 Anthropic 消息格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: Anthropic 格式的消息和系统提示词\n\n**关键设计决策**:\n- 支持多模态消息(文本+图片)\n- 支持工具调用和工具结果的消息转换\n- 为系统提示词和最后一条 user 消息添加 cache_control 以支持提示词缓存\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- 多模态消息中图片和文本的处理顺序很重要\n- 注意 cache_control 的放置位置影响缓存命中率",
+			"note": "职责: Anthropic API 适配器,负责将内部 ChatMessage 格式转换为 Anthropic 消息格式.\n接口摘要: 输入 ChatMessage[] 和系统提示词配置,输出 Anthropic 格式 messages 与 system.\n关键设计决策: 支持多模态,工具调用,cache_control 提示词缓存优化.\n依赖拓扑: 上游为对话执行层,依赖 MainAgentManager 获取系统提示词.\n避坑指南:\n- 多模态内容顺序与 cache_control 放置会影响缓存与行为.\n- 本文件不应引入任何 UI 状态(showMcpPanel,mcpPanelSource)或 screen 路由逻辑.\n- 本文件不应承载\"MCP 服务禁用\"或\"代理工具权限\"等配置逻辑,保持纯 API 适配层.",
 			"createdAt": "2026-02-10T11:41:23.398",
-			"updatedAt": "2026-02-10T11:41:23.398"
+			"updatedAt": "2026-02-13T09:38:25.508"
 		}
 	],
 	"source/api/chat.ts": [
 		{
 			"id": "notebook-1770694883572_4ydxyl8k0",
 			"filePath": "source/api/chat.ts",
-			"note": "**职责**: OpenAI Chat API 适配器,负责将内部 ChatMessage 格式转换为 OpenAI 消息格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: OpenAI 格式的 ChatCompletionMessageParam 数组\n\n**关键设计决策**:\n- 支持多模态消息(文本+图片)使用 content 数组格式\n- 支持 tool_calls 和 tool 角色的消息转换\n- 支持 reasoning_content (DeepSeek R1 模型)\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- 带图片的 user 消息必须使用 content 数组格式\n- tool 角色的消息需要 tool_call_id 字段\n- assistant 带 tool_calls 时需要保留 tool_calls 字段",
+			"note": "职责: OpenAI Chat API 适配器,负责将内部 ChatMessage 格式转换为 OpenAI 消息格式.\n接口摘要: 输入 ChatMessage[] 与系统提示词配置,输出 OpenAI ChatCompletionMessageParam[].\n关键设计决策: 支持多模态(content array),tool_calls/tool 角色转换,reasoning_content(特定模型).\n依赖拓扑: 上游为对话执行层,依赖 MainAgentManager 获取系统提示词.\n避坑指南:\n- 图片+文本 content 格式与 tool 消息字段严格.\n- 本文件不应引入任何 UI 状态(showMcpPanel,mcpPanelSource)或 screen 路由逻辑.\n- 本文件不应承载\"MCP 服务禁用\"或\"代理工具权限\"等配置逻辑,保持纯 API 适配层.\n- 当需求涉及 MCP 服务管理/禁用时,应由执行层(mcpToolsManager)与 UI 层实现,不要在 API 适配器中做条件分支.",
 			"createdAt": "2026-02-10T11:41:23.572",
-			"updatedAt": "2026-02-10T11:41:23.572"
+			"updatedAt": "2026-02-13T09:38:25.367"
 		}
 	],
 	"source/api/gemini.ts": [
 		{
 			"id": "notebook-1770694883908_ow13cu46t",
 			"filePath": "source/api/gemini.ts",
-			"note": "**职责**: Google Gemini API 适配器,负责将内部 ChatMessage 格式转换为 Gemini 消息格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: Gemini 格式的 contents 数组和 systemInstruction\n\n**关键设计决策**:\n- 使用 parts 数组结构支持多模态内容\n- 支持 functionCalling 工具调用模式\n- 工具结果以 functionResponse 形式返回\n- 支持 thinking 内容(Gemini thinking 模式)\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- Gemini 的 system 消息需要提取为 systemInstruction\n- thinking 内容必须放在 parts 数组的第一位\n- 工具结果需要构建 tool_call_id 到 function_name 的映射\n- 多模态工具结果中文本必须在图片之前",
+			"note": "职责: Google Gemini API 适配器,负责将内部 ChatMessage 格式转换为 Gemini 消息格式.\n接口摘要: 输入 ChatMessage[] 与系统提示词配置,输出 Gemini contents 与 systemInstruction.\n关键设计决策: parts 多模态结构,functionCalling 工具调用,thinking 内容位置约束.\n依赖拓扑: 上游为对话执行层,依赖 MainAgentManager 获取系统提示词.\n避坑指南:\n- systemInstruction 与 thinking/多模态顺序敏感.\n- 本文件不应引入任何 UI 状态(showMcpPanel,mcpPanelSource)或 screen 路由逻辑.\n- 本文件不应承载\"MCP 服务禁用\"或\"代理工具权限\"等配置逻辑,保持纯 API 适配层.",
 			"createdAt": "2026-02-10T11:41:23.908",
-			"updatedAt": "2026-02-10T11:41:23.908"
+			"updatedAt": "2026-02-13T09:38:25.670"
 		}
 	],
 	"source/api/responses.ts": [
 		{
 			"id": "notebook-1770694883742_l9t553m1w",
 			"filePath": "source/api/responses.ts",
-			"note": "**职责**: OpenAI Responses API 适配器,负责将内部 ChatMessage 格式转换为 Responses API 格式\n\n**接口摘要**:\n- 输入: ChatMessage[] 消息数组,系统提示词配置\n- 输出: Responses API 格式的 input 数组\n\n**关键设计决策**:\n- 使用 type: 'message' 包裹用户消息\n- 文本内容使用 input_text 类型\n- 图片内容使用 input_image 类型\n- 工具调用使用 function.call 和 function.output 类型\n\n**依赖拓扑**:\n- 被上层 API 调用层使用\n- 依赖 MainAgentManager 获取系统提示词\n- 依赖 types.js 中的类型定义\n\n**避坑指南**:\n- Responses API 不支持 system 消息在 input 中,需要放在 instructions\n- user 消息的 content 必须是数组格式\n- 图片 URL 必须是 http(s) URL 或 data URL\n- 工具调用和输出需要配对出现",
+			"note": "职责: OpenAI Responses API 适配器,负责将内部 ChatMessage 格式转换为 Responses API 格式.\n接口摘要: 输入 ChatMessage[] 与系统提示词配置,输出 Responses API input 与 instructions.\n关键设计决策: 工具调用使用 function.call/function.output,system 走 instructions.\n依赖拓扑: 上游为对话执行层,依赖 MainAgentManager 获取系统提示词.\n避坑指南:\n- Responses API 的 system 与多模态格式限制较多.\n- 本文件不应引入任何 UI 状态(showMcpPanel,mcpPanelSource)或 screen 路由逻辑.\n- 本文件不应承载\"MCP 服务禁用\"或\"代理工具权限\"等配置逻辑,保持纯 API 适配层.",
 			"createdAt": "2026-02-10T11:41:23.741",
-			"updatedAt": "2026-02-10T11:41:23.741"
+			"updatedAt": "2026-02-13T09:36:55.835"
 		}
 	],
 	"source/mcp/utils/filesystem/batch-operations.utils.ts": [
 		{
 			"id": "notebook-1770864631005_batch",
 			"filePath": "source/mcp/utils/filesystem/batch-operations.utils.ts",
-			"note": "职责: 批量文件操作公共执行器,负责逐文件执行与结果聚合.\n接口摘要: executeBatchOperation 输入 parseParams,executeSingle,mapResult,输出 results,totalFiles,successCount,failureCount.\n依赖拓扑: source/mcp/filesystem.ts 的 editFile 与 editFileBySearch 共用该层.\n避坑指南: 后缀拒绝必须转化为标准失败项返回,不要抛全局异常,否则会破坏需求要求的批量部分成功语义.",
+			"note": "职责: 批量文件操作公共执行器,负责逐文件执行与结果聚合.\n接口摘要: executeBatchOperation 输入 parseParams,executeSingle,mapResult,输出 results,totalFiles,successCount,failureCount.\n依赖拓扑: source/mcp/filesystem.ts 的 editFile 与 editFileBySearch 共用该层.\n避坑指南:\n- 本层是通用执行器,不得引入任何 UI 语义(showMcpPanel,mcpPanelSource)或屏幕路由概念,避免跨域耦合.\n- 不在此处做工具禁用/权限过滤,上游应传入已完成\"服务级禁用 + 代理级权限\"筛选后的最终执行集合.",
 			"createdAt": "2026-02-12T10:50:31.000",
-			"updatedAt": "2026-02-12T10:52:07.194"
+			"updatedAt": "2026-02-13T09:36:56.324"
 		}
 	],
 	"source/mcp/filesystem.ts": [
 		{
 			"id": "notebook-1770864631004_fsmcp",
 			"filePath": "source/mcp/filesystem.ts",
-			"note": "职责: 文件编辑真实执行层,承载 editableFileSuffixes 拦截规则的统一落点.\n接口摘要: editFile 与 editFileBySearch 支持单文件和批量,输出 diff,diagnostics 与批量统计结果.\n依赖拓扑: 上游由 mcpToolsManager.ts 调用,批量聚合依赖 batch-operations.utils.ts,需求规则来自 requirements/编辑文件后缀名限制.md.\n避坑指南: 抽取统一后缀规范化和判定函数供两个编辑工具共用,拒绝项在批量中落成 success:false + 固定文案,保留部分成功.\n关键边界: 仅当代理具备对应编辑工具权限时才参与后缀校验.拒绝提示中的xxx必须按规则替换,常规文件显示后缀,点开头文件按最后一个点判定后的后缀显示,无后缀文件显示文件名.",
+			"note": "职责: 文件编辑真实执行层,承载 editableFileSuffixes 拦截规则的统一落点.\n接口摘要: editFile/editFileBySearch 支持单文件与批量,输出 diff,diagnostics 与统计结果.\n依赖拓扑: 上游由 mcpToolsManager.ts 调用,批量聚合依赖 batch-operations.utils.ts.\n避坑指南:\n- 本层保持纯执行语义,不参与任何 UI 导航(showMcpPanel,mcpPanelSource,source)决策.\n- 拒绝项在批量中落成 success:false + 固定文案,保留部分成功.\n- 工具执行前应同时受\"MCP 服务开关(全局总闸)\"与\"代理工具权限(代理分闸)\"影响.\n- 服务级禁用应在 mcpToolsManager/disabledBuiltInTools 形成不可路由的最终集合,本层只对已授权且已启用的工具执行,不负责读取/写入全局禁用文件.",
 			"createdAt": "2026-02-12T10:50:31.000",
-			"updatedAt": "2026-02-12T10:52:56.524"
+			"updatedAt": "2026-02-13T09:38:35.756"
 		}
 	],
 	"source/types/MainAgentConfig.ts": [
 		{
 			"id": "notebook-1770864631001_maincfg",
 			"filePath": "source/types/MainAgentConfig.ts",
-			"note": "职责: 定义主代理配置类型边界,承载 editableFileSuffixes 字段语义,不负责执行拦截.\n接口摘要: 输入来自 MainAgentConfigIO 与 MainAgentConfigScreen 的配置写入,输出给 MainAgentManager 作为 currentConfig.\n依赖拓扑: MainAgentManager.ts 与 MainAgentConfigScreen.tsx 依赖该类型,需求基线来自 requirements/编辑文件后缀名限制.md.\n避坑指南: editableFileSuffixes 必须兼容历史配置,[] 与未配置都表示不限制,避免 undefined 和 [] 语义分叉.",
+			"note": "职责: 定义主代理配置类型边界,承载工具权限与文件编辑限制等字段语义,不负责执行拦截.\n接口摘要: 输入来自 MainAgentConfigIO 与 MainAgentConfigScreen 的配置写入,输出给 MainAgentManager 作为 currentConfig.\n关键架构决策(渐进式权限模型):\n- 用户视角的工具可用性 = MCP 服务开关(全局总闸) + 代理工具权限(代理分闸).\n- 层级1(全局): MCP 内置服务禁用开关(见 disabledBuiltInTools)控制某些服务及其全部工具在整个应用中不可见/不可用.\n- 层级2(代理级): 本类型中的工具权限字段仅对当前代理生效,用于进一步收敛可用工具集合.\n依赖拓扑: MainAgentManager.ts 与 MainAgentConfigScreen.tsx 依赖该类型.\n避坑指南:\n- 保持类型层纯粹,不要将 UI 导航状态(如 showMcpPanel,mcpPanelSource 或 source)引入配置类型.\n- 工具权限字段命名应稳定,避免与服务级禁用开关混淆.\n- UI 层做工具过滤后,配置持久化层仍需要二次清理,防止历史配置残留.\n- 任何涉及\"MCP 服务管理\"的 UI/导航逻辑都应落在 UI 层(screen/panel),不要落在类型层.",
 			"createdAt": "2026-02-12T10:50:31.000",
-			"updatedAt": "2026-02-12T10:52:06.417"
-		}
-	],
-	"source/ui/pages/MainAgentConfigScreen.tsx": [
-		{
-			"id": "notebook-1770864631006_mainui",
-			"filePath": "source/ui/pages/MainAgentConfigScreen.tsx",
-			"note": "职责: 主代理配置 TUI 编排层,负责 editableFileSuffixes 的输入,保存和回显.\n接口摘要: FormField 和 state 接收用户文本,handleSave 组装 MainAgentConfig 并通过 MainAgentConfigIO 保存.\n依赖拓扑: 依赖 MainAgentConfig.ts 类型与 MainAgentConfigIO.ts,规则对齐 requirements/编辑文件后缀名限制.md.\n避坑指南: 输入需支持 , 和 ， 分隔,trim,md 补点,去重,非法项忽略,空值展示并保存为不限制.",
-			"createdAt": "2026-02-12T10:50:31.000",
-			"updatedAt": "2026-02-12T10:52:07.386"
-		}
-	],
-	"source/ui/pages/SubAgentConfigScreen.tsx": [
-		{
-			"id": "notebook-1770864631007_subui",
-			"filePath": "source/ui/pages/SubAgentConfigScreen.tsx",
-			"note": "职责: 子代理配置 TUI 编排层,负责 editableFileSuffixes 从输入到持久化参数传递.\n接口摘要: state 管理用户输入,handleSave 在 createSubAgent 和 updateSubAgent 路径写入字段.\n依赖拓扑: 下游依赖 source/utils/config/subAgentConfig.ts 持久化,与主代理 UI 共享同一需求规则.\n避坑指南: 创建模式与编辑模式必须复用同一规范化逻辑,空输入必须表达不限制,禁止写入 [''] 等伪空配置.",
-			"createdAt": "2026-02-12T10:50:31.000",
-			"updatedAt": "2026-02-12T10:52:07.583"
-		}
-	],
-	"source/utils/config/subAgentConfig.ts": [
-		{
-			"id": "notebook-1770864631002_subcfg",
-			"filePath": "source/utils/config/subAgentConfig.ts",
-			"note": "职责: 管理子代理配置的读取,创建,更新和持久化,是 editableFileSuffixes 的子代理侧存储入口.\n接口摘要: createSubAgent 和 updateSubAgent 接收 UI 字段并写入 TOML,getSubAgent 提供运行态读取.\n依赖拓扑: SubAgentConfigScreen.tsx 调用写入,subAgentExecutor.ts 通过 getSubAgent 读取执行时配置.\n避坑指南: create 和 update 路径必须复用同一规范化规则,内置代理副本与普通代理语义一致,空值表示不限制.",
-			"createdAt": "2026-02-12T10:50:31.000",
-			"updatedAt": "2026-02-12T10:52:06.599"
-		}
-	],
-	"source/utils/execution/mcpToolsManager.ts": [
-		{
-			"id": "notebook-1770864631003_mcpmgr",
-			"filePath": "source/utils/execution/mcpToolsManager.ts",
-			"note": "职责: MCP 工具路由与参数校验层,统一分发 filesystem-edit 和 filesystem-edit_search.\n接口摘要: executeMCPTool 输入 toolName,args,输出工具执行结果并调用 filesystemService.editFile 或 editFileBySearch.\n依赖拓扑: 主会话 useConversation.ts 与子代理 subAgentExecutor.ts 共用该入口,下游依赖 source/mcp/filesystem.ts.\n避坑指南: 本层负责传递代理 editableFileSuffixes 上下文最合适,逐文件后缀判定和批量部分成功应下沉 filesystem 执行层.\n关键边界: 仅当代理具备对应编辑工具权限时才传递并触发后缀校验,保持工具权限先于后缀限制.\n提示语义: 拒绝文案中的xxx替换规则由filesystem执行层统一实现,本层只负责上下文透传,避免规则分叉.",
-			"createdAt": "2026-02-12T10:50:31.000",
-			"updatedAt": "2026-02-12T10:52:06.802"
-		}
-	],
-	"source/utils/execution/subAgentExecutor.ts": [
-		{
-			"id": "notebook-1770864631008_subexec",
-			"filePath": "source/utils/execution/subAgentExecutor.ts",
-			"note": "职责: 子代理运行时装配器,加载子代理配置并执行工具调用循环.\\n接口摘要: getSubAgent 输入 agentId 输出 agent 配置,executeMCPTool 执行具体工具并回传结果.\\n依赖拓扑: 上游依赖 subAgentConfig.ts,下游依赖 mcpToolsManager.ts 与 filesystem.ts.\\n避坑指南: editableFileSuffixes 不应在本层重复判定,避免主子代理逻辑分叉,应统一复用 filesystem 执行层拦截.",
-			"createdAt": "2026-02-12T10:50:31.000",
-			"updatedAt": "2026-02-12T10:52:07.779"
+			"updatedAt": "2026-02-13T09:38:01.635"
 		}
 	],
 	"source/utils/config/editableFileSuffixes.ts": [
 		{
 			"id": "notebook-1770864631010_suffixutils",
 			"filePath": "source/utils/config/editableFileSuffixes.ts",
-			"note": "职责: editableFileSuffixes 规则工具层,统一规范化/解析/格式化/后缀提取/权限判定逻辑.\\n接口摘要: 输入原始后缀字符串/数组,输出规范化后缀数组;输入文件路径和后缀白名单,输出权限判定布尔值.关键函数: normalizeSingleEditableSuffix, normalizeEditableFileSuffixes, parseEditableFileSuffixesInput, stringifyEditableFileSuffixes, getFileSuffixByLastDot, isFilePathAllowedByEditableSuffixes, getEditableTypeDisplayText.\\n依赖拓扑: 被 source/mcp/filesystem.ts, source/ui/pages/MainAgentConfigScreen.tsx, source/ui/pages/SubAgentConfigScreen.tsx 调用,需求规则来自 requirements/编辑文件后缀名限制.md.\\n避坑指南: 规范化规则: trim, 补点前缀(.), 小写化, 去重, 非法值忽略.空配置语义: [] 或未配置 = 不限制.后缀判定: 按最后一个点提取,如 .env, .ts; 点开头文件整个文件名作为后缀.无后缀文件直接拒绝.TUI输入: 支持 , 和 中文逗号 分隔.",
+			"note": "职责: editableFileSuffixes 规则工具层,统一规范化/解析/格式化/后缀提取/权限判定逻辑.\n接口摘要: normalize/parse/stringify/getFileSuffix/isAllowed 等纯函数.\n依赖拓扑: 被 source/mcp/filesystem.ts 与配置 UI 调用.\n避坑指南:\n- 本层是纯工具函数集合,不得引入 UI 面板状态(showMcpPanel,mcpPanelSource)或屏幕路由逻辑.\n- 权限模型需区分: agent 级(可编辑后缀,工具权限)与 service 级(全局禁用 MCP 内置服务).该工具仅处理 agent 级文件编辑限制,不处理服务禁用.",
 			"createdAt": "2026-02-12T15:30:00.000",
-			"updatedAt": "2026-02-12T15:30:00.000"
+			"updatedAt": "2026-02-13T09:36:55.973"
+		}
+	],
+	"source/utils/config/subAgentConfig.ts": [
+		{
+			"id": "notebook-1770864631002_subcfg",
+			"filePath": "source/utils/config/subAgentConfig.ts",
+			"note": "职责: 管理子代理配置的读取,创建,更新和持久化,是子代理侧工具权限与编辑限制字段的存储入口.\n接口摘要: createSubAgent 和 updateSubAgent 接收 UI 字段并写入 TOML,getSubAgent 提供运行态读取.\n关键架构决策(渐进式权限模型):\n- 子代理可用工具集合 = MCP 服务开关(全局总闸) + 子代理工具权限(代理分闸).\n- 服务级禁用不写入 sub-agents.toml,由全局禁用文件统一管理,并在加载/保存时清理已禁用服务的工具.\n依赖拓扑: SubAgentConfigScreen.tsx 调用写入,subAgentExecutor.ts 通过 getSubAgent 读取执行时配置.\n避坑指南:\n- 配置层不应与 UI 面板导航状态(showMcpPanel,mcpPanelSource,source)耦合.\n- 更新/创建逻辑需复用同一套工具过滤/规范化逻辑.\n- UI 层做工具过滤后,配置持久化层仍需要二次清理,防止历史配置残留.\n- 不要在本层实现任何\"打开 MCPInfoPanel\"之类的 UI 行为,避免跨域耦合.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-13T09:38:25.202"
+		}
+	],
+	"source/utils/execution/subAgentExecutor.ts": [
+		{
+			"id": "notebook-1770864631008_subexec",
+			"filePath": "source/utils/execution/subAgentExecutor.ts",
+			"note": "职责: 子代理运行时装配器,加载子代理配置并执行工具调用循环.\n接口摘要: getSubAgent 输入 agentId 输出 agent 配置,executeMCPTool 执行具体工具并回传结果.\n依赖拓扑: 上游依赖 subAgentConfig.ts,下游依赖 mcpToolsManager.ts 与 filesystem.ts.\n避坑指南:\n- 子代理运行态不应处理任何 UI 导航(source)逻辑.\n- 工具可见性由\"MCP 服务全局开关(全局总闸)\"与\"代理工具权限(代理分闸)\"共同决定;全局服务禁用由 mcpToolsManager/disabledBuiltInTools 统一裁剪,运行态只消费最终可执行工具集合.",
+			"createdAt": "2026-02-12T10:50:31.000",
+			"updatedAt": "2026-02-13T09:37:49.363"
 		}
 	],
 	"source/utils/execution/toolExecutor.ts": [
 		{
 			"id": "notebook-1770864631011_toolexec",
 			"filePath": "source/utils/execution/toolExecutor.ts",
-			"note": "职责: 工具执行编排层,负责单个工具调用的完整生命周期管理,包括前置钩子/实际执行/后置钩子.\\n接口摘要: executeToolCall 输入 ToolCall,executionContext,输出 ToolResult.透传 executionContext?.editableFileSuffixes 给 mcpToolsManager.executeMCPTool.\\n依赖拓扑: 上游被 useConversation.ts 和 subAgentExecutor.ts 调用,下游依赖 mcpToolsManager.ts.\\n避坑指南: editableFileSuffixes 不应在本层做任何判定或修改,只负责透传给 mcpToolsManager.保持工具执行的通用性,避免业务逻辑泄露到此层.",
+			"note": "职责: 工具执行编排层,负责单个工具调用的完整生命周期管理,包括前置钩子/实际执行/后置钩子.\n接口摘要: executeToolCall(ToolCall,executionContext) -> ToolResult.透传 executionContext 给 mcpToolsManager.executeMCPTool.\n依赖拓扑: 上游被 useConversation.ts 和 subAgentExecutor.ts 调用,下游依赖 mcpToolsManager.ts.\n避坑指南:\n- 本层必须保持通用,不得引入 UI 面板状态(showMcpPanel,mcpPanelSource)或 screen 路由概念.\n- 工具可见性由\"MCP 服务全局开关(全局总闸)\"与\"代理工具权限(代理分闸)\"共同决定;服务级禁用应在 mcpToolsManager/disabledBuiltInTools 过滤,本层只执行上游已筛选后的调用.",
 			"createdAt": "2026-02-12T15:30:00.000",
-			"updatedAt": "2026-02-12T15:30:00.000"
-		}
-	],
-	"source/hooks/conversation/useConversation.ts": [
-		{
-			"id": "notebook-1770864631012_conv",
-			"filePath": "source/hooks/conversation/useConversation.ts",
-			"note": "职责: 主会话管理器,负责 AI 对话流/工具调用循环/消息处理/工具确认/用户插嘴.\\n接口摘要: handleConversationWithTools 输入用户消息和配置,输出 AI 响应和工具执行结果.调用 executeToolCalls 时传递 executionContext 包含主代理的 editableFileSuffixes.\\n依赖拓扑: 依赖 mainAgentManager 获取当前主代理配置(含 editableFileSuffixes),调用 toolExecutor.ts 执行工具.\\n避坑指南: editableFileSuffixes 从 mainAgentManager.currentConfig 获取,通过 executionContext 透传,不在本层做任何判定.确保主子代理使用统一的上下文传递机制.",
-			"createdAt": "2026-02-12T15:30:00.000",
-			"updatedAt": "2026-02-12T15:30:00.000"
+			"updatedAt": "2026-02-13T09:37:42.189"
 		}
 	],
 	"source/utils/agentsPromptUtils.ts": [
 		{
 			"id": "notebook-1770694245812_aux171dlv",
 			"filePath": "source/utils/agentsPromptUtils.ts",
-			"note": "**职责**: 生成主代理和子代理的系统环境上下文信息，包括平台、shell、工作目录和时间信息\n\n**接口摘要**: \n- 输入: 无参数\n- 输出: 包含系统环境信息的字符串\n\n**关键设计决策**:\n- 时间戳只放置于角色提示词的系统环境信息中(北京时间，精确到分钟)\n- 不在每条工具返回和user消息中添加时间戳，避免破坏KV缓存命中率\n- 角色提示词随对话进度动态更新插入位置，其内容变化不影响缓存\n\n**依赖拓扑**: \n- 被MainAgentManager.ts调用（主代理系统提示词生成）\n- 被subAgentExecutor.ts调用（子代理系统提示词生成）\n- 依赖getPlatformDisplayName(), getShellDisplayName(), getPlatformCommandsSection()\n\n**避坑指南**:\n- MUST使用北京时间(CST/UTC+8)，确保时间准确性\n- 时间戳只应存在于角色提示词的系统环境信息部分",
+			"note": "职责: 生成主代理和子代理的系统环境上下文信息,包括平台,shell,工作目录和时间信息.\n接口摘要: 无参数输入,输出包含系统环境信息的字符串.\n关键设计决策: 时间戳只放置于系统环境信息中(北京时间,精确到分钟),不在每条工具返回和 user 消息中添加.\n依赖拓扑: 被 MainAgentManager.ts,subAgentExecutor.ts 调用.\n避坑指南:\n- MUST 使用北京时间(UTC+8).\n- 本文件不应引入任何 UI 导航状态(showMcpPanel,mcpPanelSource)或 screen 逻辑.\n- 本文件也不应承担\"MCP 服务禁用\"或\"代理工具权限\"等配置逻辑,仅提供系统环境上下文.",
 			"createdAt": "2026-02-10T11:30:45.812",
-			"updatedAt": "2026-02-10T11:42:35.663"
+			"updatedAt": "2026-02-13T09:37:03.424"
 		}
 	],
-	"CurrentTaskPlan.md": [
+	"source/ui/pages/MCPConfigScreen.tsx": [
 		{
-			"id": "notebook-1770864631013_plan",
-			"filePath": "CurrentTaskPlan.md",
-			"note": "职责: 本轮需求的短线实施计划文件,指导后续开发落地 editableFileSuffixes.\\n接口摘要: 输入为 requirements/编辑文件后缀名限制.md 与蓝图笔记,输出阶段化实施顺序,风险点,验收和回归检查.\\n依赖拓扑: 开发执行与 reviewer 验收依赖该计划,并与 .snow/notebook/snow-cli.json 中相关条目联动维护.\\n避坑指南: 阶段必须覆盖配置层,执行拦截层,TUI 输入与持久化,批量返回语义以及 build 验收,每阶段可独立回滚.",
-			"createdAt": "2026-02-12T10:50:31.000",
-			"updatedAt": "2026-02-12T15:35:00.000"
+			"id": "notebook-1770950000001_mcpcfgscreen",
+			"filePath": "source/ui/pages/MCPConfigScreen.tsx",
+			"note": "职责: MCP 配置界面,提供全局/项目级配置编辑入口,以及 MCP 服务管理面板(MCPInfoPanel)入口.\n不该做什么:\n- 不承担 MCP 服务注册/发现/调用等执行逻辑(归 mcpToolsManager).\n- 不把 ChatScreen 的面板状态体系(usePanelState)强行复用到本 Screen,避免引入 20+ props 的 PanelsManager 耦合.\n- 不在面板打开时继续渲染并响应本页按键,避免 Ink 多 useInput 冲突与 Esc 返回链路分叉.\n接口摘要:\n- Props: { onBack: () => void; onSave: () => void }.\n- UI: 渲染配置菜单项,可跳转至全局/项目配置编辑器,可打开 MCPInfoPanel 面板.\n依赖拓扑:\n- 依赖: useTheme,useI18n,MCPInfoPanel,apiConfig(全局/项目配置读取与 editor 打开).\n- 被依赖: WelcomeScreen(作为入口 Screen).\n关键架构决策:\n- 面板状态采用本地 useState 管理(showMcpPanel),不使用 usePanelState: 因 PanelsManager 需要透传 20+ props,在独立 Screen 中引入会导致耦合与复杂度爆炸.\n- 面板打开时通过条件渲染完全隐藏配置 UI,并屏蔽本页 useInput,确保 Esc 返回链路单一且避免 useInput 冲突.\n避坑指南:\n- 面板打开后必须优先处理 Esc 并交由 MCPInfoPanel.onClose 收口关闭逻辑.\n- 仅负责\"入口与导航\",不要在此处做服务启用/禁用的读写与缓存刷新,这些由 MCPInfoPanel + disabledBuiltInTools/mcpToolsManager 完成.",
+			"createdAt": "2026-02-13T09:40:00.000",
+			"updatedAt": "2026-02-13T09:40:00.000"
+		}
+	],
+	"source/ui/components/panels/MCPInfoPanel.tsx": [
+		{
+			"id": "notebook-1770950000002_mcpinfopanel",
+			"filePath": "source/ui/components/panels/MCPInfoPanel.tsx",
+			"note": "职责: MCP 服务管理面板,展示服务状态,支持重连服务,切换服务启用/禁用状态.\n不该做什么:\n- 不直接修改业务配置(代理工具权限,模型选择等),仅处理 MCP 服务层面的开关/重连.\n- 不把 UI 状态渗透进执行层,所有启用状态最终落在 disabledBuiltInTools(.snow/disabled-builtin-tools.json)或外部 mcp.json.\n接口摘要:\n- Props: { source?: 'chat' | 'mcpConfig'; onClose: () => void }.\n- 键盘交互: Tab 切换服务启用/禁用,Enter 触发重连,Esc 优先关闭并调用 onClose.\n依赖拓扑:\n- 依赖: mcpToolsManager(服务列表/状态/重连),disabledBuiltInTools(内置服务禁用读写),useI18n(文案).\n- 被依赖: PanelsManager(从 ChatScreen 面板体系打开),MCPConfigScreen(从配置界面直接打开).\n关键架构决策:\n- source prop 当前未使用,仅作为未来差异化导航行为预留(例如关闭后回到 chat 或 config 的不同焦点管理).\n- 内置服务 vs 外部 MCP 服务禁用机制不同: 内置服务走 disabled-builtin-tools.json,外部服务走 mcp.json.\n避坑指南:\n- Esc 必须优先处理并调用 onClose,否则会被上层 useInput 吞掉导致无法返回.\n- 禁用/启用服务后需触发工具缓存刷新(由 mcpToolsManager 层提供的刷新/重建机制),避免 UI 与执行工具列表不一致.",
+			"createdAt": "2026-02-13T09:40:00.000",
+			"updatedAt": "2026-02-13T09:40:00.000"
+		}
+	],
+	"source/hooks/ui/usePanelState.ts": [
+		{
+			"id": "notebook-1770950000003_usepanelstate",
+			"filePath": "source/hooks/ui/usePanelState.ts",
+			"note": "职责: UI 面板状态管理中心,为 ChatScreen 提供各面板的显示/隐藏状态与操作函数.\n不该做什么:\n- 不服务于独立 Screen(MCPConfigScreen 等),避免将 ChatScreen 的 PanelsManager 复杂 props 体系扩散到其他页面.\n- 不将 UI 状态写入配置层/执行层,例如 mcpPanelSource 仅用于 UI 导航.\n接口摘要:\n- Hook: usePanelState().\n- 返回: PanelState & PanelActions,包含 showMcpPanel,setShowMcpPanel,mcpPanelSource,setMcpPanelSource 等.\n依赖拓扑:\n- 被依赖: ChatScreen(持有面板状态),PanelsManager(按状态装配面板),useCommandHandler(如 /mcp 命令设置 mcpPanelSource).\n关键架构决策:\n- 仅用于 ChatScreen 相关面板管理;MCPConfigScreen 不使用此 Hook,避免引入与 ChatScreen 强耦合的 UI 状态与 props 体系.\n- mcpPanelSource 当前仅由 ChatScreen 的 /mcp 命令设置,用于区分面板打开来源,为未来行为差异预留.\n避坑指南:\n- 面板状态的变更必须保持\"单一权威\": ChatScreen 通过该 Hook 驱动 PanelsManager,不要在其他层重复维护相同状态.\n- 新增面板时优先扩展此 Hook 的 state/actions,保持 PanelsManager 装配逻辑简单可预测.",
+			"createdAt": "2026-02-13T09:40:00.000",
+			"updatedAt": "2026-02-13T09:40:00.000"
+		}
+	],
+	"source/ui/components/panels/PanelsManager.tsx": [
+		{
+			"id": "notebook-1770950000004_panelsmanager",
+			"filePath": "source/ui/components/panels/PanelsManager.tsx",
+			"note": "职责: 面板装配器,根据 usePanelState 提供的状态与上层透传的 props,条件渲染各类面板(MCP,Session,Models 等).\n不该做什么:\n- 不在此处维护面板 state(归 usePanelState),也不直接读写配置文件.\n- 不在 ChatScreen 之外复用,避免把 20+ props 体系扩散到独立 screen.\n接口摘要:\n- Props: 20+ 个面板相关 props(各面板所需的回调/数据/状态).\n- 输出: 按 showXxxPanel 状态条件渲染对应 Panel,并负责向子面板透传 props.\n依赖拓扑:\n- 依赖: usePanelState 的状态,以及各 Panel 组件(含 MCPInfoPanel,可能 lazy load).\n- 被依赖: ChatScreen(唯一装配入口).\n关键架构决策:\n- MCPInfoPanel 采用 lazy loading,减少首次渲染成本.\n- 通过 props 透传,而不是引入全局 store,保持状态来源清晰可追踪.\n避坑指南:\n- 由于 props 数量巨大,新增面板字段时必须同步更新 PanelsManager 的 props 类型与所有调用方,避免出现\"面板不显示\"的隐性断链.\n- 仅做\"装配\",不要在此处实现键盘快捷键,避免与各面板内部 useInput 冲突.",
+			"createdAt": "2026-02-13T09:40:00.000",
+			"updatedAt": "2026-02-13T09:40:00.000"
+		}
+	],
+	"source/utils/execution/mcpToolsManager.ts": [
+		{
+			"id": "notebook-1770950000005_mcptoolsmanager",
+			"filePath": "source/utils/execution/mcpToolsManager.ts",
+			"note": "职责: MCP 工具管理核心,管理内置服务与外部 MCP 服务的注册,发现,调用与状态聚合,向执行层提供统一的工具视图.\n不该做什么:\n- 不引入 UI 导航状态(showMcpPanel,mcpPanelSource,source)或 screen/panel 概念.\n- 不在此处实现配置 UI,仅提供可被 UI 消费的状态与操作 API.\n接口摘要:\n- 输入: MCP 服务配置(mcp.json/内置 hardcoded 列表),以及工具调用请求(tool name + args + context).\n- 输出: 可用工具列表,服务状态(连接/错误),工具执行结果.\n依赖拓扑:\n- 依赖: disabledBuiltInTools(内置服务启用状态),mcpConfig(外部服务配置).\n- 被依赖: MCPInfoPanel(服务状态/重连/开关),toolExecutor(执行转发),各 Agent(工具发现与执行).\n关键架构决策:\n- 内置服务列表 hardcoded: 新增/调整内置服务必须修改本文件并同步 disabledBuiltInTools 的服务名约束.\n- 统一维护\"服务 <-> 工具\"映射关系,并在此处裁剪被禁用服务对应的工具集合.\n避坑指南:\n- 服务禁用状态需同时检查 disabledBuiltInTools,避免只隐藏 UI 但执行仍可调用.\n- 切换服务启用/禁用后应刷新/重建工具缓存,确保运行态与 UI 一致.\n- 外部服务与内置服务禁用逻辑不同,不要混用配置文件.",
+			"createdAt": "2026-02-13T09:40:00.000",
+			"updatedAt": "2026-02-13T09:40:00.000"
+		}
+	],
+	"source/utils/config/disabledBuiltInTools.ts": [
+		{
+			"id": "notebook-1770950000006_disabledbuiltintools",
+			"filePath": "source/utils/config/disabledBuiltInTools.ts",
+			"note": "职责: 内置 MCP 服务禁用管理,负责读写 .snow/disabled-builtin-tools.json,并提供按启用服务过滤工具的能力.\n不该做什么:\n- 不管理外部 MCP 服务(外部服务禁用由 mcp.json 控制).\n- 不承担 UI 交互,仅提供纯配置读写与过滤函数.\n接口摘要:\n- 输入: serviceName 或 tools 列表.\n- 输出: isServiceEnabled,getEnabledBuiltInServices(),filterToolsByEnabledServices() 等,以及禁用文件的持久化读写.\n依赖拓扑:\n- 被依赖: mcpToolsManager(裁剪服务/工具),MainAgentConfigScreen/SubAgentConfigScreen(过滤工具展示).\n关键架构决策:\n- 内置服务禁用是\"全局总闸\",优先级高于任何代理级工具权限,且不应写入各代理 TOML 配置.\n避坑指南:\n- 修改禁用文件后需触发 MCP 工具缓存刷新,否则会出现 UI 已禁用但工具仍可调用的状态.\n- 服务名必须与 mcpToolsManager 的 hardcoded 列表一致,避免出现\"永远启用\"的幽灵服务.",
+			"createdAt": "2026-02-13T09:40:00.000",
+			"updatedAt": "2026-02-13T09:40:00.000"
 		}
 	]
 }

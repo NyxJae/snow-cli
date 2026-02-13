@@ -31,8 +31,22 @@ interface SelectItem {
 	isRefreshAll?: boolean;
 	enabled?: boolean;
 }
+interface MCPInfoPanelProps {
+	/**
+	 * 面板打开来源上下文
+	 * 当前未使用，但为未来差异化导航行为预留
+	 * @example 'chat' - 从 ChatScreen 通过 /mcp 命令打开
+	 * @example 'mcpConfig' - 从 MCPConfigScreen 打开
+	 */
+	source?: 'chat' | 'mcpConfig';
+	/** 关闭面板并返回上一屏的回调函数 */
+	onClose: () => void;
+}
 
-export default function MCPInfoPanel() {
+export default function MCPInfoPanel({
+	source: _source,
+	onClose,
+}: MCPInfoPanelProps) {
 	const {t} = useI18n();
 	const [mcpStatus, setMcpStatus] = useState<MCPConnectionStatus[]>([]);
 	const [selectedIndex, setSelectedIndex] = useState(0);
@@ -88,13 +102,10 @@ export default function MCPInfoPanel() {
 		setIsReconnecting(true);
 		try {
 			if (item.value === 'refresh-all') {
-				// Refresh all services
 				await refreshMCPToolsCache();
 			} else if (item.isBuiltIn) {
-				// Built-in system services just refresh cache
 				await refreshMCPToolsCache();
 			} else {
-				// Reconnect specific service
 				await reconnectMCPService(item.value);
 			}
 			await loadMCPStatus();
@@ -107,11 +118,15 @@ export default function MCPInfoPanel() {
 		}
 	};
 
-	// Listen for Tab key to toggle service enabled/disabled
 	useInput(async (_, key) => {
+		// Esc 优先关闭面板
+		if (key.escape) {
+			onClose();
+			return;
+		}
+
 		if (isReconnecting || togglingService) return;
 
-		// Arrow key navigation
 		if (key.upArrow) {
 			setSelectedIndex(prev => (prev > 0 ? prev - 1 : selectItems.length - 1));
 			return;
@@ -121,7 +136,6 @@ export default function MCPInfoPanel() {
 			return;
 		}
 
-		// Enter to select
 		if (key.return) {
 			const currentItem = selectItems[selectedIndex];
 			if (currentItem) {
@@ -130,21 +144,17 @@ export default function MCPInfoPanel() {
 			return;
 		}
 
-		// Tab key to toggle enabled/disabled for all MCP services (including built-in)
+		// Tab 切换服务启用/禁用状态
 		if (key.tab) {
 			const currentItem = selectItems[selectedIndex];
-
-			// Skip if it's the refresh-all option
 			if (currentItem && !currentItem.isRefreshAll) {
 				try {
 					setTogglingService(currentItem.value);
 					const serviceName = currentItem.value;
 
 					if (currentItem.isBuiltIn) {
-						// Toggle built-in service via .snow/disabled-builtin-tools.json
 						toggleBuiltInService(serviceName);
 					} else {
-						// Toggle external MCP service via global config
 						const config = getMCPConfig();
 						if (config.mcpServers[serviceName]) {
 							const currentEnabled =
@@ -154,7 +164,6 @@ export default function MCPInfoPanel() {
 						}
 					}
 
-					// Refresh MCP tools cache and reload status
 					await refreshMCPToolsCache();
 					await loadMCPStatus();
 				} catch (error) {
@@ -168,7 +177,6 @@ export default function MCPInfoPanel() {
 		}
 	});
 
-	// Build select items from all services
 	const selectItems: SelectItem[] = [
 		{
 			label: t.mcpInfoPanel.refreshAll,

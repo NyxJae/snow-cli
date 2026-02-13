@@ -18,13 +18,15 @@ import {
 } from '../../utils/config/apiConfig.js';
 import {gracefulExit} from '../../utils/core/processManager.js';
 import {useTheme} from '../contexts/ThemeContext.js';
+import {useI18n} from '../../i18n/I18nContext.js';
+import MCPInfoPanel from '../components/panels/MCPInfoPanel.js';
 
 type Props = {
 	onBack: () => void;
 	onSave: () => void;
 };
 
-type ConfigScope = 'global' | 'project';
+type ConfigScope = 'global' | 'project' | 'manageServices';
 
 const CONFIG_DIR = join(homedir(), '.snow');
 
@@ -92,9 +94,11 @@ function getSystemEditor(): string | null {
 export default function MCPConfigScreen({onBack}: Props) {
 	const {exit} = useApp();
 	const {theme} = useTheme();
+	const {t} = useI18n();
 	const [selectedScope, setSelectedScope] = useState<ConfigScope>('global');
 	const [message, setMessage] = useState<string>('');
 	const [messageType, setMessageType] = useState<'info' | 'error'>('info');
+	const [showMcpPanel, setShowMcpPanel] = useState(false);
 
 	const openConfigFile = useCallback(
 		(scope: ConfigScope) => {
@@ -228,22 +232,46 @@ export default function MCPConfigScreen({onBack}: Props) {
 	);
 
 	useInput((_input, key) => {
-		// 上下键切换选择
-		if (key.upArrow || key.downArrow) {
-			setSelectedScope(prev => (prev === 'global' ? 'project' : 'global'));
+		// 面板打开时屏蔽本页按键，避免 Ink 多 useInput 导致重复响应/导航冲突
+		if (showMcpPanel) return;
+
+		// 上下键切换选择 (循环)
+		if (key.upArrow) {
+			setSelectedScope(prev => {
+				if (prev === 'global') return 'manageServices';
+				if (prev === 'project') return 'global';
+				return 'project';
+			});
+			setMessage('');
+			return;
+		}
+		if (key.downArrow) {
+			setSelectedScope(prev => {
+				if (prev === 'global') return 'project';
+				if (prev === 'project') return 'manageServices';
+				return 'global';
+			});
 			setMessage('');
 			return;
 		}
 
 		// 回车确认选择
 		if (key.return) {
-			openConfigFile(selectedScope);
+			if (selectedScope === 'manageServices') {
+				setShowMcpPanel(true);
+			} else {
+				openConfigFile(selectedScope);
+			}
 			return;
 		}
 
 		// Esc 返回
 		if (key.escape) {
-			onBack();
+			if (showMcpPanel) {
+				setShowMcpPanel(false);
+			} else {
+				onBack();
+			}
 			return;
 		}
 	});
@@ -253,81 +281,115 @@ export default function MCPConfigScreen({onBack}: Props) {
 
 	return (
 		<Box flexDirection="column" padding={1}>
-			<Box marginBottom={1}>
-				<Text bold color={theme.colors.menuInfo}>
-					❆ MCP 配置
-				</Text>
-			</Box>
-
-			<Box marginBottom={1}>
-				<Text>请选择要编辑的配置：</Text>
-			</Box>
-
-			<Box
-				flexDirection="column"
-				borderStyle="round"
-				borderColor={theme.colors.border}
-				paddingX={1}
-				paddingY={1}
-			>
-				{/* 全局配置选项 */}
-				<Box flexDirection="column">
-					<Text
-						color={
-							selectedScope === 'global'
-								? theme.colors.menuSelected
-								: theme.colors.menuNormal
-						}
-						bold={selectedScope === 'global'}
-					>
-						{selectedScope === 'global' ? '❯ ' : '  '}全局配置
-					</Text>
-					{selectedScope === 'global' && (
-						<Box marginLeft={3}>
-							<Text color={theme.colors.menuSecondary} dimColor>
-								{globalPath}
-							</Text>
-						</Box>
-					)}
-				</Box>
-
-				{/* 项目配置选项 */}
-				<Box flexDirection="column" marginTop={1}>
-					<Text
-						color={
-							selectedScope === 'project'
-								? theme.colors.menuSelected
-								: theme.colors.menuNormal
-						}
-						bold={selectedScope === 'project'}
-					>
-						{selectedScope === 'project' ? '❯ ' : '  '}项目配置
-					</Text>
-					{selectedScope === 'project' && (
-						<Box marginLeft={3}>
-							<Text color={theme.colors.menuSecondary} dimColor>
-								{projectPath}
-							</Text>
-						</Box>
-					)}
-				</Box>
-			</Box>
-
-			{/* 消息提示 */}
-			{message && (
+			{/* 面板打开时隐藏配置 UI，确保 Esc 返回链路单一明确 */}
+			{showMcpPanel ? (
 				<Box marginTop={1}>
-					<Text color={messageType === 'error' ? 'red' : 'cyan'}>
-						{message}
-					</Text>
+					<MCPInfoPanel
+						source="mcpConfig"
+						onClose={() => setShowMcpPanel(false)}
+					/>
 				</Box>
-			)}
+			) : (
+				<>
+					<Box marginBottom={1}>
+						<Text bold color={theme.colors.menuInfo}>
+							❆ MCP 配置
+						</Text>
+					</Box>
 
-			{/* 快捷键提示 */}
-			<Box marginTop={1}>
-				<Text color={theme.colors.menuSecondary} dimColor>
-					↑↓: 选择 | Enter: 确认 | Esc: 返回
-				</Text>
-			</Box>
+					<Box marginBottom={1}>
+						<Text>请选择要编辑的配置：</Text>
+					</Box>
+
+					<Box
+						flexDirection="column"
+						borderStyle="round"
+						borderColor={theme.colors.border}
+						paddingX={1}
+						paddingY={1}
+					>
+						{/* 全局配置选项 */}
+						<Box flexDirection="column">
+							<Text
+								color={
+									selectedScope === 'global'
+										? theme.colors.menuSelected
+										: theme.colors.menuNormal
+								}
+								bold={selectedScope === 'global'}
+							>
+								{selectedScope === 'global' ? '❯ ' : '  '}全局配置
+							</Text>
+							{selectedScope === 'global' && (
+								<Box marginLeft={3}>
+									<Text color={theme.colors.menuSecondary} dimColor>
+										{globalPath}
+									</Text>
+								</Box>
+							)}
+						</Box>
+
+						{/* 项目配置选项 */}
+						<Box flexDirection="column" marginTop={1}>
+							<Text
+								color={
+									selectedScope === 'project'
+										? theme.colors.menuSelected
+										: theme.colors.menuNormal
+								}
+								bold={selectedScope === 'project'}
+							>
+								{selectedScope === 'project' ? '❯ ' : '  '}项目配置
+							</Text>
+							{selectedScope === 'project' && (
+								<Box marginLeft={3}>
+									<Text color={theme.colors.menuSecondary} dimColor>
+										{projectPath}
+									</Text>
+								</Box>
+							)}
+						</Box>
+
+						{/* MCP 服务管理选项 */}
+						<Box flexDirection="column" marginTop={1}>
+							<Text
+								color={
+									selectedScope === 'manageServices'
+										? theme.colors.menuSelected
+										: theme.colors.menuNormal
+								}
+								bold={selectedScope === 'manageServices'}
+							>
+								{selectedScope === 'manageServices' ? '❯ ' : '  '}
+								{t.mcpConfigScreen.manageServices}
+							</Text>
+							{selectedScope === 'manageServices' && (
+								<Box marginLeft={3}>
+									<Text color={theme.colors.menuSecondary} dimColor>
+										{t.mcpConfigScreen.manageServicesDesc}
+									</Text>
+								</Box>
+							)}
+						</Box>
+					</Box>
+
+					{/* 消息提示 */}
+					{message && (
+						<Box marginTop={1}>
+							<Text color={messageType === 'error' ? 'red' : 'cyan'}>
+								{message}
+							</Text>
+						</Box>
+					)}
+
+					{/* 快捷键提示 */}
+					<Box marginTop={1}>
+						<Text color={theme.colors.menuSecondary} dimColor>
+							↑↓: 选择 | Enter: 确认 | Esc: 返回
+						</Text>
+					</Box>
+				</>
+			)}
 		</Box>
 	);
 }
