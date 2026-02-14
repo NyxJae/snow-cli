@@ -1,10 +1,6 @@
 /**
  * 主代理管理器
- *
- * 可配置主代理系统重构 - YOLO解耦与多主代理支持
- * 解耦YOLO模式和主代理切换，使其成为两个独立的控制维度：
- * - YOLO模式：工具调用是否自动通过（布尔开关），通过 Ctrl+Y / Shift+Tab 切换
- * - 主代理选择：使用哪个主代理配置，通过 Alt+M 循环切换
+ * 负责加载和管理主代理配置(内置+用户自定义),维护运行时状态
  */
 
 import {loadMainAgentConfig} from './MainAgentConfigIO.js';
@@ -14,6 +10,7 @@ import type {
 	MainAgentRuntimeState,
 } from '../types/MainAgentConfig.js';
 import type {ChatCompletionTool} from '../api/types.js';
+import type {AgentInfo} from '../api/sse-server.js';
 import {
 	getAgentsPrompt,
 	createSystemContext,
@@ -193,6 +190,44 @@ export class MainAgentManager {
 			const builtinConfigs = getBuiltinMainAgentConfigs();
 			return Object.values(builtinConfigs);
 		}
+	}
+
+	/**
+	 * 获取可用主代理列表（用于 SSE 协议）
+	 * 返回包含 id、name、description 的基本信息列表
+	 */
+	listAvailableAgents(): AgentInfo[] {
+		const orderedConfigs = this.getOrderedAgentList();
+		return orderedConfigs.map(config => ({
+			id: config.basicInfo.id,
+			name: config.basicInfo.name,
+			description: config.basicInfo.description,
+		}));
+	}
+
+	/**
+	 * 根据 agentId 获取主代理配置
+	 * @param agentId 主代理 ID
+	 * @returns 主代理配置
+	 * @throws 如果 agentId 不存在则抛出错误
+	 */
+	getAgentConfig(agentId: string): MainAgentConfig {
+		const configs = this.getAllConfigs();
+		const config = configs.find(c => c.basicInfo.id === agentId);
+		if (!config) {
+			throw new Error(`Agent not found: ${agentId}`);
+		}
+		return config;
+	}
+
+	/**
+	 * 检查 agentId 是否存在
+	 * @param agentId 主代理 ID
+	 * @returns 是否存在
+	 */
+	isValidAgentId(agentId: string): boolean {
+		const configs = this.getAllConfigs();
+		return configs.some(c => c.basicInfo.id === agentId);
 	}
 
 	/**

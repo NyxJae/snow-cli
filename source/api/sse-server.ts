@@ -16,7 +16,9 @@ export type SSEEventType =
 	| 'tool_confirmation_request'
 	| 'user_question_request'
 	| 'rollback_request'
-	| 'rollback_result';
+	| 'rollback_result'
+	| 'agent_list'
+	| 'agent_switched';
 
 /**
  * SSE 事件数据结构
@@ -38,7 +40,8 @@ export interface ClientMessage {
 		| 'tool_confirmation_response'
 		| 'user_question_response'
 		| 'abort' // 中断当前任务
-		| 'rollback'; // 回滚会话/快照
+		| 'rollback' // 回滚会话/快照
+		| 'switch_agent'; // 切换主代理
 	content?: string;
 	images?: Array<{
 		data: string; // base64 data URI (data:image/png;base64,...)
@@ -48,6 +51,7 @@ export interface ClientMessage {
 	response?: any; // 响应数据
 	sessionId?: string; // 会话ID，用于连续对话
 	yoloMode?: boolean; // YOLO 模式，自动批准所有工具
+	agentId?: string; // 目标主代理ID，用于 switch_agent 消息
 	rollback?: {
 		messageIndex: number;
 		rollbackFiles: boolean;
@@ -55,6 +59,16 @@ export interface ClientMessage {
 		crossSessionRollback?: boolean;
 		originalSessionId?: string;
 	};
+}
+
+/**
+ * 主代理信息结构（用于 SSE 协议）
+ * 仅包含客户端展示所需的基本信息，不包含完整配置
+ */
+export interface AgentInfo {
+	id: string; // 主代理唯一标识
+	name: string; // 显示名称
+	description: string; // 描述信息
 }
 
 /**
@@ -797,6 +811,13 @@ export class SSEServer {
 		// 连接关闭时清理
 		req.on('close', () => {
 			this.connections.delete(connectionId);
+			// 清理 sessionConnections 中指向该 connectionId 的映射
+			for (const [sessionId, connId] of this.sessionConnections.entries()) {
+				if (connId === connectionId) {
+					this.sessionConnections.delete(sessionId);
+					break;
+				}
+			}
 			this.log(`SSE 连接已关闭: ${connectionId}`, 'info');
 		});
 
@@ -829,11 +850,12 @@ export class SSEServer {
 				if (message.sessionId) {
 					targetConnectionId = this.sessionConnections.get(message.sessionId);
 					if (!targetConnectionId) {
-						// Session 不存在或连接已断开，使用第一个可用连接
-						const firstConnection = this.connections.values().next().value;
-						if (firstConnection) {
-							targetConnectionId = firstConnection.getId();
-						}
+						// Session 不存在或连接已断开
+						res.writeHead(400, {'Content-Type': 'application/json'});
+						res.end(
+							JSON.stringify({error: 'Session not found or connection closed'}),
+						);
+						return;
 					}
 				} else {
 					// 没有指定 sessionId，使用第一个可用连接

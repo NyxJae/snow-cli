@@ -11,12 +11,14 @@ import {
 } from '../config/permissionsConfig.js';
 import {isSensitiveCommand} from '../execution/sensitiveCommandManager.js';
 import {randomUUID} from 'crypto';
+import {mainAgentManager} from '../MainAgentManager.js';
 
 /**
  * 待处理的交互请求
  */
 interface PendingInteraction {
 	requestId: string;
+	sessionId: string; // 关联的 sessionId，用于 busy 判定
 	type: 'tool_confirmation' | 'user_question';
 	resolve: (value: any) => void;
 	reject: (error: any) => void;
@@ -38,6 +40,12 @@ class SSEManager {
 	) => void;
 	// 存储每个会话的 AbortController，用于中断任务
 	private sessionControllers: Map<string, AbortController> = new Map();
+	// 存储每个会话的当前主代理ID，实现会话级主代理隔离
+	private sessionAgentIds: Map<string, string> = new Map();
+	// 存储连接与会话的映射，避免穿透 SSEServer 私有状态
+	private connectionSessionMap: Map<string, string> = new Map();
+	// 默认主代理ID
+	private readonly defaultAgentId = 'general';
 
 	/**
 	 * 设置日志回调函数
@@ -46,6 +54,27 @@ class SSEManager {
 		callback: (message: string, level?: 'info' | 'error' | 'success') => void,
 	): void {
 		this.logCallback = callback;
+	}
+
+	/**
+	 * 绑定 session 到连接，并维护本地映射
+	 */
+	private bindSessionToConnection(
+		sessionId: string,
+		connectionId: string,
+	): void {
+		if (this.server) {
+			this.server.bindSessionToConnection(sessionId, connectionId);
+		}
+		// 维护本地映射，避免穿透 SSEServer 私有状态
+		this.connectionSessionMap.set(connectionId, sessionId);
+	}
+
+	/**
+	 * 获取连接关联的 sessionId
+	 */
+	private getSessionIdByConnectionId(connectionId: string): string | undefined {
+		return this.connectionSessionMap.get(connectionId);
 	}
 
 	/**
@@ -138,11 +167,23 @@ class SSEManager {
 				return;
 			}
 
+			// 处理主代理切换请求
+			if (message.type === 'switch_agent') {
+				await this.handleSwitchAgentRequest(message, sendEvent, connectionId);
+				return;
+			}
+
 			// 处理普通聊天消息
 			if (message.type === 'chat' || message.type === 'image') {
 				await this.handleChatMessage(message, sendEvent, connectionId);
 			}
 		} catch (error) {
+			this.log(
+				`handleClientMessage error: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+				'error',
+			);
 			// 发送错误事件
 			sendEvent({
 				type: 'error',
@@ -220,11 +261,6 @@ class SSEManager {
 
 			// 清理 controller
 			this.sessionControllers.delete(message.sessionId);
-		} else {
-			this.log(
-				`No active task found for session: ${message.sessionId}`,
-				'info',
-			);
 		}
 	}
 
@@ -329,45 +365,25 @@ class SSEManager {
 				currentSession = await sessionManager.loadSession(message.sessionId);
 				if (currentSession) {
 					sessionManager.setCurrentSession(currentSession);
-					this.log(`Load existing session: ${message.sessionId}`, 'success');
 					// 绑定 session 到当前连接
-					if (this.server) {
-						this.server.bindSessionToConnection(
-							message.sessionId,
-							connectionId,
-						);
-					}
+					this.bindSessionToConnection(message.sessionId, connectionId);
 				} else {
 					// Session 不存在，创建新的
 					currentSession = await sessionManager.createNewSession();
-					this.log(
-						`Session does not exist, create a new session: ${currentSession.id}`,
-						'info',
-					);
 					// 绑定 session 到当前连接
-					if (this.server) {
-						this.server.bindSessionToConnection(
-							currentSession.id,
-							connectionId,
-						);
-					}
+					this.bindSessionToConnection(currentSession.id, connectionId);
 				}
 			} catch (error) {
 				this.log('Load session failed, create new session', 'error');
 				currentSession = await sessionManager.createNewSession();
 				// 绑定 session 到当前连接
-				if (this.server) {
-					this.server.bindSessionToConnection(currentSession.id, connectionId);
-				}
+				this.bindSessionToConnection(currentSession.id, connectionId);
 			}
 		} else {
 			// 创建新 session
 			currentSession = await sessionManager.createNewSession();
-			this.log(`Create new session: ${currentSession.id}`, 'success');
 			// 绑定 session 到当前连接
-			if (this.server) {
-				this.server.bindSessionToConnection(currentSession.id, connectionId);
-			}
+			this.bindSessionToConnection(currentSession.id, connectionId);
 		}
 
 		// 在连接事件中返回 sessionId
@@ -380,6 +396,9 @@ class SSEManager {
 			},
 			timestamp: new Date().toISOString(),
 		});
+
+		// 发送可用主代理列表
+		this.sendAgentList(currentSession.id, sendEvent);
 
 		// 发送开始处理事件
 		sendEvent({
@@ -561,7 +580,11 @@ class SSEManager {
 			});
 
 			// 等待客户端响应
-			return this.waitForInteraction(requestId, 'tool_confirmation');
+			return this.waitForInteraction(
+				requestId,
+				'tool_confirmation',
+				currentSession.id,
+			);
 		};
 
 		// 用户问题处理
@@ -587,7 +610,11 @@ class SSEManager {
 			});
 
 			// 等待客户端响应
-			return this.waitForInteraction(requestId, 'user_question');
+			return this.waitForInteraction(
+				requestId,
+				'user_question',
+				currentSession.id,
+			);
 		};
 
 		// 获取当前工作目录的权限配置
@@ -687,6 +714,7 @@ class SSEManager {
 	private waitForInteraction(
 		requestId: string,
 		type: 'tool_confirmation' | 'user_question',
+		sessionId: string,
 	): Promise<any> {
 		return new Promise((resolve, reject) => {
 			const timeout = setTimeout(() => {
@@ -696,11 +724,205 @@ class SSEManager {
 
 			this.pendingInteractions.set(requestId, {
 				requestId,
+				sessionId,
 				type,
 				resolve,
 				reject,
 				timeout,
 			});
+		});
+	}
+
+	/**
+	 * 处理主代理切换请求
+	 */
+	private async handleSwitchAgentRequest(
+		message: ClientMessage,
+		sendEvent: (event: SSEEvent) => void,
+		connectionId: string,
+	): Promise<void> {
+		const agentId = message.agentId?.trim();
+
+		// 验证 agentId 是否为空
+		if (!agentId) {
+			const availableAgents = mainAgentManager.listAvailableAgents();
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'invalid_agent_id',
+					message: 'agentId cannot be empty',
+					availableAgents,
+				},
+				timestamp: new Date().toISOString(),
+			});
+			return;
+		}
+
+		// 验证 agentId 格式 [a-z0-9_-]+
+		if (!/^[a-z0-9_-]+$/.test(agentId)) {
+			const availableAgents = mainAgentManager.listAvailableAgents();
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'invalid_agent_id_format',
+					message: 'agentId contains invalid characters. Allowed: [a-z0-9_-]',
+					availableAgents,
+				},
+				timestamp: new Date().toISOString(),
+			});
+			return;
+		}
+
+		// 获取目标 sessionId
+		let targetSessionId = message.sessionId;
+		if (!targetSessionId) {
+			// 未提供 sessionId，尝试从连接获取绑定的 session
+			targetSessionId = this.getSessionIdByConnectionId(connectionId);
+		}
+
+		if (!targetSessionId) {
+			const availableAgents = mainAgentManager.listAvailableAgents();
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'session_not_found',
+					message: 'No session associated with this connection',
+					availableAgents,
+				},
+				timestamp: new Date().toISOString(),
+			});
+			return;
+		}
+
+		// 当客户端显式传入 sessionId 时，以路由层(sessionConnections)为准，
+		// 避免 /session/create 或 /session/load 建立的映射尚未同步到 connectionSessionMap 时被误判。
+		if (!message.sessionId) {
+			const isSessionBound = Array.from(
+				this.connectionSessionMap.values(),
+			).includes(targetSessionId);
+			if (!isSessionBound) {
+				const availableAgents = mainAgentManager.listAvailableAgents();
+				sendEvent({
+					type: 'error',
+					data: {
+						errorCode: 'session_not_found',
+						message: `Session not found or not bound: ${targetSessionId}`,
+						availableAgents,
+					},
+					timestamp: new Date().toISOString(),
+				});
+				return;
+			}
+		}
+
+		// 检查 session 是否忙（有进行中的任务）
+		if (this.isSessionBusy(targetSessionId)) {
+			const availableAgents = mainAgentManager.listAvailableAgents();
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'agent_busy',
+					message: 'Session is busy with an ongoing task. Please abort first.',
+					availableAgents,
+				},
+				timestamp: new Date().toISOString(),
+			});
+			return;
+		}
+
+		// 验证 agentId 是否存在
+		if (!mainAgentManager.isValidAgentId(agentId)) {
+			const availableAgents = mainAgentManager.listAvailableAgents();
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'agent_not_found',
+					message: `Agent not found: ${agentId}`,
+					availableAgents,
+				},
+				timestamp: new Date().toISOString(),
+			});
+			return;
+		}
+
+		// 获取当前主代理ID
+		const previousAgentId = this.getSessionAgentId(targetSessionId);
+
+		// 执行切换
+		this.setSessionAgentId(targetSessionId, agentId);
+
+		// 获取新主代理信息
+		const agentConfig = mainAgentManager.getAgentConfig(agentId);
+		const agentName = agentConfig.basicInfo.name;
+
+		// 发送切换成功事件
+		sendEvent({
+			type: 'agent_switched',
+			data: {
+				previousAgentId,
+				currentAgentId: agentId,
+				agentName,
+			},
+			timestamp: new Date().toISOString(),
+		});
+
+		this.log(
+			`Session ${targetSessionId} switched agent: ${previousAgentId} -> ${agentId}`,
+			'info',
+		);
+	}
+
+	/**
+	 * 检查 session 是否处于忙碌状态
+	 */
+	private isSessionBusy(sessionId: string): boolean {
+		// 检查是否有进行中的 AbortController（对话进行中）
+		if (this.sessionControllers.has(sessionId)) {
+			return true;
+		}
+
+		// 检查是否有待处理的交互请求
+		for (const interaction of this.pendingInteractions.values()) {
+			// 通过 sessionId 字段精确匹配
+			if (interaction.sessionId === sessionId) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * 获取会话的当前主代理ID
+	 */
+	private getSessionAgentId(sessionId: string): string {
+		return this.sessionAgentIds.get(sessionId) || this.defaultAgentId;
+	}
+
+	/**
+	 * 设置会话的主代理ID
+	 */
+	private setSessionAgentId(sessionId: string, agentId: string): void {
+		this.sessionAgentIds.set(sessionId, agentId);
+	}
+
+	/**
+	 * 发送可用主代理列表到客户端
+	 */
+	private sendAgentList(
+		sessionId: string,
+		sendEvent: (event: SSEEvent) => void,
+	): void {
+		const agents = mainAgentManager.listAvailableAgents();
+		const currentAgentId = this.getSessionAgentId(sessionId);
+
+		sendEvent({
+			type: 'agent_list',
+			data: {
+				agents,
+				currentAgentId,
+			},
+			timestamp: new Date().toISOString(),
 		});
 	}
 
