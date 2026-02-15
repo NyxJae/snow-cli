@@ -216,160 +216,13 @@ export async function executeSubAgent(
 	clearReadFolders();
 
 	try {
-		let agent: any;
-
-		// 首先检查用户是否有内置代理的自定义副本
-		if (
-			agentId === 'agent_reviewer' ||
-			agentId === 'agent_explore' ||
-			agentId === 'agent_general' ||
-			agentId === 'agent_todo_progress_useful_info_admin'
-		) {
-			// 直接检查用户代理（不通过 getSubAgent，因为它可能返回内置代理）
-			const {getUserSubAgents} = await import('../config/subAgentConfig.js');
-			const userAgents = getUserSubAgents();
-			const userAgent = userAgents.find(a => a.id === agentId);
-			if (userAgent) {
-				// 用户已自定义此内置代理，使用用户的版本
-				agent = userAgent;
-			}
-		}
-
-		// 如果未找到用户副本，使用内置定义
-		if (!agent && agentId === 'agent_reviewer') {
-			agent = {
-				id: 'agent_reviewer',
-				name: 'reviewer',
-				description:
-					'负责专门审查的子Agent.提供:用户需求,编辑范围,其他要求;产出:审核报告.每次你修改文件,或其他子Agent修改文件后,都MUST发布任务给此Agent审核',
-				role: `你是审核子Agent
-专门负责在对指定范围的文件进行严格的质量和一致性审查,对范围内的文件进行细致入微的审计,确保交付的实现不仅完美实现需求,而且结构清晰、模块化、易于维护,并完全符合项目规范和最佳实践.
-# 注意事项
-务必审核注释,已知编码者会在写代码时会习惯写一些冗余注释来解释自己当时的行为(eg: 新增xxx,移除xxx,依据xxx等)MUST提出让其修改.检查所有公开的类,方法和字段MUST符合规范的文档注释.内联注释MUST言简意赅,解释"为什么"这么做,而不是简单重复代码"做了什么".MUST 拒绝无意义的废话注释或开发日志式注释!
-笔记中会记录本项目的蓝图和架构规范等,务必审核是否符合项目蓝图和架构规范,若发现不符合则MUST提出修改建议!
-根据项目要求,运行代码质量检测,构建和测试等命令
-MUST 中文注释
-你无法也MUST NOT编辑文件,故MUST只读并最终给出审核报告.
-MUST NOT 任何假设.每一条审核报告都MUST有项目中文档和项目代码为依据,要先在项目中搜索调查清楚!
-请务必遵循**模块化**原则, 将功能拆分到合适的模块和文件中, **避免创建或修改出过大的文件**!如果发现哪个文件过大且可拆分或重构,则MUST提出修改建议.
-最终给出审核报告.`,
-				tools: [
-					'filesystem-read',
-					'ace-find_definition',
-					'ace-find_references',
-					'ace-semantic_search',
-					'ace-text_search',
-					'ace-file_outline',
-					'terminal-execute',
-					'todo-get',
-					'todo-update',
-					'ide-get_diagnostics',
-					'useful-info-add',
-					'askuser-ask_question',
-					'useful-info-delete',
-					'skill-execute',
-					'context_engine-codebase-retrieval',
-				],
+		const agent = getSubAgent(agentId);
+		if (!agent) {
+			return {
+				success: false,
+				result: '',
+				error: `Sub-agent with ID "${agentId}" not found`,
 			};
-		} else if (!agent && agentId === 'agent_explore') {
-			agent = {
-				id: 'agent_explore',
-				name: 'Explore Agent',
-				description:
-					'专门快速探索和理解代码库的子Agent.擅长网络搜索,搜索代码、查找定义、分析代码结构和依赖关系.当需要调研,搜索某目标时,MUST发布任务给此子Agent.可将研究目标细分,并行调用多个探索子代理,每个子代理专注一个方向,比如,一个专门调研文档,一个专门调研代码等.',
-				role: `你是一个专门的代码探索子Agent.你的任务是根据给你的实际需求,定位特定代码并分析依赖关系.使用搜索和分析工具来探索代码,必要时可进行网络搜索.专注于代码发现和理解.
-注意一旦项目根路径中有\`DevDocs\`文件夹,MUST从中找于本次任务相关的文档.
-MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发现无用或过时的有用信息记录,则MUST使用\`useful-info-delete\`工具删除!
-你不可也无法编辑文件.你MUST将重点聚焦于寻找,而非分析或执行,MUST不带任何偏见和主观,如实客观的记录和反馈你探索到的信息和信息来源!
-最终回复探索报告.`,
-				tools: [
-					'filesystem-read',
-					'ace-text_search',
-					'ace-file_outline',
-					'websearch-search',
-					'websearch-fetch',
-					'todo-get',
-					'todo-update',
-					'useful-info-delete',
-					'askuser-ask_question',
-					'terminal-execute',
-					'useful-info-add',
-					'skill-execute',
-					'context_engine-codebase-retrieval',
-				],
-			};
-		} else if (!agent && agentId === 'agent_general') {
-			agent = {
-				id: 'agent_general',
-				name: 'General Purpose Agent',
-				description:
-					'通用任务执行子Agent.可修改文件和执行命令.最适合需要实际操作的多步骤任务.当有需要实际执行的任务,发布给此Agent.MUST现将任务拆分成小任务发布,让此Agent每次只专注执行一个具体小任务.',
-				role: `你是一个通用任务执行子Agent.你可以执行各种复杂的多步骤任务,包括搜索代码、修改文件、执行命令等.在接到任务时,应系统性地将其分解并执行,并应根据需要选择合适的工具以高效完成任务.你MUSY只专注于分配给你的任务和工作范围,若私自涉及其他任务将追究你的责任!
-### 有用信息
-- MUST 并行调用,找到的对本次任务有用的信息,MUST使用有用信息工具添加
-- 每次修改文件后,MUST并行使用\`useful-info-xx\`工具更新有用信息,同步给其他Agent.
-**搜索替换工具**:搜索块和替换块尽量多提供上下文,以作为辅助锚点更好的定位修改区域,比如,只修改一行,但上下各提供5-10行的上下文.
-**确保你编写的所有代码无报错后,再发布任务完成信息!**
-你要自行验证你所做的修改是否完成了分配给你的任务,确认无误后你可更新todo,标记任务完成.`,
-				tools: [
-					'filesystem-read',
-					'filesystem-create',
-					'filesystem-edit_search',
-					'filesystem-undo',
-					'terminal-execute',
-					'ace-text_search',
-					'ide-get_diagnostics',
-					'todo-get',
-					'todo-update',
-					'useful-info-add',
-					'useful-info-delete',
-					'askuser-ask_question',
-					'ace-file_outline',
-					'skill-execute',
-					'context_engine-codebase-retrieval',
-				],
-			};
-		} else if (!agent && agentId === 'agent_todo_progress_useful_info_admin') {
-			agent = {
-				id: 'agent_todo_progress_useful_info_admin',
-				name: 'Todo progress and Useful_info Administrator',
-				description:
-					'todo进度和 useful_info 管理子Agent,随着任务的进行或中断等,todo和有用信息都会变得混乱,此子Agent负责清理和整理.当任务进度需要明确,todo需要整理,有用信息需要清理时,MUST发布任务给此子Agent.',
-				role: `你是负责清理和整理todo和有用信息的子Agent.
-首先,你要根据需求,MUST在项目中探索,查看git差异等手段,分析目前任务进度,理清哪些todo已完成,哪些todo未完成.
-再使用todo管理工具,删掉已完成的详细子todo
-确保todo:1.清晰展示任务现状2.确保有详细步骤指导将来开发3.父todo尽量保留,以便简洁体现任务整体进度4.未实际完成的子任务不要删
-最后使用useful-info系列工具,合并整合有用信息,删除对任务无用的,冗余的有用信息,确保有用信息可以精准指导开发,但又不会冗余.`,
-				tools: [
-					'filesystem-read',
-					'ace-find_definition',
-					'ace-find_references',
-					'ace-semantic_search',
-					'ace-text_search',
-					'ace-file_outline',
-					'terminal-execute',
-					'todo-get',
-					'todo-update',
-					'todo-add',
-					'todo-delete',
-					'useful-info-add',
-					'useful-info-delete',
-					'useful-info-list',
-					'askuser-ask_question',
-					'skill-execute',
-					'context_engine-codebase-retrieval',
-				],
-			};
-		} else {
-			// 获取用户配置的子代理
-			agent = getSubAgent(agentId);
-			if (!agent) {
-				return {
-					success: false,
-					result: '',
-					error: `Sub-agent with ID "${agentId}" not found`,
-				};
-			}
 		}
 
 		// 获取子代理的可编辑文件后缀配置
@@ -396,7 +249,7 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 				'subagent-',
 			]);
 
-			return agent.tools.some((allowedTool: string) => {
+			return (agent.tools ?? []).some((allowedTool: string) => {
 				// 标准化两个工具名称：将下划线替换为连字符进行比较
 				const normalizedAllowedTool = allowedTool.replace(/_/g, '-');
 				const isQualifiedAllowed =
@@ -621,11 +474,6 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 
 			// 重试回调函数 - 为子智能体提供流中断重试支持
 			const onRetry = (error: Error, attempt: number, nextDelay: number) => {
-				console.log(
-					`🔄 子智能体 ${
-						agent.name
-					} 重试 (${attempt}/${5}): ${error.message.substring(0, 100)}...`,
-				);
 				// 通过 onMessage 将重试状态传递给主会话
 				if (onMessage) {
 					onMessage({
@@ -916,11 +764,6 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 									};
 									messages.push(promptMessage);
 									shouldContinue = true;
-
-									// 向 UI 显示钩子消息，告知用户子代理继续执行
-									if (onMessage) {
-										console.log(`Hook: ${result.response.message}`);
-									}
 								}
 							}
 						}

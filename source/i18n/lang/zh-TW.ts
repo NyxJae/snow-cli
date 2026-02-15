@@ -305,6 +305,7 @@ export const zhTW: TranslationKeys = {
 		userInteractionTools: '用戶交互工具',
 		skillTools: '技能工具',
 		configProfile: '配置文件(可選):',
+		followGlobal: '跟隨全域 ({name})',
 		editableFileSuffixes: '可編輯文件後綴(可選):',
 		editableFileSuffixesPlaceholder: '.ts, .tsx, .js (留空=不限制)',
 		customSystemPrompt: '自定義系統提示詞(可選):',
@@ -1208,8 +1209,8 @@ export const zhTW: TranslationKeys = {
 			'提示: 服務啟用後,需於主代理/子代理配置中設定具體工具權限',
 	},
 	runningAgentsPanel: {
-		title: '執行中的子智能體',
-		noAgentsRunning: '目前沒有執行中的子智能體',
+		title: '執行中的子代理',
+		noAgentsRunning: '目前沒有執行中的子代理',
 		keyboardHint: '(空白鍵: 切換 · Enter: 確認 · Esc: 取消)',
 		selected: '已選擇: {count}',
 		scrollHint: '↑↓ 捲動',

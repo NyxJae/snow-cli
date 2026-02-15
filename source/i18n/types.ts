@@ -306,6 +306,7 @@ export type TranslationKeys = {
 		notebookTools: string;
 		skillTools: string;
 		configProfile: string;
+		followGlobal: string;
 		editableFileSuffixes: string;
 		editableFileSuffixesPlaceholder: string;
 		customSystemPrompt: string;

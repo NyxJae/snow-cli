@@ -334,6 +334,7 @@ export const en: TranslationKeys = {
 		userInteractionTools: 'User Interaction Tools',
 		skillTools: 'Skill Tools',
 		configProfile: 'Config Profile (Optional):',
+		followGlobal: 'Follow Global ({name})',
 		editableFileSuffixes: 'Editable File Suffixes (Optional):',
 		editableFileSuffixesPlaceholder: '.ts, .tsx, .js (empty = no limit)',
 		customSystemPrompt: 'Custom System Prompt (Optional):',
