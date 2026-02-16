@@ -23,6 +23,12 @@ import {getTodoService} from '../../utils/execution/mcpToolsManager.js';
 import {todoEvents} from '../../utils/events/todoEvents.js';
 import {logger} from '../../utils/core/logger.js';
 import {runningSubAgentTracker} from '../../utils/execution/runningSubAgentTracker.js';
+import {
+	getNotebookRollbackCount,
+	rollbackNotebooks,
+	deleteNotebookSnapshotsFromIndex,
+	clearAllNotebookSnapshots,
+} from '../../utils/core/notebookManager.js';
 
 /**
  * 从用户输入中解析运行中子代理的定向标记(# SubAgentTarget:instanceId:agentName).
@@ -944,10 +950,15 @@ export function useChatLogic(props: UseChatLogicProps) {
 					currentSession.id,
 					selectedIndex,
 				);
+				const nbCount = getNotebookRollbackCount(
+					currentSession.id,
+					selectedIndex,
+				);
 				snapshotState.setPendingRollback({
 					messageIndex: selectedIndex,
 					fileCount: filePaths.length,
 					filePaths,
+					notebookCount: nbCount,
 					message: cleanIDEContext(message),
 					images,
 					crossSessionRollback: true,
@@ -1003,11 +1014,15 @@ export function useChatLogic(props: UseChatLogicProps) {
 			selectedIndex,
 		);
 
-		if (filePaths.length > 0) {
+		// 同时检查是否有需要回滚的 notebook
+		const nbCount = getNotebookRollbackCount(currentSession.id, selectedIndex);
+
+		if (filePaths.length > 0 || nbCount > 0) {
 			snapshotState.setPendingRollback({
 				messageIndex: selectedIndex,
 				fileCount: filePaths.length,
 				filePaths,
+				notebookCount: nbCount,
 				message: cleanIDEContext(message),
 				images,
 			});
@@ -1023,14 +1038,32 @@ export function useChatLogic(props: UseChatLogicProps) {
 	const performRollback = async (
 		selectedIndex: number,
 		rollbackFiles: boolean,
+		selectedFiles?: string[],
 	) => {
 		const currentSession = sessionManager.getCurrentSession();
 
 		if (rollbackFiles && currentSession) {
-			await hashBasedSnapshotManager.rollbackToMessageIndex(
-				currentSession.id,
-				selectedIndex,
-			);
+			if (selectedFiles && selectedFiles.length > 0) {
+				// Partial rollback - only rollback selected files
+				await hashBasedSnapshotManager.rollbackToMessageIndex(
+					currentSession.id,
+					selectedIndex,
+					selectedFiles,
+				);
+			} else {
+				// Full rollback - rollback all files
+				await hashBasedSnapshotManager.rollbackToMessageIndex(
+					currentSession.id,
+					selectedIndex,
+				);
+			}
+
+			// 回滚文件时同步回滚 notebook（文件改坏了，对应的 notebook 大概率也是错的）
+			try {
+				rollbackNotebooks(currentSession.id, selectedIndex);
+			} catch (error) {
+				console.error('Failed to rollback notebooks:', error);
+			}
 		}
 
 		if (currentSession) {
@@ -1086,6 +1119,9 @@ export function useChatLogic(props: UseChatLogicProps) {
 			if (sessionTruncateIndex === 0 && currentSession) {
 				await hashBasedSnapshotManager.clearAllSnapshots(currentSession.id);
 
+				// 同时清空 notebook 快照追踪
+				clearAllNotebookSnapshots(currentSession.id);
+
 				await sessionManager.deleteSession(currentSession.id);
 
 				sessionManager.clearCurrentSession();
@@ -1110,6 +1146,11 @@ export function useChatLogic(props: UseChatLogicProps) {
 				selectedIndex,
 			);
 
+			// 如果未选择回滚文件，仍需清理 notebook 快照追踪记录（会话截断后这些记录已无意义）
+			if (!rollbackFiles) {
+				deleteNotebookSnapshotsFromIndex(currentSession.id, selectedIndex);
+			}
+
 			const snapshots = await hashBasedSnapshotManager.listSnapshots(
 				currentSession.id,
 			);
@@ -1133,7 +1174,10 @@ export function useChatLogic(props: UseChatLogicProps) {
 		}, 0);
 	};
 
-	const handleRollbackConfirm = async (rollbackFiles: boolean | null) => {
+	const handleRollbackConfirm = async (
+		rollbackFiles: boolean | null,
+		selectedFiles?: string[],
+	) => {
 		if (rollbackFiles === null) {
 			snapshotState.setPendingRollback(null);
 			return;
@@ -1154,6 +1198,7 @@ export function useChatLogic(props: UseChatLogicProps) {
 					await performRollback(
 						snapshotState.pendingRollback.messageIndex,
 						true,
+						selectedFiles,
 					);
 				}
 
@@ -1196,6 +1241,7 @@ export function useChatLogic(props: UseChatLogicProps) {
 				await performRollback(
 					snapshotState.pendingRollback.messageIndex,
 					rollbackFiles,
+					selectedFiles,
 				);
 			}
 		}

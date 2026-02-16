@@ -2,7 +2,7 @@ import {createStreamingAnthropicCompletion} from '../../api/anthropic.js';
 import {createStreamingResponse} from '../../api/responses.js';
 import {createStreamingGeminiCompletion} from '../../api/gemini.js';
 import {createStreamingChatCompletion} from '../../api/chat.js';
-import {getSubAgent} from '../config/subAgentConfig.js';
+import {getSubAgent, getSubAgents} from '../config/subAgentConfig.js';
 import {
 	getAgentsPrompt,
 	createSystemContext,
@@ -22,6 +22,12 @@ import {
 import {sessionManager} from '../session/sessionManager.js';
 import {unifiedHooksExecutor} from './unifiedHooksExecutor.js';
 import {checkYoloPermission} from './yoloPermissionChecker.js';
+import {
+	shouldCompressSubAgentContext,
+	getContextPercentage,
+	compressSubAgentContext,
+	countMessagesTokens,
+} from '../core/subAgentContextCompressor.js';
 import type {ConfirmationResult} from '../../ui/components/tools/ToolConfirmation.js';
 import type {MCPTool} from './mcpToolsManager.js';
 import type {ChatMessage} from '../../api/types.js';
@@ -114,6 +120,71 @@ function stripSpecialUserMessages(messages: ChatMessage[]): ChatMessage[] {
 	return messages.filter(msg => !msg.specialUserMessage);
 }
 
+/**
+ * 清理会话中的孤立 tool 调用消息,避免 Responses API 因缺少 function_call_output 报错.
+ *
+ * 处理两类异常:
+ * 1. assistant(tool_calls) 没有对应 tool 结果
+ * 2. tool 结果没有对应 assistant(tool_calls)
+ */
+function cleanOrphanedToolCallsInPlace(messages: ChatMessage[]): {
+	removedAssistantWithToolCalls: number;
+	removedOrphanToolResults: number;
+	totalRemoved: number;
+} {
+	const toolResultIds = new Set<string>();
+	for (const msg of messages) {
+		if (msg.role === 'tool' && msg.tool_call_id) {
+			toolResultIds.add(msg.tool_call_id);
+		}
+	}
+
+	const declaredToolCallIds = new Set<string>();
+	for (const msg of messages) {
+		if (msg.role === 'assistant' && msg.tool_calls) {
+			for (const tc of msg.tool_calls) {
+				declaredToolCallIds.add(tc.id);
+			}
+		}
+	}
+
+	const indicesToRemove = new Set<number>();
+	let removedAssistantWithToolCalls = 0;
+	let removedOrphanToolResults = 0;
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i];
+		if (!msg) continue;
+
+		if (msg.role === 'assistant' && msg.tool_calls) {
+			const hasAllResults = msg.tool_calls.every(tc =>
+				toolResultIds.has(tc.id),
+			);
+			if (!hasAllResults) {
+				indicesToRemove.add(i);
+				removedAssistantWithToolCalls++;
+			}
+		}
+
+		if (msg.role === 'tool' && msg.tool_call_id) {
+			if (!declaredToolCallIds.has(msg.tool_call_id)) {
+				indicesToRemove.add(i);
+				removedOrphanToolResults++;
+			}
+		}
+	}
+
+	const sortedIndices = Array.from(indicesToRemove).sort((a, b) => b - a);
+	for (const idx of sortedIndices) {
+		messages.splice(idx, 1);
+	}
+
+	return {
+		removedAssistantWithToolCalls,
+		removedOrphanToolResults,
+		totalRemoved: sortedIndices.length,
+	};
+}
+
 async function refreshSubAgentSpecialUserMessages(
 	messages: ChatMessage[],
 	sessionId: string | undefined,
@@ -178,12 +249,21 @@ async function refreshSubAgentSpecialUserMessages(
 		baseMessages.length > 0 && baseMessages[0]?.role === 'system'
 			? Math.max(1, insertPosition)
 			: Math.max(0, insertPosition);
-	return insertMessagesAtPosition(
+
+	const mergedMessages = insertMessagesAtPosition(
 		baseMessages,
 		specialUserMessages,
 		safeInsertPosition,
 	);
+
+	return mergedMessages;
 }
+
+/**
+ * Maximum spawn depth to prevent infinite recursive spawning.
+ * A sub-agent at depth >= MAX_SPAWN_DEPTH cannot spawn further sub-agents.
+ */
+const MAX_SPAWN_DEPTH = 1;
 
 /**
  * 执行子智能体作为工具
@@ -196,8 +276,7 @@ async function refreshSubAgentSpecialUserMessages(
  * @param yoloMode - 是否启用 YOLO 模式（自动批准所有工具）
  * @param addToAlwaysApproved - 添加工具到始终批准列表的回调
  * @param requestUserQuestion - 用户问题回调，用于子智能体调用 askuser 工具时显示主会话的蓝色边框 UI
- * @param getPendingMessages - 获取待处理用户消息队列的回调函数
- * @param clearPendingMessages - 清空待处理用户消息队列的回调函数
+ * @param spawnDepth - 当前 spawn 嵌套深度（0 = 主流程直接调起的子代理）
  * @returns 子智能体的最终结果
  */
 export async function executeSubAgent(
@@ -211,6 +290,7 @@ export async function executeSubAgent(
 	addToAlwaysApproved?: AddToAlwaysApprovedCallback,
 	requestUserQuestion?: UserQuestionCallback,
 	instanceId?: string,
+	spawnDepth: number = 0,
 ): Promise<SubAgentResult> {
 	const mainAgentReadFolders = getReadFolders();
 	clearReadFolders();
@@ -302,6 +382,154 @@ export async function executeSubAgent(
 			};
 		}
 
+		// 注入子代理协作工具（不属于 MCP tools）
+		const {runningSubAgentTracker} = await import(
+			'./runningSubAgentTracker.js'
+		);
+
+		const sendMessageTool: MCPTool = {
+			type: 'function' as const,
+			function: {
+				name: 'send_message_to_agent',
+				description:
+					"Send a message to another running sub-agent. Use this to share information, findings, or coordinate work with other agents that are executing in parallel. The message will be injected into the target agent's context. IMPORTANT: Use query_agents_status first to check if the target agent is still running before sending.",
+				parameters: {
+					type: 'object',
+					properties: {
+						target_agent_id: {
+							type: 'string',
+							description:
+								'The agent ID (type) of the target sub-agent (e.g., "agent_explore", "agent_general"). If multiple instances of the same type are running, the message is sent to the first found instance.',
+						},
+						target_instance_id: {
+							type: 'string',
+							description:
+								'(Optional) The specific instance ID of the target sub-agent. Use this for precise targeting when multiple instances of the same agent type are running.',
+						},
+						message: {
+							type: 'string',
+							description:
+								'The message content to send to the target agent. Be clear and specific about what information you are sharing or what action you are requesting.',
+						},
+					},
+					required: ['message'],
+				},
+			},
+		};
+
+		const queryAgentsStatusTool: MCPTool = {
+			type: 'function' as const,
+			function: {
+				name: 'query_agents_status',
+				description:
+					'Query the current status of all running sub-agents. Returns a list of currently active agents with their IDs, names, prompts, and how long they have been running. Use this to check if a target agent is still running before sending it a message, or to discover new agents that have started.',
+				parameters: {
+					type: 'object',
+					properties: {},
+					required: [],
+				},
+			},
+		};
+
+		// 动态构建可 spawn 的子代理列表(排除自身, 并根据白名单过滤)
+		const allSubAgents = getSubAgents();
+		const allowedSubAgentIds = agent.availableSubAgents;
+		const hasSpawnWhitelist =
+			Array.isArray(allowedSubAgentIds) && allowedSubAgentIds.length > 0;
+
+		const spawnableAgents = allSubAgents
+			.filter(a => a.id !== agent.id) // 排除自身
+			.filter(a => !hasSpawnWhitelist || allowedSubAgentIds.includes(a.id)); // 白名单过滤
+
+		// 构建可用子代理描述列表
+		const agentDescriptions = spawnableAgents
+			.map(a => `- **${a.id}**: ${a.name} — ${a.description}`)
+			.join('\n');
+
+		const agentIdList = spawnableAgents.map(a => a.id).join(', ');
+
+		const spawnSubAgentTool: MCPTool = {
+			type: 'function' as const,
+			function: {
+				name: 'spawn_sub_agent',
+				description: `Spawn a NEW sub-agent of a DIFFERENT type to get specialized help. The spawned agent runs in parallel and results are reported back automatically.
+
+**WHEN TO USE** — Only spawn when you genuinely need a different agent's specialization.
+
+**WHEN NOT TO USE** — Do NOT spawn to offload YOUR OWN work:
+- NEVER spawn an agent of the same type as yourself to delegate your task — that is lazy and wasteful
+- NEVER spawn an agent just to "break work into pieces" if you can do it yourself
+- NEVER spawn when you are simply stuck — try harder or ask the user instead
+- If you can complete the task with your own tools, DO IT YOURSELF
+
+**Available agents you can spawn:**
+${agentDescriptions || '(none)'}`,
+				parameters: {
+					type: 'object',
+					properties: {
+						agent_id: {
+							type: 'string',
+							description: `The agent ID to spawn. Must be a DIFFERENT type from yourself. Available: ${
+								agentIdList || 'none'
+							}.`,
+						},
+						prompt: {
+							type: 'string',
+							description:
+								'CRITICAL: The task prompt for the spawned agent. Must include COMPLETE context since the spawned agent has NO access to your conversation history. Include all relevant file paths, findings, constraints, and requirements.',
+						},
+					},
+					required: ['agent_id', 'prompt'],
+				},
+			},
+		};
+
+		allowedTools.push(sendMessageTool, queryAgentsStatusTool);
+		if (spawnDepth < MAX_SPAWN_DEPTH) {
+			allowedTools.push(spawnSubAgentTool);
+		}
+
+		// 构建并行子代理协作上下文
+		const otherAgents = runningSubAgentTracker
+			.getRunningAgents()
+			.filter(a => a.instanceId !== instanceId);
+
+		const canSpawn = spawnDepth < MAX_SPAWN_DEPTH;
+		let collaborationContext = '';
+		if (otherAgents.length > 0) {
+			const agentList = otherAgents
+				.map(
+					a =>
+						`- ${a.agentName} (id: ${a.agentId}, instance: ${a.instanceId}): "${
+							a.prompt ? a.prompt.substring(0, 120) : 'N/A'
+						}"`,
+				)
+				.join('\n');
+			const spawnHint = canSpawn
+				? ', or `spawn_sub_agent` to request a DIFFERENT type of agent for specialized help'
+				: '';
+			const spawnAdvice = canSpawn
+				? '\n\n**Spawn rules**: Only spawn agents of a DIFFERENT type for work you CANNOT do with your own tools. Complete your own task first — do NOT delegate it.'
+				: '';
+			collaborationContext = `\n\n## Currently Running Peer Agents
+The following sub-agents are running in parallel with you. You can use \`query_agents_status\` to get real-time status, \`send_message_to_agent\` to communicate${spawnHint}.
+
+${agentList}
+
+If you discover information useful to another agent, proactively share it.${spawnAdvice}`;
+		} else {
+			const spawnToolLine = canSpawn
+				? '\n- `spawn_sub_agent`: Spawn a DIFFERENT type of agent for specialized help (do NOT spawn your own type to offload work)'
+				: '';
+			const spawnUsage = canSpawn
+				? '\n\n**Spawn rules**: Only use `spawn_sub_agent` when you genuinely need a different agent\'s specialization (e.g., you are read-only but need code changes). NEVER spawn to delegate your own task or to "parallelize" work you should do yourself.'
+				: '';
+			collaborationContext = `\n\n## Agent Collaboration Tools
+You have access to these collaboration tools:
+- \`query_agents_status\`: Check which sub-agents are currently running
+- \`send_message_to_agent\`: Send a message to a running peer agent (check status first!)${spawnToolLine}${spawnUsage}`;
+		}
+
 		// 获取子代理配置
 		// 如果子代理有 configProfile，则加载；否则使用主配置
 		let config;
@@ -376,6 +604,11 @@ export async function executeSubAgent(
 				: taskCompletionPrompt;
 		}
 
+		// 5.5 注入并行协作上下文
+		if (collaborationContext) {
+			finalPrompt = `${finalPrompt}${collaborationContext}`;
+		}
+
 		// 6. 最后追加主代理传入的任务提示词
 		if (prompt) {
 			finalPrompt = finalPrompt ? `${finalPrompt}\n\n${prompt}` : prompt;
@@ -399,8 +632,16 @@ export async function executeSubAgent(
 		let hasError = false;
 		let errorMessage = '';
 		let totalUsage: TokenUsage | undefined;
+		// Latest total_tokens from the most recent API call (prompt + completion).
+		// Unlike totalUsage which accumulates across rounds, this reflects the actual
+		// context size for the current round — used for context window monitoring.
+		let latestTotalTokens = 0;
 		// Track all user messages injected from the main session
 		const collectedInjectedMessages: string[] = [];
+
+		// Track instanceIds of sub-agents spawned by THIS agent via spawn_sub_agent.
+		// Used to prevent this agent from finishing while its children are still running.
+		const spawnedChildInstanceIds = new Set<string>();
 
 		// 此子代理执行的本地会话批准工具列表
 		// 确保执行期间批准的工具立即被识别
@@ -409,9 +650,11 @@ export async function executeSubAgent(
 		// 子代理内部空回复重试计数器
 		let emptyResponseRetryCount = 0;
 		const maxEmptyResponseRetries = 3; // 最多重试3次
+		let loopIteration = 0;
 
 		// eslint-disable-next-line no-constant-condition
 		while (true) {
+			loopIteration++;
 			// 流式传输前检查中止信号
 			if (abortSignal?.aborted) {
 				// 发送 done 消息标记完成（类似正常工具中止）
@@ -436,9 +679,6 @@ export async function executeSubAgent(
 			// The main flow enqueues messages via runningSubAgentTracker.enqueueMessage()
 			// when the user directs a pending message to this specific sub-agent instance.
 			if (instanceId) {
-				const {runningSubAgentTracker} = await import(
-					'./runningSubAgentTracker.js'
-				);
 				const injectedMessages =
 					runningSubAgentTracker.dequeueMessages(instanceId);
 				for (const injectedMsg of injectedMessages) {
@@ -463,6 +703,31 @@ export async function executeSubAgent(
 						});
 					}
 				}
+
+				// Inject any pending inter-agent messages from other sub-agents
+				const interAgentMessages =
+					runningSubAgentTracker.dequeueInterAgentMessages(instanceId);
+				for (const iaMsg of interAgentMessages) {
+					messages.push({
+						role: 'user',
+						content: `[Inter-agent message from ${iaMsg.fromAgentName} (${iaMsg.fromAgentId})]\n${iaMsg.content}`,
+					});
+
+					// Notify UI about the inter-agent message reception
+					if (onMessage) {
+						onMessage({
+							type: 'sub_agent_message',
+							agentId: agent.id,
+							agentName: agent.name,
+							message: {
+								type: 'inter_agent_received',
+								fromAgentId: iaMsg.fromAgentId,
+								fromAgentName: iaMsg.fromAgentName,
+								content: iaMsg.content,
+							},
+						});
+					}
+				}
 			}
 
 			const currentSession = sessionManager.getCurrentSession();
@@ -471,6 +736,9 @@ export async function executeSubAgent(
 				currentSession?.id,
 				finalPrompt,
 			);
+
+			// 防御性清理: 避免历史中存在孤立 tool_calls / tool_result 导致 Responses API 400
+			cleanOrphanedToolCallsInPlace(messages);
 
 			// 重试回调函数 - 为子智能体提供流中断重试支持
 			const onRetry = (error: Error, attempt: number, nextDelay: number) => {
@@ -585,7 +853,7 @@ export async function executeSubAgent(
 				) {
 					hasReceivedData = true;
 				}
-				// Forward message to UI (but don't save to main conversation)
+
 				if (onMessage) {
 					onMessage({
 						type: 'sub_agent_message',
@@ -598,6 +866,15 @@ export async function executeSubAgent(
 				// Capture usage from stream events
 				if (event.type === 'usage' && event.usage) {
 					const eventUsage = event.usage;
+					// Track total_tokens (prompt + completion) for context window monitoring.
+					// total_tokens better reflects actual context consumption because the model's
+					// response (completion_tokens) will also be added to the messages array,
+					// contributing to the next round's input.
+					latestTotalTokens =
+						eventUsage.total_tokens ||
+						(eventUsage.prompt_tokens || 0) +
+							(eventUsage.completion_tokens || 0);
+
 					if (!totalUsage) {
 						totalUsage = {
 							inputTokens: eventUsage.prompt_tokens || 0,
@@ -619,6 +896,28 @@ export async function executeSubAgent(
 								(totalUsage.cacheReadInputTokens || 0) +
 								eventUsage.cache_read_input_tokens;
 						}
+					}
+
+					// Notify UI of context usage DURING the stream (before 'done' marks message complete)
+					// This ensures the streaming message still exists for the UI to update
+					if (onMessage && config.maxContextTokens && latestTotalTokens > 0) {
+						const ctxPct = getContextPercentage(
+							latestTotalTokens,
+							config.maxContextTokens,
+						);
+						// Use Math.max(1, ...) so the first API call (small prompt) still shows ≥1%
+						// instead of rounding to 0% and hiding the bar entirely
+						onMessage({
+							type: 'sub_agent_message',
+							agentId: agent.id,
+							agentName: agent.name,
+							message: {
+								type: 'context_usage',
+								percentage: Math.max(1, Math.round(ctxPct)),
+								inputTokens: latestTotalTokens,
+								maxTokens: config.maxContextTokens,
+							},
+						});
 					}
 				}
 
@@ -725,89 +1024,637 @@ export async function executeSubAgent(
 					error: errorMessage,
 				};
 			}
-			// 没有工具调用时,执行 onSubAgentComplete 钩子（在子代理任务完成前）
-			if (toolCalls.length === 0) {
-				try {
-					const hookResult = await unifiedHooksExecutor.executeHooks(
-						'onSubAgentComplete',
-						{
-							agentId: agent.id,
-							agentName: agent.name,
-							content: finalResponse,
-							success: true,
-							usage: totalUsage,
-						},
+
+			// 兜底: 当上游接口未返回 usage 时,用 tiktoken 估算 token.
+			if (latestTotalTokens === 0 && config.maxContextTokens) {
+				latestTotalTokens = countMessagesTokens(messages);
+
+				// 将估算的上下文占用同步给 UI.
+				if (onMessage && latestTotalTokens > 0) {
+					const ctxPct = getContextPercentage(
+						latestTotalTokens,
+						config.maxContextTokens,
 					);
-
-					// 处理钩子返回结果
-					if (hookResult.results && hookResult.results.length > 0) {
-						let shouldContinue = false;
-
-						for (const result of hookResult.results) {
-							if (result.type === 'command' && !result.success) {
-								if (result.exitCode >= 2) {
-									// exitCode >= 2: 错误，追加消息并再次调用 API
-									const errorMessage: ChatMessage = {
-										role: 'user',
-										content: result.error || result.output || '未知错误',
-									};
-									messages.push(errorMessage);
-									shouldContinue = true;
-								}
-							} else if (result.type === 'prompt' && result.response) {
-								// 处理 prompt 类型
-								if (result.response.ask === 'ai' && result.response.continue) {
-									// 发送给 AI 继续处理
-									const promptMessage: ChatMessage = {
-										role: 'user',
-										content: result.response.message,
-									};
-									messages.push(promptMessage);
-									shouldContinue = true;
-								}
-							}
-						}
-						// 如果需要继续，则不 break，让循环继续
-						if (shouldContinue) {
-							// 在继续前发送提示信息
-							if (onMessage) {
-								// 先发送一个 done 消息标记当前流结束
-								onMessage({
-									type: 'sub_agent_message',
-									agentId: agent.id,
-									agentName: agent.name,
-									message: {
-										type: 'done',
-									},
-								});
-							}
-							continue;
-						}
-					}
-				} catch (error) {
-					console.error('onSubAgentComplete hook execution failed:', error);
-				}
-
-				// 发送完整结果消息给UI显示
-				if (onMessage && finalResponse) {
 					onMessage({
 						type: 'sub_agent_message',
 						agentId: agent.id,
 						agentName: agent.name,
 						message: {
-							type: 'subagent_result',
-							agentType: agent.id.replace('agent_', ''),
-							content: finalResponse,
-							originalContent: finalResponse,
-							status: 'success',
-							timestamp: Date.now(),
-							// @ts-ignore
-							isResult: true,
+							type: 'context_usage',
+							percentage: Math.max(1, Math.round(ctxPct)),
+							inputTokens: latestTotalTokens,
+							maxTokens: config.maxContextTokens,
 						},
 					});
 				}
+			}
 
-				break;
+			// 上下文压缩检查: 接近窗口上限时压缩消息,避免超限失败.
+			let justCompressed = false;
+			if (latestTotalTokens > 0 && config.maxContextTokens) {
+				// 超过阈值后触发压缩.
+				if (
+					shouldCompressSubAgentContext(
+						latestTotalTokens,
+						config.maxContextTokens,
+					)
+				) {
+					const ctxPercentage = getContextPercentage(
+						latestTotalTokens,
+						config.maxContextTokens,
+					);
+					// Notify UI that compression is starting
+					if (onMessage) {
+						onMessage({
+							type: 'sub_agent_message',
+							agentId: agent.id,
+							agentName: agent.name,
+							message: {
+								type: 'context_compressing',
+								percentage: Math.round(ctxPercentage),
+							},
+						});
+					}
+
+					try {
+						const compressionResult = await compressSubAgentContext(
+							messages,
+							latestTotalTokens,
+							config.maxContextTokens,
+							{
+								model,
+								requestMethod: config.requestMethod,
+								maxTokens: config.maxTokens,
+								configProfile: agent.configProfile,
+							},
+						);
+
+						if (compressionResult.compressed) {
+							// Replace messages array contents
+							messages.length = 0;
+							messages.push(...compressionResult.messages);
+							justCompressed = true;
+
+							// Reset latestTotalTokens to the estimated post-compression value
+							// so the next context_usage event reflects the compressed state
+							if (compressionResult.afterTokensEstimate) {
+								latestTotalTokens = compressionResult.afterTokensEstimate;
+							}
+
+							// Notify UI that compression is complete
+							if (onMessage) {
+								onMessage({
+									type: 'sub_agent_message',
+									agentId: agent.id,
+									agentName: agent.name,
+									message: {
+										type: 'context_compressed',
+										beforeTokens: compressionResult.beforeTokens,
+										afterTokensEstimate: compressionResult.afterTokensEstimate,
+									},
+								});
+							}
+						}
+					} catch (compressError) {
+						// Continue without compression — the API call may still succeed
+						// or will fail with context_length_exceeded on the next round
+					}
+				}
+			}
+
+			// ── After compression: force continuation if agent was about to exit ──
+			// When context was compressed and the model gave a "final" response (no tool_calls),
+			// the response was likely generated under context pressure. Remove it and ask the
+			// agent to continue working with the now-compressed context.
+			if (justCompressed && toolCalls.length === 0) {
+				// Remove the last assistant message (premature exit under context pressure)
+				while (
+					messages.length > 0 &&
+					messages[messages.length - 1]?.role === 'assistant'
+				) {
+					messages.pop();
+				}
+				// Inject continuation instruction
+				messages.push({
+					role: 'user',
+					content:
+						'[System] Your context has been auto-compressed to free up space. Your task is NOT finished. Continue working based on the compressed context above. Pick up where you left off.',
+				});
+				continue;
+			}
+
+			// If no tool calls, we're done — BUT first check for spawned children
+			if (toolCalls.length === 0) {
+				// ── Wait for spawned child agents before finishing ──
+				// If this agent spawned children via spawn_sub_agent, we must
+				// wait for them and feed their results back before we exit.
+				// This prevents the parent from finishing (and thus the main flow
+				// from considering this tool call "done") while children still run.
+				const runningChildren = Array.from(spawnedChildInstanceIds).filter(id =>
+					runningSubAgentTracker.isRunning(id),
+				);
+
+				if (
+					runningChildren.length > 0 ||
+					runningSubAgentTracker.hasSpawnedResults()
+				) {
+					// Wait for running children to complete
+					if (runningChildren.length > 0) {
+						await runningSubAgentTracker.waitForSpawnedAgents(
+							300_000, // 5 min timeout
+							abortSignal,
+						);
+					}
+
+					// Drain all spawned results and inject as user context
+					const spawnedResults = runningSubAgentTracker.drainSpawnedResults();
+					if (spawnedResults.length > 0) {
+						for (const sr of spawnedResults) {
+							const statusIcon = sr.success ? '✓' : '✗';
+							const resultSummary = sr.success
+								? sr.result.length > 800
+									? sr.result.substring(0, 800) + '...'
+									: sr.result
+								: sr.error || 'Unknown error';
+
+							messages.push({
+								role: 'user',
+								content: `[Spawned Sub-Agent Result] ${statusIcon} ${sr.agentName} (${sr.agentId})\nPrompt: ${sr.prompt}\nResult: ${resultSummary}`,
+							});
+
+							// Notify UI about the spawned agent completion
+							if (onMessage) {
+								onMessage({
+									type: 'sub_agent_message',
+									agentId: agent.id,
+									agentName: agent.name,
+									message: {
+										type: 'spawned_agent_completed',
+										spawnedAgentId: sr.agentId,
+										spawnedAgentName: sr.agentName,
+										success: sr.success,
+									} as any,
+								});
+							}
+						}
+
+						// Don't break — continue the loop so the AI sees spawned results
+						// and can incorporate them into its final response
+						if (onMessage) {
+							onMessage({
+								type: 'sub_agent_message',
+								agentId: agent.id,
+								agentName: agent.name,
+								message: {
+									type: 'done',
+								},
+							});
+						}
+						continue;
+					}
+				}
+
+				if (toolCalls.length === 0) {
+					// 执行 onSubAgentComplete 钩子（在子代理任务完成前）
+					try {
+						const hookResult = await unifiedHooksExecutor.executeHooks(
+							'onSubAgentComplete',
+							{
+								agentId: agent.id,
+								agentName: agent.name,
+								content: finalResponse,
+								success: true,
+								usage: totalUsage,
+							},
+						);
+
+						// 处理钩子返回结果
+						if (hookResult.results && hookResult.results.length > 0) {
+							let shouldContinue = false;
+
+							for (const result of hookResult.results) {
+								if (result.type === 'command' && !result.success) {
+									if (result.exitCode >= 2) {
+										// exitCode >= 2: 错误，追加消息并再次调用 API
+										const errorMessage: ChatMessage = {
+											role: 'user',
+											content: result.error || result.output || '未知错误',
+										};
+										messages.push(errorMessage);
+										shouldContinue = true;
+									}
+								} else if (result.type === 'prompt' && result.response) {
+									// 处理 prompt 类型
+									if (
+										result.response.ask === 'ai' &&
+										result.response.continue
+									) {
+										// 发送给 AI 继续处理
+										const promptMessage: ChatMessage = {
+											role: 'user',
+											content: result.response.message,
+										};
+										messages.push(promptMessage);
+										shouldContinue = true;
+									}
+								}
+							}
+							// 如果需要继续，则不 break，让循环继续
+							if (shouldContinue) {
+								// 在继续前发送提示信息
+								if (onMessage) {
+									// 先发送一个 done 消息标记当前流结束
+									onMessage({
+										type: 'sub_agent_message',
+										agentId: agent.id,
+										agentName: agent.name,
+										message: {
+											type: 'done',
+										},
+									});
+								}
+								continue;
+							}
+						}
+					} catch {
+						// 钩子异常不应中断子代理主流程.
+					}
+
+					// 发送完整结果消息给UI显示
+					if (onMessage && finalResponse) {
+						onMessage({
+							type: 'sub_agent_message',
+							agentId: agent.id,
+							agentName: agent.name,
+							message: {
+								type: 'subagent_result',
+								agentType: agent.id.replace('agent_', ''),
+								content: finalResponse,
+								originalContent: finalResponse,
+								status: 'success',
+								timestamp: Date.now(),
+								// @ts-ignore
+								isResult: true,
+							},
+						});
+					}
+
+					break;
+				}
+			}
+
+			// 拦截 send_message_to_agent 工具：子代理间通信，内部处理，不需要外部执行
+			const sendMsgTools = toolCalls.filter(
+				tc => tc.function.name === 'send_message_to_agent',
+			);
+
+			if (sendMsgTools.length > 0 && instanceId) {
+				for (const sendMsgTool of sendMsgTools) {
+					let targetAgentId: string | undefined;
+					let targetInstanceId: string | undefined;
+					let msgContent = '';
+
+					try {
+						const args = JSON.parse(sendMsgTool.function.arguments);
+						targetAgentId = args.target_agent_id;
+						targetInstanceId = args.target_instance_id;
+						msgContent = args.message || '';
+					} catch {
+						// 参数解析失败时交由后续校验返回工具错误结果.
+					}
+
+					let success = false;
+					let resultText = '';
+
+					if (!msgContent) {
+						resultText = 'Error: message content is empty';
+					} else if (targetInstanceId) {
+						// Send to specific instance
+						success = runningSubAgentTracker.sendInterAgentMessage(
+							instanceId,
+							targetInstanceId,
+							msgContent,
+						);
+						if (success) {
+							const targetAgent = runningSubAgentTracker
+								.getRunningAgents()
+								.find(a => a.instanceId === targetInstanceId);
+							resultText = `Message sent to ${
+								targetAgent?.agentName || targetInstanceId
+							}`;
+						} else {
+							resultText = `Error: Target agent instance "${targetInstanceId}" is not running`;
+						}
+					} else if (targetAgentId) {
+						// Find by agent type ID
+						const targetAgent =
+							runningSubAgentTracker.findInstanceByAgentId(targetAgentId);
+						if (targetAgent && targetAgent.instanceId !== instanceId) {
+							success = runningSubAgentTracker.sendInterAgentMessage(
+								instanceId,
+								targetAgent.instanceId,
+								msgContent,
+							);
+							if (success) {
+								resultText = `Message sent to ${targetAgent.agentName} (instance: ${targetAgent.instanceId})`;
+							} else {
+								resultText = `Error: Failed to send message to ${targetAgentId}`;
+							}
+						} else if (targetAgent && targetAgent.instanceId === instanceId) {
+							resultText = 'Error: Cannot send a message to yourself';
+						} else {
+							resultText = `Error: No running agent found with ID "${targetAgentId}"`;
+						}
+					} else {
+						resultText =
+							'Error: Either target_agent_id or target_instance_id must be provided';
+					}
+
+					// Build tool result
+					const toolResultMessage = {
+						role: 'tool' as const,
+						tool_call_id: sendMsgTool.id,
+						content: JSON.stringify({success, result: resultText}),
+					};
+					messages.push(toolResultMessage);
+
+					// Notify UI about the inter-agent message sending
+					if (onMessage) {
+						onMessage({
+							type: 'sub_agent_message',
+							agentId: agent.id,
+							agentName: agent.name,
+							message: {
+								type: 'inter_agent_sent',
+								targetAgentId: targetAgentId || targetInstanceId || 'unknown',
+								targetAgentName:
+									(targetInstanceId
+										? runningSubAgentTracker
+												.getRunningAgents()
+												.find(a => a.instanceId === targetInstanceId)?.agentName
+										: targetAgentId
+										? runningSubAgentTracker.findInstanceByAgentId(
+												targetAgentId,
+										  )?.agentName
+										: undefined) ||
+									targetAgentId ||
+									'unknown',
+								content: msgContent,
+								success,
+							} as any,
+						});
+					}
+				}
+
+				// Remove send_message_to_agent from toolCalls
+				toolCalls = toolCalls.filter(
+					tc => tc.function.name !== 'send_message_to_agent',
+				);
+
+				if (toolCalls.length === 0) {
+					continue;
+				}
+			}
+
+			// 拦截 query_agents_status 工具：返回当前所有子代理的状态
+			const queryStatusTools = toolCalls.filter(
+				tc => tc.function.name === 'query_agents_status',
+			);
+
+			if (queryStatusTools.length > 0) {
+				for (const queryTool of queryStatusTools) {
+					const allAgents = runningSubAgentTracker.getRunningAgents();
+					const statusList = allAgents.map(a => ({
+						instanceId: a.instanceId,
+						agentId: a.agentId,
+						agentName: a.agentName,
+						prompt: a.prompt ? a.prompt.substring(0, 150) : 'N/A',
+						runningFor: `${Math.floor(
+							(Date.now() - a.startedAt.getTime()) / 1000,
+						)}s`,
+						isSelf: a.instanceId === instanceId,
+					}));
+
+					const toolResultMessage = {
+						role: 'tool' as const,
+						tool_call_id: queryTool.id,
+						content: JSON.stringify({
+							totalRunning: allAgents.length,
+							agents: statusList,
+						}),
+					};
+					messages.push(toolResultMessage);
+				}
+
+				toolCalls = toolCalls.filter(
+					tc => tc.function.name !== 'query_agents_status',
+				);
+
+				if (toolCalls.length === 0) {
+					continue;
+				}
+			}
+
+			// 拦截 spawn_sub_agent 工具：异步启动新子代理，结果注入主流程
+			const spawnTools = toolCalls.filter(
+				tc => tc.function.name === 'spawn_sub_agent',
+			);
+
+			if (spawnTools.length > 0 && instanceId) {
+				for (const spawnTool of spawnTools) {
+					let spawnAgentId = '';
+					let spawnPrompt = '';
+
+					try {
+						const args = JSON.parse(spawnTool.function.arguments);
+						spawnAgentId = args.agent_id || '';
+						spawnPrompt = args.prompt || '';
+					} catch {
+						// 参数解析失败时交由后续必填校验统一返回错误.
+					}
+
+					if (!spawnAgentId || !spawnPrompt) {
+						const toolResultMessage = {
+							role: 'tool' as const,
+							tool_call_id: spawnTool.id,
+							content: JSON.stringify({
+								success: false,
+								error: 'Both agent_id and prompt are required',
+							}),
+						};
+						messages.push(toolResultMessage);
+						continue;
+					}
+
+					// 禁止spawn与自身同类型的子代理,避免无效委派和资源浪费.
+					if (spawnAgentId === agent.id) {
+						const toolResultMessage = {
+							role: 'tool' as const,
+							tool_call_id: spawnTool.id,
+							content: JSON.stringify({
+								success: false,
+								error: `REJECTED: You (${agent.name}) attempted to spawn another "${spawnAgentId}" which is the SAME type as yourself. This is not allowed because it wastes resources and delegates work you should complete yourself. If you need help from a DIFFERENT specialization, spawn a different agent type. If the task is within your capabilities, do it yourself.`,
+							}),
+						};
+						messages.push(toolResultMessage);
+						continue;
+					}
+
+					// 仅在白名单非空时才限制spawn目标,undefined或空数组均按不限制处理.
+					// 这样可兼容旧配置和默认行为,避免升级后意外阻断已有子代理协作流程.
+					const allowedSubAgents = agent.availableSubAgents;
+					const hasWhitelist =
+						Array.isArray(allowedSubAgents) && allowedSubAgents.length > 0;
+					if (hasWhitelist && !allowedSubAgents.includes(spawnAgentId)) {
+						const toolResultMessage = {
+							role: 'tool' as const,
+							tool_call_id: spawnTool.id,
+							content: JSON.stringify({
+								success: false,
+								error: `REJECTED: Agent "${
+									agent.name
+								}" is not allowed to spawn "${spawnAgentId}". Allowed sub-agents: ${allowedSubAgents.join(
+									', ',
+								)}`,
+							}),
+						};
+						messages.push(toolResultMessage);
+						continue;
+					}
+
+					// Look up agent name
+					let spawnAgentName = spawnAgentId;
+					try {
+						const agentConfig = getSubAgent(spawnAgentId);
+						if (agentConfig) {
+							spawnAgentName = agentConfig.name;
+						}
+					} catch {
+						// Built-in agents aren't resolved by getSubAgent, use ID-based name mapping
+						const builtinNames: Record<string, string> = {
+							agent_reviewer: 'reviewer',
+							agent_explore: 'Explore Agent',
+							agent_general: 'General Purpose Agent',
+							agent_todo_progress_useful_info_admin:
+								'Todo progress and Useful_info Administrator',
+							agent_architect: 'Architect',
+						};
+						spawnAgentName = builtinNames[spawnAgentId] || spawnAgentId;
+					}
+
+					// Generate unique instance ID
+					const spawnInstanceId = `spawn-${Date.now()}-${Math.random()
+						.toString(36)
+						.slice(2, 8)}`;
+
+					// Get current agent info for the "spawnedBy" record
+					const spawnerInfo = {
+						instanceId,
+						agentId: agent.id,
+						agentName: agent.name,
+					};
+
+					// Track this child so we can wait for it before finishing
+					spawnedChildInstanceIds.add(spawnInstanceId);
+
+					// Register spawned agent in tracker
+					runningSubAgentTracker.register({
+						instanceId: spawnInstanceId,
+						agentId: spawnAgentId,
+						agentName: spawnAgentName,
+						prompt: spawnPrompt,
+						startedAt: new Date(),
+					});
+
+					// Fire-and-forget: start the spawned agent asynchronously
+					// Its result will be stored in the tracker for the main flow to pick up
+					executeSubAgent(
+						spawnAgentId,
+						spawnPrompt,
+						onMessage, // Same UI callback — spawned agent's messages are visible
+						abortSignal, // Same abort signal — ESC stops everything
+						requestToolConfirmation,
+						isToolAutoApproved,
+						yoloMode,
+						addToAlwaysApproved,
+						requestUserQuestion,
+						spawnInstanceId,
+						spawnDepth + 1, // Increase depth to enforce MAX_SPAWN_DEPTH limit
+					)
+						.then(result => {
+							// Store the result for the main flow to pick up
+							runningSubAgentTracker.storeSpawnedResult({
+								instanceId: spawnInstanceId,
+								agentId: spawnAgentId,
+								agentName: spawnAgentName,
+								prompt:
+									spawnPrompt.length > 200
+										? spawnPrompt.substring(0, 200) + '...'
+										: spawnPrompt,
+								success: result.success,
+								result: result.result,
+								error: result.error,
+								completedAt: new Date(),
+								spawnedBy: spawnerInfo,
+							});
+						})
+						.catch(error => {
+							runningSubAgentTracker.storeSpawnedResult({
+								instanceId: spawnInstanceId,
+								agentId: spawnAgentId,
+								agentName: spawnAgentName,
+								prompt:
+									spawnPrompt.length > 200
+										? spawnPrompt.substring(0, 200) + '...'
+										: spawnPrompt,
+								success: false,
+								result: '',
+								error: error instanceof Error ? error.message : 'Unknown error',
+								completedAt: new Date(),
+								spawnedBy: spawnerInfo,
+							});
+						})
+						.finally(() => {
+							// Unregister the spawned agent (it may have already been unregistered
+							// inside executeSubAgent, but calling again is safe due to the delete check)
+							runningSubAgentTracker.unregister(spawnInstanceId);
+						});
+
+					// Notify UI that a spawn happened
+					if (onMessage) {
+						onMessage({
+							type: 'sub_agent_message',
+							agentId: agent.id,
+							agentName: agent.name,
+							message: {
+								type: 'agent_spawned',
+								spawnedAgentId: spawnAgentId,
+								spawnedAgentName: spawnAgentName,
+								spawnedInstanceId: spawnInstanceId,
+								spawnedPrompt: spawnPrompt,
+							} as any,
+						});
+					}
+
+					// Return immediate result to spawning sub-agent
+					const toolResultMessage = {
+						role: 'tool' as const,
+						tool_call_id: spawnTool.id,
+						content: JSON.stringify({
+							success: true,
+							result: `Agent "${spawnAgentName}" (${spawnAgentId}) has been spawned and is now running in the background with instance ID "${spawnInstanceId}". Its results will be automatically reported to the main workflow when it completes.`,
+						}),
+					};
+					messages.push(toolResultMessage);
+				}
+
+				toolCalls = toolCalls.filter(
+					tc => tc.function.name !== 'spawn_sub_agent',
+				);
+
+				if (toolCalls.length === 0) {
+					continue;
+				}
 			}
 
 			// 拦截 askuser 工具：子智能体调用时需要显示主会话的蓝色边框 UI，而不是工具确认界面
@@ -830,8 +1677,8 @@ export async function executeSubAgent(
 					if (args.multiSelect === true) {
 						multiSelect = true;
 					}
-				} catch (error) {
-					console.error('Failed to parse askuser tool arguments:', error);
+				} catch {
+					// 参数解析失败时使用默认问题与选项继续流程.
 				}
 
 				const userAnswer = await requestUserQuestion(
@@ -1094,6 +1941,7 @@ export async function executeSubAgent(
 			// The loop will continue until no more tool calls
 		}
 
+		// while (true) 结束后返回最终结果
 		return {
 			success: true,
 			result: finalResponse,
@@ -1104,7 +1952,6 @@ export async function executeSubAgent(
 					: undefined,
 		};
 	} catch (error) {
-		// 移除空回复错误处理，因为现在由子代理内部处理
 		const errorMessage =
 			error instanceof Error ? error.message : 'Unknown error';
 

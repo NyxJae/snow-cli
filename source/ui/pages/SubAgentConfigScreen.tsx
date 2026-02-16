@@ -9,6 +9,7 @@ import {
 	createSubAgent,
 	updateSubAgent,
 	getSubAgent,
+	getSubAgents,
 	validateSubAgent,
 } from '../../utils/config/subAgentConfig.js';
 import {
@@ -23,7 +24,7 @@ import {
 import {useI18n} from '../../i18n/index.js';
 import {useTheme} from '../contexts/ThemeContext.js';
 
-// Focus event handling - prevent terminal focus events from appearing as input
+// 过滤终端焦点事件,避免焦点切换噪声被误当成用户输入.
 const focusEventTokenRegex = /(?:\x1b)?\[[0-9;]*[IO]/g;
 
 const isFocusEventInput = (value?: string) => {
@@ -84,7 +85,8 @@ type FormField =
 	| 'subAgentRole'
 	| 'configProfile'
 	| 'editableFileSuffixes'
-	| 'tools';
+	| 'tools'
+	| 'subAgents';
 
 export default function SubAgentConfigScreen({
 	onBack,
@@ -101,9 +103,13 @@ export default function SubAgentConfigScreen({
 	const [editableFileSuffixesInput, setEditableFileSuffixesInput] =
 		useState('');
 	const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
+	const [selectedSubAgents, setSelectedSubAgents] = useState<Set<string>>(
+		new Set(),
+	);
 	const [currentField, setCurrentField] = useState<FormField>('name');
 	const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
 	const [selectedToolIndex, setSelectedToolIndex] = useState(0);
+	const [selectedSubAgentIndex, setSelectedSubAgentIndex] = useState(0);
 	const [showSuccess, setShowSuccess] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [isLoadingMCP, setIsLoadingMCP] = useState(true);
@@ -213,6 +219,18 @@ export default function SubAgentConfigScreen({
 		return [followGlobalLabel, ...availableProfiles];
 	}, [availableProfiles, t]);
 
+	// 读取可选子代理列表,并在编辑态排除当前代理自身,避免出现仅允许spawn自己导致永远无法spawn的误配置.
+	const availableSubAgents = useMemo(() => {
+		const agents = getSubAgents();
+		const filteredAgents = agentId
+			? agents.filter(agent => agent.id !== agentId)
+			: agents;
+		return filteredAgents.map(agent => ({
+			id: agent.id,
+			name: agent.name,
+		}));
+	}, [agentId]);
+
 	// Initialize with current active configurations (non-edit mode)
 	useEffect(() => {
 		if (!agentId) {
@@ -252,6 +270,12 @@ export default function SubAgentConfigScreen({
 			stringifyEditableFileSuffixes(agent.editableFileSuffixes),
 		);
 
+		const availableSubAgentIds = new Set(availableSubAgents.map(sub => sub.id));
+		const validSubAgents = (agent.availableSubAgents || []).filter(subId =>
+			availableSubAgentIds.has(subId),
+		);
+		setSelectedSubAgents(new Set(validSubAgents));
+
 		if (agent.configProfile) {
 			// 已指定配置文件 → 在 profileOptions 中找到对应项（index 0 是跟随全局，所以 +1）
 			const profileIndex = availableProfiles.findIndex(
@@ -266,7 +290,7 @@ export default function SubAgentConfigScreen({
 			setSelectedConfigProfileIndex(0);
 			setConfirmedConfigProfileIndex(0);
 		}
-	}, [agentId, availableProfiles]);
+	}, [agentId, availableProfiles, availableSubAgents]);
 
 	// Load MCP services on mount
 	useEffect(() => {
@@ -438,13 +462,32 @@ export default function SubAgentConfigScreen({
 		allToolCategories,
 	]);
 
+	const handleToggleSubAgent = useCallback((subAgentId: string) => {
+		setSelectedSubAgents(prev => {
+			const newSet = new Set(prev);
+			if (newSet.has(subAgentId)) {
+				newSet.delete(subAgentId);
+			} else {
+				newSet.add(subAgentId);
+			}
+			return newSet;
+		});
+	}, []);
+
+	const handleToggleCurrentSubAgent = useCallback(() => {
+		const subAgent = availableSubAgents[selectedSubAgentIndex];
+		if (subAgent) {
+			handleToggleSubAgent(subAgent.id);
+		}
+	}, [selectedSubAgentIndex, handleToggleSubAgent, availableSubAgents]);
+
 	const handleSave = useCallback(() => {
 		setSaveError(null);
 
 		// Validate
 		const errors = validateSubAgent({
 			name: agentName,
-			description: description,
+			description,
 			subAgentRole: subAgentRole || undefined,
 			tools: Array.from(selectedTools),
 		});
@@ -454,36 +497,35 @@ export default function SubAgentConfigScreen({
 		}
 
 		try {
-			// 使用 confirmedIndex，确保保存用户通过Space键确认的选择
-			// index 0 = 跟随全局（不保存具体配置名，运行时动态使用全局配置）
-			// index > 0 = 指定配置文件（保存具体配置名）
 			const selectedProfile =
 				confirmedConfigProfileIndex > 0
 					? availableProfiles[confirmedConfigProfileIndex - 1]
 					: undefined;
+			const availableSubAgentIds = new Set(
+				availableSubAgents.map(sub => sub.id),
+			);
+			const validSubAgents = Array.from(selectedSubAgents).filter(subId =>
+				availableSubAgentIds.has(subId),
+			);
 
 			if (isEditMode && agentId) {
-				// Update existing agent
-				// 构建更新对象,只包含实际需要更新的字段
-				// 过滤掉被禁用服务的工具
 				const enabledTools = filterToolsByEnabledServices(
 					Array.from(selectedTools),
 				);
 				const updateData: any = {
 					name: agentName,
-					description: description,
+					description,
 					subAgentRole: subAgentRole || undefined,
 					tools: enabledTools,
 					configProfile: selectedProfile || undefined,
 					editableFileSuffixes: parseEditableFileSuffixesInput(
 						editableFileSuffixesInput,
 					),
+					availableSubAgents: validSubAgents,
 				};
 
 				updateSubAgent(agentId, updateData);
 			} else {
-				// Create new agent
-				// 过滤掉被禁用服务的工具
 				const enabledTools = filterToolsByEnabledServices(
 					Array.from(selectedTools),
 				);
@@ -494,6 +536,7 @@ export default function SubAgentConfigScreen({
 					subAgentRole || undefined,
 					selectedProfile || undefined,
 					parseEditableFileSuffixesInput(editableFileSuffixesInput),
+					validSubAgents,
 				);
 			}
 
@@ -513,12 +556,16 @@ export default function SubAgentConfigScreen({
 		subAgentRole,
 		editableFileSuffixesInput,
 		selectedTools,
+		selectedSubAgents,
 		confirmedConfigProfileIndex,
 		availableProfiles,
+		availableSubAgents,
 		isEditMode,
 		agentId,
+		onSave,
 		t,
 	]);
+
 	useInput((rawInput, key) => {
 		const input = stripFocusArtifacts(rawInput);
 
@@ -536,7 +583,6 @@ export default function SubAgentConfigScreen({
 			return;
 		}
 
-		// 定义主字段顺序（用于导航）
 		const mainFields: FormField[] = [
 			'name',
 			'description',
@@ -544,20 +590,21 @@ export default function SubAgentConfigScreen({
 			'configProfile',
 			'editableFileSuffixes',
 			'tools',
+			'subAgents',
 		];
 		const currentFieldIndex = mainFields.indexOf(currentField);
 
 		if (key.upArrow) {
-			// 配置列表字段：在列表内导航，到达顶部时跳到上一个主字段
 			if (currentField === 'configProfile') {
 				if (profileOptions.length === 0 || selectedConfigProfileIndex === 0) {
-					// 跳到上一个主字段
 					setCurrentField('subAgentRole');
 				} else {
 					setSelectedConfigProfileIndex(prev => prev - 1);
 				}
 				return;
-			} else if (currentField === 'tools') {
+			}
+
+			if (currentField === 'tools') {
 				if (selectedToolIndex > 0) {
 					setSelectedToolIndex(prev => prev - 1);
 				} else if (selectedCategoryIndex > 0) {
@@ -567,26 +614,32 @@ export default function SubAgentConfigScreen({
 						prevCategory ? prevCategory.tools.length - 1 : 0,
 					);
 				} else {
-					// 在 tools 顶部时跳到上一个主字段
 					setCurrentField('editableFileSuffixes');
 				}
 				return;
-			} else {
-				const prevIndex =
-					currentFieldIndex > 0 ? currentFieldIndex - 1 : mainFields.length - 1;
-				setCurrentField(mainFields[prevIndex]!);
+			}
+
+			if (currentField === 'subAgents') {
+				if (selectedSubAgentIndex > 0) {
+					setSelectedSubAgentIndex(prev => prev - 1);
+				} else {
+					setCurrentField('tools');
+				}
 				return;
 			}
+
+			const prevIndex =
+				currentFieldIndex > 0 ? currentFieldIndex - 1 : mainFields.length - 1;
+			setCurrentField(mainFields[prevIndex]!);
+			return;
 		}
 
 		if (key.downArrow) {
-			// 配置列表字段：在列表内导航，到达底部时跳到下一个主字段
 			if (currentField === 'configProfile') {
 				if (
 					profileOptions.length === 0 ||
 					selectedConfigProfileIndex >= profileOptions.length - 1
 				) {
-					// 跳到下一个主字段
 					setCurrentField('editableFileSuffixes');
 				} else {
 					setSelectedConfigProfileIndex(prev => prev + 1);
@@ -604,39 +657,41 @@ export default function SubAgentConfigScreen({
 					setSelectedCategoryIndex(prev => prev + 1);
 					setSelectedToolIndex(0);
 				} else {
-					// 在 tools 底部时跳到第一个主字段（循环）
+					setCurrentField('subAgents');
+					setSelectedSubAgentIndex(0);
+				}
+				return;
+			}
+
+			if (currentField === 'subAgents') {
+				if (selectedSubAgentIndex < availableSubAgents.length - 1) {
+					setSelectedSubAgentIndex(prev => prev + 1);
+				} else {
 					setCurrentField('name');
 				}
 				return;
 			}
 
-			// 普通字段：跳到下一个主字段
 			const nextIndex =
 				currentFieldIndex < mainFields.length - 1 ? currentFieldIndex + 1 : 0;
 			setCurrentField(mainFields[nextIndex]!);
 			return;
 		}
 
-		// SubAgent role field controls - Space to toggle expansion
 		if (currentField === 'subAgentRole' && input === ' ') {
 			setSubAgentRoleExpanded(prev => !prev);
 			return;
 		}
 
-		// Config field controls - Space to toggle selection
-		if (currentField === 'configProfile') {
-			if (input === ' ') {
-				setConfirmedConfigProfileIndex(prev =>
-					prev === selectedConfigProfileIndex ? -1 : selectedConfigProfileIndex,
-				);
-				return;
-			}
+		if (currentField === 'configProfile' && input === ' ') {
+			setConfirmedConfigProfileIndex(prev =>
+				prev === selectedConfigProfileIndex ? -1 : selectedConfigProfileIndex,
+			);
+			return;
 		}
 
-		// Tool-specific controls
 		if (currentField === 'tools') {
 			if (key.leftArrow) {
-				// Navigate to previous category
 				if (selectedCategoryIndex > 0) {
 					setSelectedCategoryIndex(prev => prev - 1);
 					setSelectedToolIndex(0);
@@ -644,7 +699,6 @@ export default function SubAgentConfigScreen({
 				return;
 			}
 			if (key.rightArrow) {
-				// Navigate to next category
 				if (selectedCategoryIndex < allToolCategories.length - 1) {
 					setSelectedCategoryIndex(prev => prev + 1);
 					setSelectedToolIndex(0);
@@ -652,20 +706,21 @@ export default function SubAgentConfigScreen({
 				return;
 			}
 			if (input === ' ') {
-				// Toggle current tool
 				handleToggleCurrentTool();
 				return;
 			}
 			if (input === 'a' || input === 'A') {
-				// Toggle all in category
 				handleToggleCategory();
 				return;
 			}
 		}
 
-		// Global left/right arrow navigation between main fields (except tools field which uses it for categories)
+		if (currentField === 'subAgents' && input === ' ') {
+			handleToggleCurrentSubAgent();
+			return;
+		}
+
 		if (key.leftArrow && currentField !== 'tools') {
-			// Navigate to previous main field
 			const prevIndex =
 				currentFieldIndex > 0 ? currentFieldIndex - 1 : mainFields.length - 1;
 			setCurrentField(mainFields[prevIndex]!);
@@ -673,14 +728,12 @@ export default function SubAgentConfigScreen({
 		}
 
 		if (key.rightArrow && currentField !== 'tools') {
-			// Navigate to next main field
 			const nextIndex =
 				currentFieldIndex < mainFields.length - 1 ? currentFieldIndex + 1 : 0;
 			setCurrentField(mainFields[nextIndex]!);
 			return;
 		}
 
-		// Save with Enter key
 		if (key.return) {
 			handleSave();
 			return;
@@ -688,10 +741,10 @@ export default function SubAgentConfigScreen({
 	});
 
 	// 滚动列表渲染辅助函数（支持字符串数组和对象数组）
-	const renderScrollableList = <T extends string | {name: string}>(
+	const renderScrollableList = <T extends string | {id?: string; name: string}>(
 		items: T[],
 		selectedIndex: number,
-		confirmedIndex: number, // 已确认选中的索引
+		selection: number | Set<string>, // number: 单选索引, Set: 多选集合
 		isActive: boolean,
 		maxVisible = 5,
 		keyPrefix: string,
@@ -732,7 +785,12 @@ export default function SubAgentConfigScreen({
 				{visibleItems.map((item, relativeIndex) => {
 					const actualIndex = startIndex + relativeIndex;
 					const isHighlighted = actualIndex === selectedIndex;
-					const isConfirmed = actualIndex === confirmedIndex;
+					const isConfirmed =
+						selection instanceof Set
+							? typeof item !== 'string' &&
+							  item.id !== undefined &&
+							  selection.has(item.id)
+							: actualIndex === selection;
 					const displayText = typeof item === 'string' ? item : item.name;
 					return (
 						<Box key={`${keyPrefix}-${actualIndex}`} marginY={0}>
@@ -894,6 +952,29 @@ export default function SubAgentConfigScreen({
 				<Text color={theme.colors.menuSecondary} dimColor>
 					{t.subAgentConfig.selectedTools} {selectedTools.size} /{' '}
 					{allTools.length} {t.subAgentConfig.toolsCount}
+				</Text>
+			</Box>
+		);
+	};
+
+	const renderSubAgentSelection = () => {
+		return (
+			<Box flexDirection="column">
+				<Text bold color={theme.colors.menuInfo}>
+					Available Sub-Agents
+				</Text>
+
+				{renderScrollableList(
+					availableSubAgents,
+					selectedSubAgentIndex,
+					selectedSubAgents,
+					currentField === 'subAgents',
+					5,
+					'subagent',
+				)}
+
+				<Text color={theme.colors.menuSecondary} dimColor>
+					Selected: {selectedSubAgents.size} / {availableSubAgents.length}
 				</Text>
 			</Box>
 		);
@@ -1077,6 +1158,9 @@ export default function SubAgentConfigScreen({
 
 				{/* Tool Selection */}
 				{renderToolSelection()}
+
+				{/* Sub-Agent Selection */}
+				{renderSubAgentSelection()}
 
 				{/* Instructions */}
 				<Box marginTop={1}>

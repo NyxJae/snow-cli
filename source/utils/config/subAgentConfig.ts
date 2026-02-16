@@ -24,6 +24,7 @@ export interface SubAgent {
 	builtin?: boolean;
 	// 可选配置项
 	configProfile?: string; // 配置文件名称
+	availableSubAgents?: string[];
 }
 export interface SubAgentsConfig {
 	agents: SubAgent[];
@@ -245,6 +246,7 @@ export function createSubAgent(
 	subAgentRole?: string,
 	configProfile?: string,
 	editableFileSuffixes?: string[],
+	availableSubAgents?: string[],
 ): SubAgent {
 	const userAgents = getUserSubAgents();
 	const now = new Date().toISOString();
@@ -260,6 +262,7 @@ export function createSubAgent(
 		updatedAt: now,
 		builtin: false,
 		configProfile,
+		availableSubAgents,
 	};
 
 	userAgents.push(newAgent);
@@ -282,6 +285,7 @@ export function updateSubAgent(
 		tools?: string[];
 		editableFileSuffixes?: string[];
 		configProfile?: string;
+		availableSubAgents?: string[];
 		customSystemPrompt?: string;
 		customHeaders?: Record<string, string>;
 	},
@@ -316,6 +320,10 @@ export function updateSubAgent(
 				updates.editableFileSuffixes ??
 				existingUserCopy?.editableFileSuffixes ??
 				agent.editableFileSuffixes,
+			availableSubAgents:
+				updates.availableSubAgents ??
+				existingUserCopy?.availableSubAgents ??
+				agent.availableSubAgents,
 			createdAt: existingUserCopy?.createdAt ?? agent.createdAt ?? now,
 			updatedAt: now,
 			builtin: true, // 保持 true,表示这是内置代理的用户副本
@@ -354,6 +362,8 @@ export function updateSubAgent(
 		tools: updates.tools ?? existingAgent.tools,
 		editableFileSuffixes:
 			updates.editableFileSuffixes ?? existingAgent.editableFileSuffixes,
+		availableSubAgents:
+			updates.availableSubAgents ?? existingAgent.availableSubAgents,
 		createdAt: existingAgent.createdAt,
 		updatedAt: now,
 		builtin: existingAgent.builtin,

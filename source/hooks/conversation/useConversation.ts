@@ -58,6 +58,17 @@ export type UserQuestionResult = {
 	customInput?: string;
 };
 
+/**
+ * Format token count for display (e.g., 1234 → "1.2K", 123456 → "123K")
+ */
+function formatTokenCount(tokens: number | undefined): string {
+	if (!tokens) return '0';
+	if (tokens >= 1000) {
+		return `${(tokens / 1000).toFixed(1)}K`;
+	}
+	return String(tokens);
+}
+
 export type ConversationHandlerOptions = {
 	userContent: string;
 	editorContext?: {
@@ -974,6 +985,13 @@ async function executeWithInternalRetry(
 					editableFileSuffixes: currentConfig?.editableFileSuffixes,
 				};
 
+				// Track latest context usage per sub-agent (keyed by agentId).
+				// This persists across setMessages calls so newly created tool_calls messages
+				// can inherit the latest context usage from the same agent.
+				const latestSubAgentCtxUsage: Record<
+					string,
+					{percentage: number; inputTokens: number; maxTokens: number}
+				> = {};
 				const toolResults = await executeToolCalls(
 					approvedTools,
 					controller.signal,
@@ -982,19 +1000,205 @@ async function executeWithInternalRetry(
 					async subAgentMessage => {
 						// Handle sub-agent messages - display and save to session
 						setMessages(prev => {
+							// Handle sub-agent context usage update
+							if (subAgentMessage.message.type === 'context_usage') {
+								// Cache latest context usage for this agent in closure variable.
+								// This ensures newly created tool_calls messages (which are created AFTER
+								// the usage event fires) can inherit the latest context usage.
+								const ctxData = {
+									percentage: subAgentMessage.message.percentage,
+									inputTokens: subAgentMessage.message.inputTokens,
+									maxTokens: subAgentMessage.message.maxTokens,
+								};
+								latestSubAgentCtxUsage[subAgentMessage.agentId] = ctxData;
+
+								// Also try to update the most recent existing message for this agent
+								let targetIndex = -1;
+								for (let i = prev.length - 1; i >= 0; i--) {
+									const m = prev[i];
+									if (
+										m &&
+										m.role === 'subagent' &&
+										m.subAgent?.agentId === subAgentMessage.agentId
+									) {
+										targetIndex = i;
+										break;
+									}
+								}
+								if (targetIndex !== -1) {
+									const updated = [...prev];
+									const existing = updated[targetIndex];
+									if (existing) {
+										updated[targetIndex] = {
+											...existing,
+											subAgentContextUsage: ctxData,
+										};
+									}
+									return updated;
+								}
+								// No existing message yet (first round) — data is cached in
+								// latestSubAgentCtxUsage and will be picked up when tool_calls creates messages.
+								return prev;
+							}
+
+							// Handle sub-agent context compressing notification
+							if (subAgentMessage.message.type === 'context_compressing') {
+								const uiMsg = {
+									role: 'subagent' as const,
+									content: `\x1b[36m⚇ ${subAgentMessage.agentName}\x1b[0m \x1b[33m✵ Auto-compressing context (${subAgentMessage.message.percentage}%)...\x1b[0m`,
+									streaming: false,
+									subAgent: {
+										agentId: subAgentMessage.agentId,
+										agentName: subAgentMessage.agentName,
+										isComplete: false,
+									},
+									subAgentInternal: true,
+								};
+								return [...prev, uiMsg];
+							}
+
+							// Handle sub-agent context compressed notification
+							if (subAgentMessage.message.type === 'context_compressed') {
+								const msg = subAgentMessage.message as any;
+								const uiMsg = {
+									role: 'subagent' as const,
+									content: `\x1b[36m⚇ ${
+										subAgentMessage.agentName
+									}\x1b[0m \x1b[32m✵ Context compressed (~${formatTokenCount(
+										msg.beforeTokens,
+									)} → ~${formatTokenCount(msg.afterTokensEstimate)})\x1b[0m`,
+									streaming: false,
+									messageStatus: 'success' as const,
+									subAgent: {
+										agentId: subAgentMessage.agentId,
+										agentName: subAgentMessage.agentName,
+										isComplete: false,
+									},
+									subAgentInternal: true,
+								};
+								return [...prev, uiMsg];
+							}
+
+							// Handle inter-agent message sent event
+							if (subAgentMessage.message.type === 'inter_agent_sent') {
+								const msg = subAgentMessage.message as any;
+								const statusIcon = msg.success ? '→' : '✗';
+								const targetName = msg.targetAgentName || msg.targetAgentId;
+								const truncatedContent =
+									msg.content.length > 80
+										? msg.content.substring(0, 80) + '...'
+										: msg.content;
+								const uiMsg = {
+									role: 'subagent' as const,
+									content: `\x1b[38;2;255;165;0m⚇${statusIcon} [${subAgentMessage.agentName}] → [${targetName}]\x1b[0m: ${truncatedContent}`,
+									streaming: false,
+									messageStatus: msg.success
+										? ('success' as const)
+										: ('error' as const),
+									subAgent: {
+										agentId: subAgentMessage.agentId,
+										agentName: subAgentMessage.agentName,
+										isComplete: false,
+									},
+									subAgentInternal: true,
+								};
+								return [...prev, uiMsg];
+							}
+
+							// Handle inter-agent message received event — silent injection only.
+							// We do NOT create a UI message here because the sender-side
+							// "inter_agent_sent" notification (⚇→) already shows the
+							// communication. Displaying both would duplicate the message.
+							if (subAgentMessage.message.type === 'inter_agent_received') {
+								return prev;
+							}
+
+							// Handle agent spawn event
+							if (subAgentMessage.message.type === 'agent_spawned') {
+								const msg = subAgentMessage.message as any;
+								// Truncate prompt for display
+								const promptText = msg.spawnedPrompt
+									? msg.spawnedPrompt
+											.replace(/[\r\n]+/g, ' ')
+											.replace(/\s+/g, ' ')
+											.trim()
+									: '';
+								const truncatedPrompt =
+									promptText.length > 100
+										? promptText.substring(0, 100) + '...'
+										: promptText;
+								const promptLine = truncatedPrompt
+									? `\n  \x1b[2m└─ prompt: "${truncatedPrompt}"\x1b[0m`
+									: '';
+								const uiMsg = {
+									role: 'subagent' as const,
+									content: `\x1b[38;2;150;120;255m⚇⊕ [${subAgentMessage.agentName}] spawned [${msg.spawnedAgentName}]\x1b[0m${promptLine}`,
+									streaming: false,
+									messageStatus: 'success' as const,
+									subAgent: {
+										agentId: subAgentMessage.agentId,
+										agentName: subAgentMessage.agentName,
+										isComplete: false,
+									},
+									subAgentInternal: true,
+								};
+								return [...prev, uiMsg];
+							}
+
+							// Handle spawned agent completed event
+							if (subAgentMessage.message.type === 'spawned_agent_completed') {
+								const msg = subAgentMessage.message as any;
+								const statusIcon = msg.success ? '✓' : '✗';
+								const uiMsg = {
+									role: 'subagent' as const,
+									content: `\x1b[38;2;150;120;255m⚇${statusIcon} Spawned [${msg.spawnedAgentName}] completed\x1b[0m (parent: ${subAgentMessage.agentName})`,
+									streaming: false,
+									messageStatus: msg.success
+										? ('success' as const)
+										: ('error' as const),
+									subAgent: {
+										agentId: subAgentMessage.agentId,
+										agentName: subAgentMessage.agentName,
+										isComplete: false,
+									},
+									subAgentInternal: true,
+								};
+								return [...prev, uiMsg];
+							}
+
 							// Handle tool calls from sub-agent
 							if (subAgentMessage.message.type === 'tool_calls') {
 								const toolCalls = subAgentMessage.message.tool_calls;
 								if (toolCalls && toolCalls.length > 0) {
-									// Separate time-consuming tools and quick tools
-									const timeConsumingTools = toolCalls.filter((tc: any) =>
-										isToolNeedTwoStepDisplay(tc.function.name),
+									// Filter out internal agent collaboration tools — they are
+									// handled internally and displayed via dedicated events.
+									const internalAgentTools = new Set([
+										'send_message_to_agent',
+										'query_agents_status',
+										'spawn_sub_agent',
+									]);
+									const displayableToolCalls = toolCalls.filter(
+										(tc: any) => !internalAgentTools.has(tc.function.name),
 									);
-									const quickTools = toolCalls.filter(
+
+									// If all tool calls were inter-agent messages, skip UI update
+									if (displayableToolCalls.length === 0) {
+										return prev;
+									}
+
+									// Separate time-consuming tools and quick tools
+									const timeConsumingTools = displayableToolCalls.filter(
+										(tc: any) => isToolNeedTwoStepDisplay(tc.function.name),
+									);
+									const quickTools = displayableToolCalls.filter(
 										(tc: any) => !isToolNeedTwoStepDisplay(tc.function.name),
 									);
 
 									const newMessages: any[] = [];
+
+									// Inherit latest context usage for this agent (cached from usage events)
+									const inheritedCtxUsage =
+										latestSubAgentCtxUsage[subAgentMessage.agentId];
 
 									// Display time-consuming tools individually with full details (Diff, etc.)
 									for (const toolCall of timeConsumingTools) {
@@ -1037,6 +1241,7 @@ async function executeWithInternalRetry(
 												isComplete: false,
 											},
 											subAgentInternal: true,
+											subAgentContextUsage: inheritedCtxUsage,
 										};
 										newMessages.push(uiMsg);
 									}
@@ -1073,6 +1278,7 @@ async function executeWithInternalRetry(
 											subAgentInternal: true,
 											// Store pending tool call IDs for later status update
 											pendingToolIds: quickTools.map((tc: any) => tc.id),
+											subAgentContextUsage: inheritedCtxUsage,
 										};
 										newMessages.push(uiMsg);
 									}
@@ -1791,6 +1997,66 @@ async function executeWithInternalRetry(
 				// Add all result messages in batch to avoid intermediate renders
 				if (resultMessages.length > 0) {
 					setMessages(prev => [...prev, ...resultMessages]);
+				}
+
+				// ── Inject completed spawned sub-agent results ──
+				// Sub-agents may spawn new agents via spawn_sub_agent tool.
+				// When spawned agents finish, their results are stored in the tracker.
+				// We inject them here as user messages so the AI is aware of the findings.
+				try {
+					const {runningSubAgentTracker} = await import(
+						'../../utils/execution/runningSubAgentTracker.js'
+					);
+					const spawnedResults = runningSubAgentTracker.drainSpawnedResults();
+					if (spawnedResults.length > 0) {
+						for (const sr of spawnedResults) {
+							const statusIcon = sr.success ? '✓' : '✗';
+							const resultSummary = sr.success
+								? sr.result.length > 500
+									? sr.result.substring(0, 500) + '...'
+									: sr.result
+								: sr.error || 'Unknown error';
+
+							const spawnedContent = `[Spawned Sub-Agent Result] ${statusIcon} ${sr.agentName} (${sr.agentId}) — spawned by ${sr.spawnedBy.agentName}\nPrompt: ${sr.prompt}\nResult: ${resultSummary}`;
+
+							// Add to conversation messages as user context
+							conversationMessages.push({
+								role: 'user',
+								content: spawnedContent,
+							});
+
+							// Save to session
+							try {
+								await saveMessage({
+									role: 'user',
+									content: spawnedContent,
+								});
+							} catch (error) {
+								console.error('Failed to save spawned agent result:', error);
+							}
+
+							// Display in UI
+							const uiMsg: Message = {
+								role: 'subagent',
+								content: `\x1b[38;2;150;120;255m⚇${statusIcon} Spawned ${
+									sr.agentName
+								}\x1b[0m (by ${sr.spawnedBy.agentName}): ${
+									sr.success ? 'completed' : 'failed'
+								}`,
+								streaming: false,
+								messageStatus: sr.success ? 'success' : 'error',
+								subAgent: {
+									agentId: sr.agentId,
+									agentName: sr.agentName,
+									isComplete: true,
+								},
+								subAgentInternal: true,
+							};
+							setMessages(prev => [...prev, uiMsg]);
+						}
+					}
+				} catch (error) {
+					console.error('Failed to process spawned agent results:', error);
 				}
 
 				// Check if there are pending user messages to insert
