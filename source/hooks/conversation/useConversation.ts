@@ -42,10 +42,7 @@ import {
 	shouldAutoCompress,
 	performAutoCompression,
 } from '../../utils/core/autoCompress.js';
-import {
-	estimateTokenCount,
-	stringifyForTokenEstimate,
-} from '../../utils/core/tokenEstimator.js';
+import {estimateFullRequestTokens} from '../../utils/core/tokenEstimator.js';
 import {cleanOrphanedToolCalls} from './utils/messageCleanup.js';
 import {extractThinkingContent} from './utils/thinkingExtractor.js';
 import {buildEditorContextContent} from './core/editorContextBuilder.js';
@@ -462,13 +459,9 @@ async function executeWithInternalRetry(
 			// UI 的 contextUsage 以"本次会话完整上下文"口径展示,避免受 provider usage 缺失/单次口径影响.
 			// 因此在请求前写入本地估算的上下文 token 数,保证显示与压缩判断稳定.
 			try {
-				const requestPayload = {
-					model,
-					messages: conversationMessages,
-					tools: mcpTools.length > 0 ? mcpTools : undefined,
-				};
-				const estimatedPromptTokens = await estimateTokenCount(
-					stringifyForTokenEstimate(requestPayload),
+				const estimatedPromptTokens = await estimateFullRequestTokens(
+					conversationMessages,
+					mcpTools.length > 0 ? mcpTools : undefined,
 					model,
 				);
 				setContextUsage({
@@ -746,13 +739,9 @@ async function executeWithInternalRetry(
 			// UI 显示的是"本次会话完整上下文"的估算值,已在请求发送前写入.
 			if (!accumulatedUsage || (accumulatedUsage.prompt_tokens || 0) < 1000) {
 				try {
-					const requestPayload = {
-						model,
-						messages: conversationMessages,
-						tools: mcpTools.length > 0 ? mcpTools : undefined,
-					};
-					const estimatedPromptTokens = await estimateTokenCount(
-						stringifyForTokenEstimate(requestPayload),
+					const estimatedPromptTokens = await estimateFullRequestTokens(
+						conversationMessages,
+						mcpTools.length > 0 ? mcpTools : undefined,
 						model,
 					);
 

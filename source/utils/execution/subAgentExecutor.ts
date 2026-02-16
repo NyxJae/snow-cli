@@ -1027,7 +1027,7 @@ You have access to these collaboration tools:
 
 			// 兜底: 当上游接口未返回 usage 时,用 tiktoken 估算 token.
 			if (latestTotalTokens === 0 && config.maxContextTokens) {
-				latestTotalTokens = countMessagesTokens(messages);
+				latestTotalTokens = countMessagesTokens(messages, allowedTools);
 
 				// 将估算的上下文占用同步给 UI.
 				if (onMessage && latestTotalTokens > 0) {
@@ -1087,6 +1087,7 @@ You have access to these collaboration tools:
 								maxTokens: config.maxTokens,
 								configProfile: agent.configProfile,
 							},
+							allowedTools,
 						);
 
 						if (compressionResult.compressed) {

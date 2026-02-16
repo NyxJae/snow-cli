@@ -90,8 +90,13 @@ export interface SubAgentCompressionResult {
 /**
  * Count total tokens in a messages array using tiktoken.
  * Used as fallback when the API doesn't return usage data.
+ *
+ * @param tools - 可选, 传入工具定义以一并计算其 token 占用.
  */
-export function countMessagesTokens(messages: ChatMessage[]): number {
+export function countMessagesTokens(
+	messages: ChatMessage[],
+	tools?: any[],
+): number {
 	try {
 		const encoder = getEncoder();
 		let total = 0;
@@ -114,11 +119,24 @@ export function countMessagesTokens(messages: ChatMessage[]): number {
 			// Overhead per message (role, formatting, etc.) ~4 tokens
 			total += 4;
 		}
+
+		// tools 定义的 token
+		if (tools && tools.length > 0) {
+			const toolsJson = JSON.stringify(tools);
+			total += encoder.encode(toolsJson).length;
+		}
+
 		return total;
 	} catch (error) {
 		console.error('[SubAgentCompressor] tiktoken counting failed:', error);
 		// Rough fallback: ~4 chars per token
-		const totalChars = messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+		let totalChars = messages.reduce(
+			(sum, m) => sum + (m.content?.length || 0),
+			0,
+		);
+		if (tools && tools.length > 0) {
+			totalChars += JSON.stringify(tools).length;
+		}
 		return Math.round(totalChars / 4);
 	}
 }
@@ -142,7 +160,9 @@ export function shouldCompressSubAgentContext(
 	totalTokens: number,
 	maxContextTokens: number,
 ): boolean {
-	return getContextPercentage(totalTokens, maxContextTokens) >= COMPRESS_THRESHOLD;
+	return (
+		getContextPercentage(totalTokens, maxContextTokens) >= COMPRESS_THRESHOLD
+	);
 }
 
 /**
@@ -176,7 +196,11 @@ function findRecentRoundsStartIndex(
 				i--;
 			}
 			// Now i points to the assistant message with tool_calls
-			if (i >= 0 && messages[i]?.role === 'assistant' && messages[i]?.tool_calls?.length) {
+			if (
+				i >= 0 &&
+				messages[i]?.role === 'assistant' &&
+				messages[i]?.tool_calls?.length
+			) {
 				roundCount++;
 				i--;
 			}
@@ -250,7 +274,7 @@ function prepareMessagesForAICompression(
 	messages.push({
 		role: 'system',
 		content:
-			'You are a technical summarization assistant. Your job is to compress a tool-using AI agent\'s conversation history into a concise but complete handover document.',
+			"You are a technical summarization assistant. Your job is to compress a tool-using AI agent's conversation history into a concise but complete handover document.",
 	});
 
 	// Build transcript (excluding tool results)
@@ -288,7 +312,12 @@ function prepareMessagesForAICompression(
 async function aiSummaryCompress(
 	messages: ChatMessage[],
 	keepRounds: number,
-	config: {model: string; requestMethod: RequestMethod; maxTokens?: number; configProfile?: string},
+	config: {
+		model: string;
+		requestMethod: RequestMethod;
+		maxTokens?: number;
+		configProfile?: string;
+	},
 ): Promise<ChatMessage[]> {
 	const preserveStartIndex = findRecentRoundsStartIndex(messages, keepRounds);
 
@@ -301,7 +330,8 @@ async function aiSummaryCompress(
 	const preservedMessages = messages.slice(preserveStartIndex);
 
 	// Generate summary using the appropriate API
-	const compressionMessages = prepareMessagesForAICompression(messagesToCompress);
+	const compressionMessages =
+		prepareMessagesForAICompression(messagesToCompress);
 	let summary = '';
 
 	try {
@@ -422,10 +452,16 @@ function truncateToolResults(
 
 		// OLD messages: aggressive truncation (placeholders only)
 		if (i < preserveStartIndex) {
-			if (msg.role === 'tool' && msg.content && msg.content.length > MIN_TRUNCATION_LENGTH) {
+			if (
+				msg.role === 'tool' &&
+				msg.content &&
+				msg.content.length > MIN_TRUNCATION_LENGTH
+			) {
 				result.push({
 					...msg,
-					content: `[Tool result truncated: ${findToolName()}, original ${msg.content.length} chars]`,
+					content: `[Tool result truncated: ${findToolName()}, original ${
+						msg.content.length
+					} chars]`,
 				});
 			} else {
 				result.push(msg);
@@ -434,7 +470,11 @@ function truncateToolResults(
 		}
 
 		// PRESERVED (recent) messages: truncate oversized tool results but keep more content
-		if (msg.role === 'tool' && msg.content && msg.content.length > MAX_PRESERVED_CHARS) {
+		if (
+			msg.role === 'tool' &&
+			msg.content &&
+			msg.content.length > MAX_PRESERVED_CHARS
+		) {
 			const toolName = findToolName();
 			const keepStart = Math.floor(MAX_PRESERVED_CHARS * 0.6);
 			const keepEnd = Math.floor(MAX_PRESERVED_CHARS * 0.3);
@@ -469,7 +509,13 @@ export async function compressSubAgentContext(
 	messages: ChatMessage[],
 	totalTokens: number,
 	maxContextTokens: number,
-	config: {model: string; requestMethod: RequestMethod; maxTokens?: number; configProfile?: string},
+	config: {
+		model: string;
+		requestMethod: RequestMethod;
+		maxTokens?: number;
+		configProfile?: string;
+	},
+	tools?: any[],
 ): Promise<SubAgentCompressionResult> {
 	const percentage = getContextPercentage(totalTokens, maxContextTokens);
 
@@ -484,11 +530,15 @@ export async function compressSubAgentContext(
 	const keepRounds = getAdaptiveKeepRounds(percentage);
 
 	// Primary: AI summary compression (same pattern as main flow)
-	const compressedMessages = await aiSummaryCompress(messages, keepRounds, config);
+	const compressedMessages = await aiSummaryCompress(
+		messages,
+		keepRounds,
+		config,
+	);
 
 	// If AI compression succeeded (returned different messages), use it
 	if (compressedMessages !== messages) {
-		const afterTokens = countMessagesTokens(compressedMessages);
+		const afterTokens = countMessagesTokens(compressedMessages, tools);
 		return {
 			compressed: true,
 			messages: compressedMessages,
@@ -499,9 +549,11 @@ export async function compressSubAgentContext(
 
 	// Fallback: AI compression returned original messages (failed or nothing to compress).
 	// Try smart truncation as a last resort to free some context space.
-	console.warn(`[SubAgentCompressor] AI compression ineffective, falling back to truncation`);
+	console.warn(
+		`[SubAgentCompressor] AI compression ineffective, falling back to truncation`,
+	);
 	const truncatedMessages = truncateToolResults(messages, keepRounds);
-	const afterTokens = countMessagesTokens(truncatedMessages);
+	const afterTokens = countMessagesTokens(truncatedMessages, tools);
 
 	// Only report as compressed if truncation actually reduced tokens
 	if (afterTokens < totalTokens) {
