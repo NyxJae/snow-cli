@@ -132,13 +132,16 @@ async function truncateToTokenLimit(
 
 /**
  * 检测结果是否包含多模态内容(图片/文档)
- * 含 base64 等二进制数据的结果不能被截断, 否则下游 extractMultimodalContent 无法提取图片
+ * 多模态结果不可截断, 否则破坏 base64 数据导致图片丢失
+ * 兼容 content 包装与裸数组两种返回结构
  */
 function isMultimodalResult(result: any): boolean {
 	if (!result || typeof result !== 'object') return false;
-	const content = result.content;
-	if (!Array.isArray(content)) return false;
-	return content.some(
+
+	const items = Array.isArray(result) ? result : result.content;
+	if (!Array.isArray(items)) return false;
+
+	return items.some(
 		(item: any) =>
 			item &&
 			typeof item === 'object' &&
@@ -161,7 +164,8 @@ export async function wrapToolResultWithTokenLimit(
 	maxTokens?: number,
 ): Promise<any> {
 	// 多模态结果(图片/文档)跳过截断, 截断会破坏 base64 数据导致图片丢失
-	if (isMultimodalResult(result)) {
+	const multimodal = isMultimodalResult(result);
+	if (multimodal) {
 		return result;
 	}
 

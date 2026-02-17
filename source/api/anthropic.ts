@@ -219,12 +219,11 @@ function convertToAnthropicMessages(
 	system?: any;
 	messages: AnthropicMessageParam[];
 } {
-	// 子代理调用：使用传递的 customSystemPrompt（由全局配置决定）
-	// 如果没有 customSystemPrompt，则使用子代理自己组装的提示词
-	// 子代理不会使用主代理自己组装的系统提示词
+	// 子代理使用传递的 customSystemPrompt(由全局配置决定),完全忽略 includeBuiltinSystemPrompt
+	// 避免子代理提示词与主代理内置提示词叠加导致越权或污染
 	const customSystemPrompt = isSubAgentCall
-		? customSystemPromptOverride // 子代理使用传递的 customSystemPrompt（遵循全局配置）
-		: customSystemPromptOverride || getCustomSystemPrompt(); // 主代理可以回退到默认的customSystemPrompt
+		? customSystemPromptOverride
+		: customSystemPromptOverride || getCustomSystemPrompt();
 
 	// 对于子代理调用，完全忽略includeBuiltinSystemPrompt参数
 	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
@@ -241,27 +240,28 @@ function convertToAnthropicMessages(
 		}
 
 		if (msg.role === 'tool' && msg.tool_call_id) {
-			// 构建工具结果内容 - 可以是文本或包含图片的数组
-			let toolResultContent: string | any[];
-
 			if (msg.images && msg.images.length > 0) {
-				// 包含图片的多模态工具结果
-				const contentArray: any[] = [];
+				// 中转平台通常不支持 tool_result.content 内嵌图片
+				// 策略: tool_result 只放文本, 图片作为同一 user 消息的兄弟 content block
+				const textOutput = msg.content || '[Tool returned image(s)]';
 
-				// 先添加文本内容
-				if (msg.content) {
-					contentArray.push({
+				const contentBlocks: any[] = [
+					{
+						type: 'tool_result',
+						tool_use_id: msg.tool_call_id,
+						content: textOutput,
+					},
+					{
 						type: 'text',
-						text: msg.content,
-					});
-				}
+						text: `[Tool Result Image] The tool "${msg.tool_call_id}" returned the following image(s):`,
+					},
+				];
 
-				// 添加图片 - 使用辅助函数处理各种格式的图片数据
 				for (const image of msg.images) {
 					const imageSource = toAnthropicImageSource(image);
 					if (imageSource) {
 						if (imageSource.type === 'url') {
-							contentArray.push({
+							contentBlocks.push({
 								type: 'image',
 								source: {
 									type: 'url',
@@ -269,7 +269,7 @@ function convertToAnthropicMessages(
 								},
 							});
 						} else {
-							contentArray.push({
+							contentBlocks.push({
 								type: 'image',
 								source: imageSource,
 							});
@@ -277,22 +277,23 @@ function convertToAnthropicMessages(
 					}
 				}
 
-				toolResultContent = contentArray;
+				anthropicMessages.push({
+					role: 'user',
+					content: contentBlocks,
+				});
 			} else {
 				// 纯文本工具结果
-				toolResultContent = msg.content || '';
+				anthropicMessages.push({
+					role: 'user',
+					content: [
+						{
+							type: 'tool_result',
+							tool_use_id: msg.tool_call_id,
+							content: msg.content || '',
+						},
+					],
+				});
 			}
-
-			anthropicMessages.push({
-				role: 'user',
-				content: [
-					{
-						type: 'tool_result',
-						tool_use_id: msg.tool_call_id,
-						content: toolResultContent,
-					},
-				],
-			});
 			continue;
 		}
 
@@ -679,14 +680,6 @@ export async function* createStreamingAnthropicCompletion(
 			// 如果启用且未明确禁用,则添加 thinking 配置
 			// 启用 thinking 时,temperature 必须为 1
 			// 注意: agents 和其他内部工具应设置 disableThinking=true
-			// Debug: 记录 thinking 决策以供故障排除
-			if (config.thinking) {
-				logger.debug('Thinking config check:', {
-					configThinking: !!config.thinking,
-					disableThinking: options.disableThinking,
-					willEnableThinking: config.thinking && !options.disableThinking,
-				});
-			}
 			if (config.thinking && !options.disableThinking) {
 				requestBody.thinking = config.thinking;
 				requestBody.temperature = 1;

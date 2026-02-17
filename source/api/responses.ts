@@ -302,7 +302,7 @@ function convertToResponseInput(
 		if (msg.role === 'tool' && msg.tool_call_id) {
 			// 处理含图片的多模态工具结果
 			if (msg.images && msg.images.length > 0) {
-				// [TEMP_FIX] 中转/代理 API 不支持 function_call_output.output 多模态数组
+				// 中转/代理 API 不支持 function_call_output.output 多模态数组
 				// 策略: output 放纯文本, 图片通过追加 user message(input_image) 传递
 				const textOutput = msg.content || '[Tool returned image(s)]';
 

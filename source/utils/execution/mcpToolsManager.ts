@@ -1803,11 +1803,6 @@ ${combinedOutput}`;
 
 	// Re-throw execution error if it exists (from try block)
 	if (executionError) {
-		const err: any = executionError;
-		console.log(
-			'[DEBUG] Re-throwing executionError:',
-			err.message || String(err),
-		);
 		throw executionError;
 	}
 

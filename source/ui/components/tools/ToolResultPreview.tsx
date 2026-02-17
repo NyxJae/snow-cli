@@ -5,19 +5,20 @@ interface ToolResultPreviewProps {
 	toolName: string;
 	result: string;
 	maxLines?: number;
-	isSubAgentInternal?: boolean; // Whether this is a sub-agent internal tool
+	/** 是否为子代理内部工具调用,影响展示样式和内容过滤 */
+	isSubAgentInternal?: boolean;
 }
 
 /**
- * Remove ANSI escape codes from text to prevent style leakage
+ * 移除 ANSI 转义码,防止样式泄漏到终端
  */
 function removeAnsiCodes(text: string): string {
 	return text.replace(/\x1b\[[0-9;]*m/g, '');
 }
 
 /**
- * Display a compact preview of tool execution results
- * Shows a tree-like structure with limited content
+ * 工具执行结果的紧凑预览组件
+ * 以树状结构展示有限内容,避免刷屏
  */
 export default function ToolResultPreview({
 	toolName,
@@ -26,10 +27,10 @@ export default function ToolResultPreview({
 	isSubAgentInternal = false,
 }: ToolResultPreviewProps) {
 	try {
-		// Try to parse JSON result
+		// 尝试解析 JSON 结果
 		const data = JSON.parse(result);
 
-		// Handle different tool types
+		// 根据工具类型路由到对应的预览渲染器
 		if (toolName.startsWith('subagent-')) {
 			return renderSubAgentPreview(data, maxLines);
 		} else if (toolName === 'terminal-execute') {
@@ -51,21 +52,20 @@ export default function ToolResultPreview({
 		} else if (toolName === 'ide-get_diagnostics') {
 			return renderIdeDiagnosticsPreview(data);
 		} else if (toolName === 'skill-execute') {
-			// skill-execute returns a string message, no preview needed
-			// (the skill content is displayed elsewhere)
+			// skill-execute 返回字符串消息,无需预览(内容在其他地方展示)
 			return null;
 		} else {
-			// Generic preview for unknown tools
+			// 未知工具类型的通用预览
 			return renderGenericPreview(data, maxLines);
 		}
 	} catch {
-		// If not JSON or parsing fails, return null (no preview)
+		// JSON 解析失败时不展示预览
 		return null;
 	}
 }
 
 function renderSubAgentPreview(data: any, _maxLines: number) {
-	// Sub-agent results have format: { success: boolean, result: string }
+	// 子代理结果格式: { success: boolean, result: string }
 	if (!data.result) return null;
 
 	// 简洁显示子代理执行结果
@@ -162,11 +162,11 @@ function renderTerminalExecutePreview(
 		);
 	}
 
-	// Simplified display: only show full output when exitCode !== 0
+	// 简化展示: 仅在执行出错时显示完整输出
 	const showFullOutput = hasError;
 
 	if (!showFullOutput) {
-		// Success case - show stdout directly
+		// 成功情况 - 直接展示 stdout
 		if (!hasStdout) {
 			return (
 				<Box marginLeft={2}>
@@ -209,7 +209,7 @@ function renderTerminalExecutePreview(
 		);
 	}
 
-	// Error case - show full details including stderr
+	// 错误情况 - 展示包含 stderr 的完整详情
 	return (
 		<Box flexDirection="column" marginLeft={2}>
 			{/* Command */}
@@ -277,7 +277,7 @@ function renderReadPreview(data: any, isSubAgentInternal: boolean) {
 	const readLineCount = lines.length;
 	const totalLines = data.totalLines || readLineCount;
 
-	// For sub-agent internal tools, show even more minimal info
+	// 子代理内部工具展示更精简的信息
 	if (isSubAgentInternal) {
 		return (
 			<Box marginLeft={2}>
@@ -306,7 +306,7 @@ function renderReadPreview(data: any, isSubAgentInternal: boolean) {
 }
 
 function renderACEPreview(toolName: string, data: any, maxLines: number) {
-	// Handle ace-text-search results
+	// 处理 ace-text-search 结果
 	if (toolName === 'ace-text-search' || toolName === 'ace-text_search') {
 		if (!data || data.length === 0) {
 			return (
@@ -328,7 +328,7 @@ function renderACEPreview(toolName: string, data: any, maxLines: number) {
 		);
 	}
 
-	// Handle ace-search-symbols results
+	// 处理 ace-search-symbols 结果
 	if (toolName === 'ace-search-symbols' || toolName === 'ace-search_symbols') {
 		const symbols = data.symbols || [];
 		if (symbols.length === 0) {
@@ -351,7 +351,7 @@ function renderACEPreview(toolName: string, data: any, maxLines: number) {
 		);
 	}
 
-	// Handle ace-find-references results
+	// 处理 ace-find-references 结果
 	if (
 		toolName === 'ace-find-references' ||
 		toolName === 'ace-find_references'
@@ -377,7 +377,7 @@ function renderACEPreview(toolName: string, data: any, maxLines: number) {
 		);
 	}
 
-	// Handle ace-find-definition result
+	// 处理 ace-find-definition 结果
 	if (
 		toolName === 'ace-find-definition' ||
 		toolName === 'ace-find_definition'
@@ -401,7 +401,7 @@ function renderACEPreview(toolName: string, data: any, maxLines: number) {
 		);
 	}
 
-	// Handle ace-file-outline result
+	// 处理 ace-file-outline 结果
 	if (toolName === 'ace-file-outline' || toolName === 'ace-file_outline') {
 		const symbols = Array.isArray(data) ? data : [];
 		if (symbols.length === 0) {
@@ -424,7 +424,7 @@ function renderACEPreview(toolName: string, data: any, maxLines: number) {
 		);
 	}
 
-	// Handle ace-semantic-search result
+	// 处理 ace-semantic-search 结果
 	if (
 		toolName === 'ace-semantic-search' ||
 		toolName === 'ace-semantic_search'
@@ -527,13 +527,12 @@ function renderWebFetchPreview(data: any) {
 }
 
 function renderGenericPreview(data: any, maxLines: number) {
-	// Guard: if data is not an object (e.g., it's a string), skip preview
-	// This prevents Object.entries from treating strings as character arrays
+	// 非对象类型直接跳过,避免 Object.entries 将字符串当字符数组处理
 	if (typeof data !== 'object' || data === null) {
 		return null;
 	}
 
-	// For unknown tool types, show first few properties
+	// 未知工具类型展示前几个属性
 	const entries = Object.entries(data).slice(0, maxLines);
 	if (entries.length === 0) return null;
 
@@ -557,17 +556,16 @@ function renderGenericPreview(data: any, maxLines: number) {
 }
 
 function renderTodoPreview(_toolName: string, data: any, _maxLines: number) {
-	// Handle todo-get, todo-update, todo-add, todo-delete
+	// 处理 todo-get, todo-update, todo-add, todo-delete
 
-	// Debug: Check if data is actually the stringified result that needs parsing again
-	// Some tools might return the result wrapped in content[0].text
+	// 部分工具会将结果包装在 content[0].text 中(MCP格式),需要兼容解析
 	let todoData = data;
 
-	// If data has content array (MCP format), extract the text
+	// MCP 格式: 从 content 数组中提取文本
 	if (data.content && Array.isArray(data.content) && data.content[0]?.text) {
 		const textContent = data.content[0].text;
 
-		// Skip parsing if it's a plain message string
+		// 纯文本消息直接展示,无需解析
 		if (
 			textContent === 'No TODO list found' ||
 			textContent === 'TODO item not found'
@@ -581,11 +579,11 @@ function renderTodoPreview(_toolName: string, data: any, _maxLines: number) {
 			);
 		}
 
-		// Try to parse JSON
+		// 尝试解析 JSON 数据
 		try {
 			todoData = JSON.parse(textContent);
 		} catch (e) {
-			// If parsing fails, show the raw text
+			// 解析失败则展示原始文本
 			return (
 				<Box marginLeft={2}>
 					<Text color="gray" dimColor>
@@ -625,8 +623,8 @@ function renderTodoPreview(_toolName: string, data: any, _maxLines: number) {
 }
 
 function renderIdeDiagnosticsPreview(data: any) {
-	// Handle ide-get_diagnostics result
-	// Data format: { diagnostics: Diagnostic[], formatted: string, summary: string }
+	// 处理 ide-get_diagnostics 结果
+	// 数据格式: { diagnostics: Diagnostic[], formatted: string, summary: string }
 	if (!data.diagnostics || !Array.isArray(data.diagnostics)) {
 		return (
 			<Box marginLeft={2}>
