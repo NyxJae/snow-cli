@@ -632,10 +632,12 @@ You have access to these collaboration tools:
 		let hasError = false;
 		let errorMessage = '';
 		let totalUsage: TokenUsage | undefined;
-		// Latest total_tokens from the most recent API call (prompt + completion).
-		// Unlike totalUsage which accumulates across rounds, this reflects the actual
-		// context size for the current round — used for context window monitoring.
+		// 当轮 API 返回的 total_tokens(prompt + completion), 用于上下文窗口监控.
+		// 与 totalUsage(跨轮累加)不同, 此值仅反映当轮实际上下文大小.
 		let latestTotalTokens = 0;
+		// 当轮 API 返回的 prompt_tokens, 用于判断 provider usage 是否可靠.
+		// 与主代理保持一致: < 1000 视为不可靠, 触发本地 tiktoken 估算.
+		let latestPromptTokens = 0;
 		// Track all user messages injected from the main session
 		const collectedInjectedMessages: string[] = [];
 
@@ -874,6 +876,8 @@ You have access to these collaboration tools:
 						eventUsage.total_tokens ||
 						(eventUsage.prompt_tokens || 0) +
 							(eventUsage.completion_tokens || 0);
+					// 单独追踪 prompt_tokens 以判断 usage 是否可靠.
+					latestPromptTokens = eventUsage.prompt_tokens || 0;
 
 					if (!totalUsage) {
 						totalUsage = {
@@ -1025,8 +1029,10 @@ You have access to these collaboration tools:
 				};
 			}
 
-			// 兜底: 当上游接口未返回 usage 时,用 tiktoken 估算 token.
-			if (latestTotalTokens === 0 && config.maxContextTokens) {
+			// 兜底: 当上游接口未返回 usage 或返回的 prompt_tokens 不合理时(< 1000,
+			// 因为系统提示词 + 工具定义通常就超过 1k), 用 tiktoken 估算 token.
+			// 此阈值与主代理保持一致(useConversation.ts).
+			if (latestPromptTokens < 1000 && config.maxContextTokens) {
 				latestTotalTokens = countMessagesTokens(messages, allowedTools);
 
 				// 将估算的上下文占用同步给 UI.
