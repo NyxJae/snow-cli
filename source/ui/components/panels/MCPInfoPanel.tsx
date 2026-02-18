@@ -100,7 +100,7 @@ export default function MCPInfoPanel({
 			const {listAvailableSkills} = await import('../../../mcp/skills.js');
 			const skillsList = await listAvailableSkills(process.cwd());
 			setSkills(skillsList);
-			// Build enabled map
+			// 构建技能启用状态映射表
 			const enabledMap: Record<string, boolean> = {};
 			for (const skill of skillsList) {
 				enabledMap[skill.id] = isSkillEnabled(skill.id);
@@ -184,7 +184,7 @@ export default function MCPInfoPanel({
 		}
 	}
 
-	// Windowed display to prevent excessive height
+	// 窗口分页显示,避免列表过高导致渲染性能问题
 	const MAX_DISPLAY_ITEMS = 8;
 	const displayWindow = useMemo(() => {
 		if (selectItems.length <= MAX_DISPLAY_ITEMS) {
@@ -220,7 +220,7 @@ export default function MCPInfoPanel({
 		selectItems.length - displayWindow.endIndex,
 	);
 
-	// Listen for keyboard input
+	// 键盘输入处理 - 需在isFocused时激活以避免与ChatScreen输入冲突
 	useInput(async (_, key) => {
 		// Esc 优先关闭面板
 		if (key.escape) {
@@ -230,7 +230,7 @@ export default function MCPInfoPanel({
 
 		if (isReconnecting || togglingService) return;
 
-		// Arrow key navigation — skip section headers
+		// 方向键导航 - 跳过分组标题(不可选中)
 		if (key.upArrow) {
 			setSelectedIndex(prev => {
 				let next = prev > 0 ? prev - 1 : selectItems.length - 1;
@@ -254,7 +254,7 @@ export default function MCPInfoPanel({
 			return;
 		}
 
-		// Enter to select (reconnect service)
+		// 回车触发服务重连或刷新
 		if (key.return) {
 			const currentItem = selectItems[selectedIndex];
 			if (currentItem) {
@@ -263,7 +263,7 @@ export default function MCPInfoPanel({
 			return;
 		}
 
-		// Tab key to toggle enabled/disabled
+		// Tab键切换启用/禁用状态 - 技能和服务共用此快捷键
 		if (key.tab) {
 			const currentItem = selectItems[selectedIndex];
 			if (
