@@ -124,7 +124,7 @@ function convertToOpenAIMessages(
 		? false
 		: includeBuiltinSystemPrompt;
 
-	let result = messages.map(msg => {
+	let result = messages.flatMap(msg => {
 		// 如果消息包含图片，使用 content 数组格式
 		if (msg.role === 'user' && msg.images && msg.images.length > 0) {
 			const contentParts: Array<{
@@ -141,20 +141,26 @@ function convertToOpenAIMessages(
 				});
 			}
 
-			// 添加图片内容
+			// 添加图片内容，统一处理 data URL 格式
 			for (const image of msg.images) {
+				const imageUrl =
+					/^data:/i.test(image.data) || /^https?:\/\//i.test(image.data)
+						? image.data
+						: `data:${image.mimeType || 'image/png'};base64,${image.data}`;
 				contentParts.push({
 					type: 'image_url',
 					image_url: {
-						url: image.data, // Base64 data URL
+						url: imageUrl,
 					},
 				});
 			}
 
-			return {
-				role: 'user',
-				content: contentParts,
-			} as ChatCompletionMessageParam;
+			return [
+				{
+					role: 'user',
+					content: contentParts,
+				} as ChatCompletionMessageParam,
+			];
 		}
 
 		const baseMessage = {
@@ -170,25 +176,24 @@ function convertToOpenAIMessages(
 			if ((msg as any).reasoning_content) {
 				result.reasoning_content = (msg as any).reasoning_content;
 			}
-			return result as ChatCompletionMessageParam;
+			return [result as ChatCompletionMessageParam];
 		}
 
 		if (msg.role === 'tool' && msg.tool_call_id) {
-			// 处理包含图片的多模态工具结果
+			// 中转平台通常不支持 tool 消息 content 中内嵌图片
+			// 策略: tool 消息只放文本,图片作为独立的 user 消息分离出去
 			if (msg.images && msg.images.length > 0) {
-				const content: Array<{
+				// 构建图片消息内容
+				const imageContentParts: Array<{
 					type: 'text' | 'image_url';
 					text?: string;
 					image_url?: {url: string};
-				}> = [];
-
-				// 添加文本内容
-				if (msg.content) {
-					content.push({
+				}> = [
+					{
 						type: 'text',
-						text: msg.content,
-					});
-				}
+						text: `[Tool Result Image] The tool "${msg.tool_call_id}" returned the following image(s):`,
+					},
+				];
 
 				// 添加 base64 编码的图片数据
 				for (const image of msg.images) {
@@ -196,7 +201,7 @@ function convertToOpenAIMessages(
 						/^data:/i.test(image.data) || /^https?:\/\//i.test(image.data)
 							? image.data
 							: `data:${image.mimeType};base64,${image.data}`;
-					content.push({
+					imageContentParts.push({
 						type: 'image_url',
 						image_url: {
 							url: imageUrl,
@@ -204,28 +209,39 @@ function convertToOpenAIMessages(
 					});
 				}
 
-				return {
-					role: 'tool',
-					content,
-					tool_call_id: msg.tool_call_id,
-				} as ChatCompletionMessageParam;
+				// 返回两个消息: 纯文本 tool 消息 + 图片 user 消息
+				return [
+					{
+						role: 'tool',
+						content: msg.content || '',
+						tool_call_id: msg.tool_call_id,
+					} as ChatCompletionMessageParam,
+					{
+						role: 'user',
+						content: imageContentParts,
+					} as ChatCompletionMessageParam,
+				];
 			}
 
-			return {
-				role: 'tool',
-				content: msg.content,
-				tool_call_id: msg.tool_call_id,
-			} as ChatCompletionMessageParam;
+			return [
+				{
+					role: 'tool',
+					content: msg.content,
+					tool_call_id: msg.tool_call_id,
+				} as ChatCompletionMessageParam,
+			];
 		}
 		// 为助手消息包含推理内容(DeepSeek R1)
 		if (msg.role === 'assistant' && (msg as any).reasoning_content) {
-			return {
-				...baseMessage,
-				reasoning_content: (msg as any).reasoning_content,
-			} as any;
+			return [
+				{
+					...baseMessage,
+					reasoning_content: (msg as any).reasoning_content,
+				} as any,
+			];
 		}
 
-		return baseMessage as ChatCompletionMessageParam;
+		return [baseMessage as ChatCompletionMessageParam];
 	});
 
 	// 如果第一条消息已经是 system 消息，跳过

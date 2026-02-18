@@ -294,8 +294,11 @@ function convertToGeminiMessages(
 			// 更新循环索引以跳过已处理的工具消息
 			i = j - 1;
 
-			// 构建包含多个 functionResponse 部分的单个 user 消息
-			const parts: any[] = [];
+			// 中转平台通常不支持 functionResponse.parts 中内嵌图片
+			// 策略: functionResponse 只放文本,图片作为独立的 user 消息分离出去
+			// 注意: Gemini API 要求 functionResponse 必须放在 role: 'user' 的消息中
+			const functionParts: any[] = [];
+			const allImages: any[] = [];
 
 			for (const toolResp of toolResponses) {
 				// 使用 tool_call_id 查找正确的函数名
@@ -353,30 +356,48 @@ function convertToGeminiMessages(
 					}
 				}
 
-				// 添加 functionResponse 部分
-				parts.push({
+				// 添加 functionResponse 部分(仅文本)
+				functionParts.push({
 					functionResponse: {
 						name: functionName,
 						response: responseData,
 					},
 				});
 
-				// 处理工具结果中的图片
+				// 收集图片到独立数组,稍后作为单独的 user 消息发送
 				if (toolResp.images && toolResp.images.length > 0) {
 					for (const image of toolResp.images) {
-						const imagePart = toGeminiImagePart(image);
-						if (imagePart) {
-							parts.push(imagePart);
-						}
+						allImages.push({image, tool_call_id: toolResp.tool_call_id});
 					}
 				}
 			}
 
-			// 推送包含所有函数响应的单个 user 消息
+			// 推送包含所有函数响应的 user 消息(仅文本)
 			contents.push({
 				role: 'user',
-				parts,
+				parts: functionParts,
 			});
+
+			// 如果有图片,作为独立的 user 消息推送
+			if (allImages.length > 0) {
+				const imageParts: any[] = [];
+				// 添加说明文本
+				imageParts.push({
+					text: `[Tool Result Image] The tool(s) returned the following image(s):`,
+				});
+				// 添加所有图片
+				for (const {image} of allImages) {
+					const imagePart = toGeminiImagePart(image);
+					if (imagePart) {
+						imageParts.push(imagePart);
+					}
+				}
+				contents.push({
+					role: 'user',
+					parts: imageParts,
+				});
+			}
+
 			continue;
 		}
 
