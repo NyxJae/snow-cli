@@ -867,6 +867,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setShowSkillsCreation: panelState.setShowSkillsCreation,
 		setShowWorkingDirPanel: panelState.setShowWorkingDirPanel,
 		setShowReviewCommitPanel: panelState.setShowReviewCommitPanel,
+		setShowDiffReviewPanel: panelState.setShowDiffReviewPanel,
 		setShowPermissionsPanel: panelState.setShowPermissionsPanel,
 		setShowBranchPanel: panelState.setShowBranchPanel,
 		onSwitchProfile: handleSwitchProfile,
@@ -950,6 +951,10 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	}, [streamingState.streamStatus, pendingMessages.length]);
 
 	// Listen to codebase search events
+	// NOTE: streamingState.setCodebaseSearchStatus is a stable useState setter,
+	// so we extract it to avoid depending on the entire streamingState object
+	// (which creates a new reference on every render and causes infinite re-subscriptions).
+	const setCodebaseSearchStatus = streamingState.setCodebaseSearchStatus;
 	useEffect(() => {
 		const handleSearchEvent = (event: {
 			type: 'search-start' | 'search-retry' | 'search-complete';
@@ -963,10 +968,10 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		}) => {
 			if (event.type === 'search-complete') {
 				// Clear status immediately
-				streamingState.setCodebaseSearchStatus(null);
+				setCodebaseSearchStatus(null);
 			} else {
 				// Update search status
-				streamingState.setCodebaseSearchStatus({
+				setCodebaseSearchStatus({
 					isSearching: true,
 					attempt: event.attempt,
 					maxAttempts: event.maxAttempts,
@@ -984,7 +989,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		return () => {
 			codebaseSearchEvents.removeSearchEventListener(handleSearchEvent);
 		};
-	}, [streamingState]);
+	}, [setCodebaseSearchStatus]);
 
 	// ESC key handler to interrupt streaming or close overlays
 	useInput((input, key) => {
@@ -1047,6 +1052,12 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		if (pendingToolConfirmation) {
 			return;
 		}
+
+		// Skip ESC handling when user question is showing (let AskUserQuestion handle it)
+		if (pendingUserQuestion) {
+			return;
+		}
+
 		// bash 敏感命令确认时接管输入,避免误触继续执行
 		if (bashSensitiveCommand) {
 			if (input.toLowerCase() === 'y') {
@@ -1463,6 +1474,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				showWorkingDirPanel={panelState.showWorkingDirPanel}
 				showPermissionsPanel={panelState.showPermissionsPanel}
 				showBranchPanel={panelState.showBranchPanel}
+				showDiffReviewPanel={panelState.showDiffReviewPanel}
+				diffReviewMessages={messages}
+				diffReviewSnapshotFileCount={snapshotState.snapshotFileCount}
 				advancedModel={advancedModel}
 				basicModel={basicModel}
 				setShowSessionPanel={panelState.setShowSessionPanel}
@@ -1473,6 +1487,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				setShowWorkingDirPanel={panelState.setShowWorkingDirPanel}
 				setShowPermissionsPanel={panelState.setShowPermissionsPanel}
 				setShowBranchPanel={panelState.setShowBranchPanel}
+				setShowDiffReviewPanel={panelState.setShowDiffReviewPanel}
 				mcpPanelSource={panelState.mcpPanelSource}
 				handleSessionPanelSelect={handleSessionPanelSelect}
 				alwaysApprovedTools={alwaysApprovedTools}
@@ -1595,7 +1610,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					panelState.showSkillsCreation ||
 					panelState.showWorkingDirPanel ||
 					panelState.showPermissionsPanel ||
-					panelState.showBranchPanel
+					panelState.showBranchPanel ||
+					panelState.showDiffReviewPanel
 				) &&
 				!snapshotState.pendingRollback && (
 					<ChatFooter

@@ -58,12 +58,8 @@ jobs:
 
             ### What's New
 
-            - Fix LSP client process management and connection error handling
-            - Implement notebook rollback functionality
-            - Optimize sub-agent context compression strategy
-            - Add sub-agent context compression functionality
-            - Add depth limit for spawning sub-agents to prevent infinite recursion
-            - Add collaborative message passing among sub-agents
+            - Optimize user interaction tools
+            - Add the `/diff` command to view differences in session files
 
             ### Installation
             ```bash

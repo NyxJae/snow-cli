@@ -485,6 +485,7 @@ export const zh: TranslationKeys = {
 			permissions: '管理始终批准的工具权限',
 			vulnerabilityHunting: '切换漏洞检查模式，进行安全性代码分析',
 			worktree: '打开 Git 分支管理面板，支持切换、新建和删除分支',
+			diff: '在 IDE 中查看对话的文件修改 Diff',
 			backend: '显示后台进程面板',
 			profiles: '打开配置文件切换面板',
 			models: '打开模型切换面板',
@@ -1172,6 +1173,11 @@ export const zh: TranslationKeys = {
 		// Alert messages
 		alertDefaultCannotDelete: '默认目录不能被删除',
 	},
+	diffReviewPanel: {
+		title: 'Diff 审查',
+		noSnapshots: '该会话没有找到文件变更记录',
+		navigationHint: '↑↓ 导航 • Tab 查看文件 • Enter 打开全部 • ESC 关闭',
+	},
 	sessionListPanel: {
 		title: '会话列表',
 		loading: '加载中...',
@@ -1213,6 +1219,13 @@ export const zh: TranslationKeys = {
 		pleaseWait: '请稍候...',
 		toolPermissionHint:
 			'提示: 服务启用后,需在主代理/子代理配置中设置具体工具权限',
+		skillsTitle: '技能',
+		noSkills: '没有可用的技能',
+		skillLocationProject: '(项目)',
+		skillLocationGlobal: '(全局)',
+		scrollHint: '↑↓ 滚动',
+		moreAbove: '上方还有 {count} 项',
+		moreBelow: '下方还有 {count} 项',
 	},
 	runningAgentsPanel: {
 		title: '运行中的子代理',

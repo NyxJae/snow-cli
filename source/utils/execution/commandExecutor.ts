@@ -35,6 +35,7 @@ export interface CommandResult {
 		| 'copyLastMessage'
 		| 'toggleCodebase'
 		| 'showBranchPanel'
+		| 'showDiffReviewPanel'
 		| 'sendAsMessage'
 		| 'quit';
 	prompt?: string;

@@ -21,6 +21,7 @@ import type {
 const MCPInfoPanel = lazy(() => import('./MCPInfoPanel.js'));
 const SessionListPanel = lazy(() => import('./SessionListPanel.js'));
 const UsagePanel = lazy(() => import('./UsagePanel.js'));
+const DiffReviewPanel = lazy(() => import('./DiffReviewPanel.js'));
 
 type PanelsManagerProps = {
 	terminalWidth: number;
@@ -34,6 +35,14 @@ type PanelsManagerProps = {
 	showWorkingDirPanel: boolean;
 	showPermissionsPanel: boolean;
 	showBranchPanel: boolean;
+	showDiffReviewPanel: boolean;
+	diffReviewMessages: Array<{
+		role: string;
+		content: string;
+		images?: Array<{type: 'image'; data: string; mimeType: string}>;
+		subAgentDirected?: unknown;
+	}>;
+	diffReviewSnapshotFileCount: Map<number, number>;
 	advancedModel: string;
 	basicModel: string;
 	setShowSessionPanel: (show: boolean) => void;
@@ -43,6 +52,7 @@ type PanelsManagerProps = {
 	setShowWorkingDirPanel: (show: boolean) => void;
 	setShowPermissionsPanel: (show: boolean) => void;
 	setShowBranchPanel: (show: boolean) => void;
+	setShowDiffReviewPanel: (show: boolean) => void;
 	mcpPanelSource?: 'chat' | 'mcpConfig';
 	setShowMcpPanel: (show: boolean) => void;
 	handleSessionPanelSelect: (sessionId: string) => Promise<void>;
@@ -81,6 +91,9 @@ export default function PanelsManager({
 	showWorkingDirPanel,
 	showPermissionsPanel,
 	showBranchPanel,
+	showDiffReviewPanel,
+	diffReviewMessages,
+	diffReviewSnapshotFileCount,
 	advancedModel,
 	basicModel,
 	setShowSessionPanel,
@@ -90,6 +103,7 @@ export default function PanelsManager({
 	setShowWorkingDirPanel,
 	setShowPermissionsPanel,
 	setShowBranchPanel,
+	setShowDiffReviewPanel,
 	mcpPanelSource,
 	setShowMcpPanel,
 	handleSessionPanelSelect,
@@ -246,6 +260,19 @@ export default function PanelsManager({
 			{showBranchPanel && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<BranchPanel onClose={() => setShowBranchPanel(false)} />
+				</Box>
+			)}
+
+			{/* Show diff review panel if active */}
+			{showDiffReviewPanel && (
+				<Box paddingX={1} width={terminalWidth}>
+					<Suspense fallback={loadingFallback}>
+						<DiffReviewPanel
+							messages={diffReviewMessages}
+							snapshotFileCount={diffReviewSnapshotFileCount}
+							onClose={() => setShowDiffReviewPanel(false)}
+						/>
+					</Suspense>
 				</Box>
 			)}
 		</>

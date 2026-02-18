@@ -490,6 +490,7 @@ export type TranslationKeys = {
 			permissions: string;
 			vulnerabilityHunting: string;
 			worktree: string; // Git branch management panel
+			diff: string;
 			quit: string;
 		};
 	};
@@ -1173,6 +1174,11 @@ export type TranslationKeys = {
 		// Alert messages
 		alertDefaultCannotDelete: string;
 	};
+	diffReviewPanel: {
+		title: string;
+		noSnapshots: string;
+		navigationHint: string;
+	};
 	sessionListPanel: {
 		title: string;
 		loading: string;
@@ -1213,6 +1219,13 @@ export type TranslationKeys = {
 		navigationHint: string;
 		pleaseWait: string;
 		toolPermissionHint: string;
+		skillsTitle: string;
+		noSkills: string;
+		skillLocationProject: string;
+		skillLocationGlobal: string;
+		scrollHint: string;
+		moreAbove: string;
+		moreBelow: string;
 	};
 	// Running Agents Panel
 	runningAgentsPanel: {

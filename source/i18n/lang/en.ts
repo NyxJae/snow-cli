@@ -527,6 +527,7 @@ export const en: TranslationKeys = {
 				'Toggle vulnerability hunting mode for security-focused code analysis',
 			worktree:
 				'Open Git branch management panel for switching, creating and deleting branches',
+			diff: 'Review file changes from a conversation in IDE diff view',
 			quit: 'Exit the application',
 		},
 	},
@@ -1237,6 +1238,11 @@ export const en: TranslationKeys = {
 		// Alert messages
 		alertDefaultCannotDelete: 'Default directory cannot be deleted',
 	},
+	diffReviewPanel: {
+		title: 'Diff Review',
+		noSnapshots: 'No file changes found in this session',
+		navigationHint: '↑↓ navigate • Tab view files • Enter open all • ESC close',
+	},
 	sessionListPanel: {
 		title: 'Session List',
 		loading: 'Loading...',
@@ -1278,6 +1284,13 @@ export const en: TranslationKeys = {
 		pleaseWait: 'Please wait...',
 		toolPermissionHint:
 			'Hint: After enabling a service, you need to configure tool permissions in the Main/Sub Agent settings',
+		skillsTitle: 'Skills',
+		noSkills: 'No skills available',
+		skillLocationProject: '(Project)',
+		skillLocationGlobal: '(Global)',
+		scrollHint: '↑↓ to scroll',
+		moreAbove: '{count} more above',
+		moreBelow: '{count} more below',
 	},
 	runningAgentsPanel: {
 		title: 'Running Sub-Agents',

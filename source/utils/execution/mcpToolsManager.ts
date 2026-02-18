@@ -30,6 +30,7 @@ import {
 	isBuiltInServiceEnabled,
 	getDisabledBuiltInServices,
 } from '../config/disabledBuiltInTools.js';
+import {getDisabledSkills} from '../config/disabledSkills.js';
 import {logger} from '../core/logger.js';
 import {
 	updateReadFolders,
@@ -203,6 +204,7 @@ async function generateConfigHash(): Promise<string> {
 			skills: skillTools.map(t => t.name), // Include skill names in hash
 			codebaseEnabled: codebaseConfig.enabled, // 🔥 Must include to invalidate cache on enable/disable
 			disabledBuiltInServices: getDisabledBuiltInServices(), // Include disabled built-in services in hash
+			disabledSkills: getDisabledSkills(), // Include disabled skills in hash
 		});
 	} catch {
 		return '';
