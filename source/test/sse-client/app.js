@@ -8,7 +8,15 @@
 let eventSource = null; // SSE 连接实例
 let serverUrl = 'http://localhost:3000';
 let currentSessionId = null; // 当前会话 ID
-let selectedImages = []; // 待发送的图片（Base64 data URI）数组
+let selectedImages = []; // 待发送的图片(Base64 data URI)数组
+
+// 主代理状态
+let agents = []; // 可用主代理列表
+let currentAgentId = null; // 当前会话使用的主代理ID
+let lastConfirmedAgentId = null; // 上次确认的主代理ID(切换失败时用于回滚)
+let preferredAgentIdForNewSession = null; // 无会话时预选的主代理ID(用于新建会话)
+let isSwitchingAgent = false; // 是否正在切换主代理
+let requestedAgentId = null; // 正在切换中的目标代理ID(用于UI展示)
 
 // 会话列表 UI 状态
 const sessionListState = {
@@ -77,6 +85,178 @@ function normalizeChatMessageContent(msg) {
 	}
 	if (c == null) return '';
 	return String(c);
+}
+
+/**
+ * 重置主代理状态
+ * @param {string} reason - 重置原因(用于日志)
+ * @param {string} placeholder - 下拉框占位文案,默认'(未连接)'
+ * @param {boolean} keepPreferred - 是否保留预选状态,默认false
+ */
+function resetMainAgentState(
+	reason,
+	placeholder = '(未连接)',
+	keepPreferred = false,
+) {
+	agents = [];
+	currentAgentId = null;
+	lastConfirmedAgentId = null;
+	isSwitchingAgent = false;
+	requestedAgentId = null;
+	// 断线时保留预选状态,方便用户重连后继续使用预选的主代理
+	if (!keepPreferred) {
+		preferredAgentIdForNewSession = null;
+	}
+
+	const select = byId('mainAgentSelect');
+	if (select) {
+		select.innerHTML = `<option value="">${placeholder}</option>`;
+		select.disabled = true;
+		select.classList.remove('switching');
+	}
+
+	if (reason) {
+		logEvent('MAIN_AGENT_RESET', {reason, placeholder, keepPreferred});
+	}
+}
+
+function renderMainAgentSelect() {
+	const select = byId('mainAgentSelect');
+	if (!select) return;
+
+	select.innerHTML = '';
+	if (!agents || agents.length === 0) {
+		const option = document.createElement('option');
+		option.value = '';
+		option.textContent = '(暂无可用主代理)';
+		option.disabled = true;
+		select.appendChild(option);
+		select.disabled = true;
+		return;
+	}
+
+	for (const agent of agents) {
+		const option = document.createElement('option');
+		option.value = agent.id;
+		option.textContent = agent.name || agent.id;
+		option.title = agent.description || '';
+		select.appendChild(option);
+	}
+
+	if (isSwitchingAgent && requestedAgentId) {
+		// 切换中优先展示目标值,避免用户误判为未响应
+		select.value = requestedAgentId;
+	} else if (currentSessionId && currentAgentId) {
+		const exists = agents.some(a => a.id === currentAgentId);
+		if (exists) {
+			select.value = currentAgentId;
+		} else {
+			// 服务端返回已失效ID时保留可见性,避免用户丢失上下文
+			const option = document.createElement('option');
+			option.value = currentAgentId;
+			option.textContent = `未知/已失效 (${currentAgentId})`;
+			option.disabled = true;
+			select.insertBefore(option, select.firstChild);
+			select.value = currentAgentId;
+		}
+	} else if (lastConfirmedAgentId) {
+		const exists = agents.some(a => a.id === lastConfirmedAgentId);
+		if (exists) {
+			select.value = lastConfirmedAgentId;
+		}
+	} else if (preferredAgentIdForNewSession) {
+		const exists = agents.some(a => a.id === preferredAgentIdForNewSession);
+		if (exists) {
+			select.value = preferredAgentIdForNewSession;
+		}
+	}
+
+	// 无会话不禁用,允许预选代理用于新建会话
+	if (isSwitchingAgent) {
+		select.disabled = true;
+		select.classList.add('switching');
+	} else {
+		select.disabled = false;
+		select.classList.remove('switching');
+	}
+}
+
+// 根据 ID 获取主代理名称
+function getAgentName(agentId) {
+	if (!agentId) return '';
+	const agent = agents.find(a => a.id === agentId);
+	return agent?.name || agentId;
+}
+
+// 处理主代理切换(支持无会话时预选)
+async function handleMainAgentChange() {
+	const select = byId('mainAgentSelect');
+	if (!select) return;
+
+	const selectedId = select.value;
+
+	if (!currentSessionId) {
+		if (!selectedId) {
+			addSystemMessage('请选择一个有效的主代理');
+			return;
+		}
+		preferredAgentIdForNewSession = selectedId;
+		addSystemMessage(
+			`已预选主代理: ${getAgentName(selectedId)},新建会话时将自动使用该主代理`,
+		);
+		return;
+	}
+
+	// 切换请求未完成前忽略重复操作,避免状态竞争
+	if (isSwitchingAgent) {
+		addSystemMessage('正在切换主代理中,请稍候...');
+		return;
+	}
+
+	// 选择相同代理时直接返回
+	if (selectedId === currentAgentId) {
+		return;
+	}
+
+	// 保存当前确认的代理ID用于切换失败回滚
+	lastConfirmedAgentId = currentAgentId;
+
+	// 锁定选择器避免并发切换
+	isSwitchingAgent = true;
+	requestedAgentId = selectedId;
+	renderMainAgentSelect();
+
+	try {
+		const payload = {
+			type: 'switch_agent',
+			agentId: selectedId,
+			sessionId: currentSessionId,
+		};
+
+		const response = await fetch(`${serverUrl}/message`, {
+			method: 'POST',
+			headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify(payload),
+		});
+
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+		}
+
+		logEvent('SWITCH_AGENT_SENT', {
+			agentId: selectedId,
+			sessionId: currentSessionId,
+		});
+	} catch (error) {
+		addSystemMessage(
+			`切换主代理请求发送失败: ${error?.message || String(error)}`,
+		);
+		// 回滚到已确认的主代理
+		currentAgentId = lastConfirmedAgentId;
+		isSwitchingAgent = false;
+		requestedAgentId = null;
+		renderMainAgentSelect();
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -718,12 +898,19 @@ async function newSession() {
 // 创建服务端会话（返回 sessionId 或 null）
 async function createServerSession() {
 	try {
+		// 使用预选的主代理ID创建会话
+		const requestBody = {};
+		const agentId = preferredAgentIdForNewSession || currentAgentId;
+		if (agentId) {
+			requestBody.initialAgentId = agentId;
+		}
+
 		const response = await fetch(`${serverUrl}/session/create`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({}),
+			body: JSON.stringify(requestBody),
 		});
 		const data = await response.json();
 		logEvent('SESSION_CREATE', data, !response.ok);
@@ -731,6 +918,8 @@ async function createServerSession() {
 		const sessionId = data?.session?.id;
 		if (sessionId) {
 			currentSessionId = sessionId;
+			// 创建成功后,预选ID已生效,可以清空
+			preferredAgentIdForNewSession = null;
 			updateSessionStatusText();
 			addSystemMessage(`已创建服务端会话: ${currentSessionId}`);
 			return sessionId;
@@ -1062,6 +1251,13 @@ function connect() {
 		byId('sessionSearchInput').value = sessionListState.q;
 		renderSessionList();
 		void refreshSessionList();
+
+		// 绑定主代理选择器 change 事件(只绑定一次)
+		const agentSelect = byId('mainAgentSelect');
+		if (agentSelect && !agentSelect.dataset.bound) {
+			agentSelect.addEventListener('change', handleMainAgentChange);
+			agentSelect.dataset.bound = '1';
+		}
 	};
 
 	eventSource.onerror = error => {
@@ -1069,6 +1265,8 @@ function connect() {
 		updateSessionStatusText();
 		addSystemMessage('连接错误');
 		logEvent('ERROR', {message: '连接失败'}, true);
+		// 连接异常时保留预选,重连后仍可用于新建会话
+		resetMainAgentState('connection_error', '(未连接)', true);
 
 		// 禁用会话列表面板
 		setSessionControlsEnabled(false);
@@ -1096,6 +1294,8 @@ function disconnect() {
 
 	// 禁用会话列表面板
 	setSessionControlsEnabled(false);
+	// 主动断开时保留预选,下次连接后可继续使用
+	resetMainAgentState('disconnected', '(未连接)', true);
 }
 
 // ----------------------------------------------------------------------------
@@ -1234,11 +1434,100 @@ function handleEvent(event) {
 			document.getElementById('abortBtn').disabled = true;
 			break;
 
+		case 'agent_list':
+			agents = event.data?.agents ?? [];
+			currentAgentId = event.data?.currentAgentId ?? null;
+			if (currentAgentId) {
+				lastConfirmedAgentId = currentAgentId;
+			}
+			isSwitchingAgent = false;
+			requestedAgentId = null;
+			renderMainAgentSelect();
+			if (currentAgentId) {
+				addSystemMessage(
+					`可用主代理: ${agents.length} 个,当前: ${getAgentName(
+						currentAgentId,
+					)}`,
+				);
+			} else if (preferredAgentIdForNewSession) {
+				addSystemMessage(
+					`可用主代理: ${agents.length} 个。已预选: ${getAgentName(
+						preferredAgentIdForNewSession,
+					)},点击"新建会话"开始对话`,
+				);
+			} else {
+				addSystemMessage(
+					`可用主代理: ${agents.length} 个。请选择一个主代理,然后点击"新建会话"开始对话`,
+				);
+			}
+			break;
+
+		case 'agent_switched':
+			{
+				const prevId = event.data?.previousAgentId;
+				const currId = event.data?.currentAgentId;
+				const currName = event.data?.agentName;
+				currentAgentId = currId;
+				lastConfirmedAgentId = currId;
+				isSwitchingAgent = false;
+				requestedAgentId = null;
+				renderMainAgentSelect();
+				const prevName = getAgentName(prevId);
+				addSystemMessage(`主代理已切换: ${prevName} → ${currName || currId}`);
+			}
+			break;
+
 		case 'error':
-			// 错误
 			removeLoadingMessage();
-			addSystemMessage(`错误: ${event.data.message}`);
 			document.getElementById('abortBtn').disabled = true;
+
+			if (isSwitchingAgent) {
+				const errorCode = event.data?.errorCode;
+				const message = event.data?.message || '未知错误';
+
+				if (errorCode) {
+					switch (errorCode) {
+						case 'invalid_agent_id':
+							addSystemMessage(`主代理切换失败: 主代理 ID 不能为空`);
+							break;
+						case 'invalid_agent_id_format':
+							addSystemMessage(
+								`主代理切换失败: 主代理 ID 格式错误,只能包含小写字母、数字、下划线和连字符`,
+							);
+							break;
+						case 'agent_not_found':
+							addSystemMessage(`主代理切换失败: ${message}`);
+							if (event.data.availableAgents) {
+								agents = event.data.availableAgents;
+							}
+							break;
+						case 'agent_busy':
+							addSystemMessage(
+								`主代理切换失败: 当前会话有进行中的任务,请先终止对话后再切换主代理`,
+							);
+							break;
+						case 'session_not_found':
+							addSystemMessage(`主代理切换失败: 会话不存在,请先创建或加载会话`);
+							break;
+						default:
+							addSystemMessage(`主代理切换失败: ${message}`);
+					}
+				} else {
+					addSystemMessage(`主代理切换失败: ${message}`);
+				}
+
+				// 切换失败后回滚到已确认的主代理
+				currentAgentId = lastConfirmedAgentId;
+				isSwitchingAgent = false;
+				requestedAgentId = null;
+				renderMainAgentSelect();
+			} else {
+				addSystemMessage(`错误: ${event.data?.message || '未知错误'}`);
+			}
+			break;
+
+		default:
+			// 未知事件类型,静默忽略以保证向后兼容
 			break;
 	}
 }

@@ -177,6 +177,65 @@ export class SSEServer {
 	}
 
 	/**
+	 * 设置会话创建处理器
+	 */
+	private sessionCreatedHandler?: (
+		sessionId: string,
+		connectionId: string,
+		initialAgentId?: string,
+	) => void;
+
+	setSessionCreatedHandler(
+		handler: (
+			sessionId: string,
+			connectionId: string,
+			initialAgentId?: string,
+		) => void,
+	): void {
+		this.sessionCreatedHandler = handler;
+	}
+
+	/**
+	 * 设置会话绑定处理器(用于 create/load 后同步业务层映射)
+	 */
+	private sessionBoundHandler?: (
+		sessionId: string,
+		connectionId: string,
+	) => void;
+
+	setSessionBoundHandler(
+		handler: (sessionId: string, connectionId: string) => void,
+	): void {
+		this.sessionBoundHandler = handler;
+	}
+
+	/**
+	 * 设置连接创建处理器(用于连接建立后的初始化)
+	 */
+	private connectionCreatedHandler?: (
+		connectionId: string,
+		sendEvent: (event: SSEEvent) => void,
+	) => void;
+
+	setConnectionCreatedHandler(
+		handler: (
+			connectionId: string,
+			sendEvent: (event: SSEEvent) => void,
+		) => void,
+	): void {
+		this.connectionCreatedHandler = handler;
+	}
+
+	/**
+	 * 设置连接关闭处理器(用于连接关闭时的清理)
+	 */
+	private connectionClosedHandler?: (connectionId: string) => void;
+
+	setConnectionClosedHandler(handler: (connectionId: string) => void): void {
+		this.connectionClosedHandler = handler;
+	}
+
+	/**
 	 * 启动 SSE 服务器
 	 */
 	start(): Promise<void> {
@@ -381,7 +440,10 @@ export class SSEServer {
 					'../utils/session/sessionManager.js'
 				);
 
-				const body = await this.readJsonBody<{connectionId?: string}>(req);
+				const body = await this.readJsonBody<{
+					connectionId?: string;
+					initialAgentId?: string;
+				}>(req);
 				const connectionId = this.getActiveConnectionId(body.connectionId);
 				if (!connectionId) {
 					res.writeHead(400, {'Content-Type': 'application/json'});
@@ -391,6 +453,18 @@ export class SSEServer {
 
 				const session = await sessionManager.createNewSession();
 				this.bindSessionToConnection(session.id, connectionId);
+				if (this.sessionBoundHandler) {
+					this.sessionBoundHandler(session.id, connectionId);
+				}
+
+				// 通知会话创建处理器(用于设置初始主代理)
+				if (this.sessionCreatedHandler) {
+					this.sessionCreatedHandler(
+						session.id,
+						connectionId,
+						body.initialAgentId,
+					);
+				}
 
 				res.writeHead(200, {
 					'Content-Type': 'application/json',
@@ -436,6 +510,9 @@ export class SSEServer {
 				const connectionId = this.getActiveConnectionId(body.connectionId);
 				if (connectionId) {
 					this.bindSessionToConnection(session.id, connectionId);
+					if (this.sessionBoundHandler) {
+						this.sessionBoundHandler(session.id, connectionId);
+					}
 				}
 
 				res.writeHead(200, {
@@ -809,7 +886,12 @@ export class SSEServer {
 		this.connections.set(connectionId, connection);
 
 		// 连接关闭时清理
-		req.on('close', () => {
+		const cleanupConnection = () => {
+			// 避免重复清理
+			if (!this.connections.has(connectionId)) {
+				return;
+			}
+
 			this.connections.delete(connectionId);
 			// 清理 sessionConnections 中指向该 connectionId 的映射
 			for (const [sessionId, connId] of this.sessionConnections.entries()) {
@@ -818,10 +900,23 @@ export class SSEServer {
 					break;
 				}
 			}
+			// 通知连接关闭处理器
+			if (this.connectionClosedHandler) {
+				this.connectionClosedHandler(connectionId);
+			}
 			this.log(`SSE 连接已关闭: ${connectionId}`, 'info');
-		});
+		};
 
+		req.on('close', cleanupConnection);
+		res.on('close', cleanupConnection);
 		this.log(`新的 SSE 连接: ${connectionId}`, 'success');
+
+		// 通知连接创建处理器(由 SSEManager 决定是否发送 agent_list)
+		if (this.connectionCreatedHandler) {
+			this.connectionCreatedHandler(connectionId, (event: SSEEvent) => {
+				connection.sendEvent(event);
+			});
+		}
 	}
 
 	/**

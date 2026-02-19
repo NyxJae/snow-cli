@@ -71,10 +71,92 @@ class SSEManager {
 	}
 
 	/**
+	 * 处理会话创建，设置初始主代理
+	 */
+	private handleSessionCreated(
+		sessionId: string,
+		connectionId: string,
+		initialAgentId?: string,
+	): void {
+		// 维护本地映射
+		this.connectionSessionMap.set(connectionId, sessionId);
+
+		// 设置初始主代理
+		let agentId = this.defaultAgentId;
+		if (initialAgentId) {
+			// 校验 initialAgentId 是否有效
+			const availableAgents = mainAgentManager.listAvailableAgents();
+			const isValid = availableAgents.some(a => a.id === initialAgentId);
+			if (isValid) {
+				agentId = initialAgentId;
+			} else {
+				this.log(
+					`初始主代理 ${initialAgentId} 无效，使用默认代理 ${this.defaultAgentId}`,
+					'info',
+				);
+			}
+		}
+
+		this.sessionAgentIds.set(sessionId, agentId);
+		this.log(`会话 ${sessionId} 初始主代理设置为: ${agentId}`, 'info');
+
+		// 发送 agent_list 事件通知客户端
+		if (this.server) {
+			const availableAgents = mainAgentManager.listAvailableAgents();
+			this.server.sendToConnection(connectionId, {
+				type: 'agent_list',
+				data: {
+					agents: availableAgents,
+					currentAgentId: agentId,
+				},
+				timestamp: new Date().toISOString(),
+			});
+		}
+	}
+
+	/**
 	 * 获取连接关联的 sessionId
 	 */
 	private getSessionIdByConnectionId(connectionId: string): string | undefined {
 		return this.connectionSessionMap.get(connectionId);
+	}
+
+	/**
+	 * 处理连接创建，发送初始 agent_list
+	 */
+	private handleConnectionCreated(
+		_connectionId: string,
+		sendEvent: (event: SSEEvent) => void,
+	): void {
+		try {
+			const agents = mainAgentManager.listAvailableAgents();
+			sendEvent({
+				type: 'agent_list',
+				data: {
+					agents,
+					currentAgentId: null,
+				},
+				timestamp: new Date().toISOString(),
+			});
+		} catch (error) {
+			this.log(
+				`连接创建后发送 agent_list 失败: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+				'error',
+			);
+		}
+	}
+
+	/**
+	 * 处理连接关闭，清理本地映射
+	 */
+	private handleConnectionClosed(connectionId: string): void {
+		// 清理 connectionSessionMap
+		if (this.connectionSessionMap.has(connectionId)) {
+			this.connectionSessionMap.delete(connectionId);
+			this.log(`已清理连接 ${connectionId} 的本地映射`, 'info');
+		}
 	}
 
 	/**
@@ -99,7 +181,7 @@ class SSEManager {
 		interactionTimeout: number = 300000,
 	): Promise<void> {
 		if (this.isRunning) {
-			this.log('SSE service is already running', 'info');
+			this.log('SSE 服务已在运行', 'info');
 			return;
 		}
 
@@ -118,9 +200,30 @@ class SSEManager {
 			await this.handleClientMessage(message, sendEvent, connectionId);
 		});
 
+		// 设置会话创建处理器(用于初始化主代理)
+		this.server.setSessionCreatedHandler(
+			(sessionId, connectionId, initialAgentId) => {
+				this.handleSessionCreated(sessionId, connectionId, initialAgentId);
+			},
+		);
+		// 同步 create/load 的会话绑定关系到本地映射,避免 switch_agent 校验误判
+		this.server.setSessionBoundHandler((sessionId, connectionId) => {
+			this.bindSessionToConnection(sessionId, connectionId);
+		});
+
+		// 设置连接创建处理器(用于发送初始 agent_list)
+		this.server.setConnectionCreatedHandler((connectionId, sendEvent) => {
+			this.handleConnectionCreated(connectionId, sendEvent);
+		});
+
+		// 设置连接关闭处理器(用于清理本地映射)
+		this.server.setConnectionClosedHandler(connectionId => {
+			this.handleConnectionClosed(connectionId);
+		});
+
 		await this.server.start();
 		this.isRunning = true;
-		this.log(`SSE service has started on port ${port}`, 'success');
+		this.log(`SSE 服务已启动,端口 ${port}`, 'success');
 	}
 
 	/**
@@ -134,7 +237,7 @@ class SSEManager {
 		await this.server.stop();
 		this.server = null;
 		this.isRunning = false;
-		this.log('SSE service has stopped', 'info');
+		this.log('SSE 服务已停止', 'info');
 	}
 
 	/**
@@ -201,16 +304,13 @@ class SSEManager {
 	 */
 	private handleInteractionResponse(message: ClientMessage): void {
 		if (!message.requestId) {
-			this.log('Interactive response missing requestId', 'error');
+			this.log('交互响应缺少 requestId', 'error');
 			return;
 		}
 
 		const pending = this.pendingInteractions.get(message.requestId);
 		if (!pending) {
-			this.log(
-				`No pending interaction requests found: ${message.requestId}`,
-				'error',
-			);
+			this.log(`未找到待处理的交互请求: ${message.requestId}`, 'error');
 			return;
 		}
 
@@ -239,7 +339,7 @@ class SSEManager {
 		sendEvent: (event: SSEEvent) => void,
 	): void {
 		if (!message.sessionId) {
-			this.log('Abort request missing sessionId', 'error');
+			this.log('中止请求缺少 sessionId', 'error');
 			return;
 		}
 
@@ -247,14 +347,14 @@ class SSEManager {
 		if (controller) {
 			// 触发中断信号
 			controller.abort();
-			this.log(`Task aborted for session: ${message.sessionId}`, 'info');
+			this.log(`会话 ${message.sessionId} 的任务已中止`, 'info');
 
 			// 发送中断确认事件
 			sendEvent({
 				type: 'message',
 				data: {
 					role: 'assistant',
-					content: 'Task has been aborted by user',
+					content: '任务已被用户中止',
 				},
 				timestamp: new Date().toISOString(),
 			});
@@ -374,7 +474,7 @@ class SSEManager {
 					this.bindSessionToConnection(currentSession.id, connectionId);
 				}
 			} catch (error) {
-				this.log('Load session failed, create new session', 'error');
+				this.log('加载会话失败,创建新会话', 'error');
 				currentSession = await sessionManager.createNewSession();
 				// 绑定 session 到当前连接
 				this.bindSessionToConnection(currentSession.id, connectionId);
@@ -684,8 +784,8 @@ class SSEManager {
 						role: 'assistant',
 						content:
 							error.message === 'Request aborted'
-								? 'Task has been aborted'
-								: 'User cancelled the interaction',
+								? '任务已被中止'
+								: '用户取消了交互',
 					},
 					timestamp: new Date().toISOString(),
 				});
@@ -794,25 +894,21 @@ class SSEManager {
 			return;
 		}
 
-		// 当客户端显式传入 sessionId 时，以路由层(sessionConnections)为准，
-		// 避免 /session/create 或 /session/load 建立的映射尚未同步到 connectionSessionMap 时被误判。
-		if (!message.sessionId) {
-			const isSessionBound = Array.from(
-				this.connectionSessionMap.values(),
-			).includes(targetSessionId);
-			if (!isSessionBound) {
-				const availableAgents = mainAgentManager.listAvailableAgents();
-				sendEvent({
-					type: 'error',
-					data: {
-						errorCode: 'session_not_found',
-						message: `Session not found or not bound: ${targetSessionId}`,
-						availableAgents,
-					},
-					timestamp: new Date().toISOString(),
-				});
-				return;
-			}
+		// 无论客户端是否显式传入 sessionId,都要求该连接当前绑定的会话与目标会话一致,
+		// 防止跨连接误操作其他会话.
+		const boundSessionId = this.connectionSessionMap.get(connectionId);
+		if (!boundSessionId || boundSessionId !== targetSessionId) {
+			const availableAgents = mainAgentManager.listAvailableAgents();
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'session_not_found',
+					message: `Session not found or not bound: ${targetSessionId}`,
+					availableAgents,
+				},
+				timestamp: new Date().toISOString(),
+			});
+			return;
 		}
 
 		// 检查 session 是否忙（有进行中的任务）

@@ -28,14 +28,19 @@
 					<!-- 聊天面板 -->
 					<div class="panel">
 						<div class="panel-header">
-							聊天界面
-							<button
-								onclick="newSession()"
-								class="header-btn"
-								title="新建会话"
-							>
-								新建会话
-							</button>
+							<span class="panel-title">聊天界面</span>
+							<div class="header-actions">
+								<select id="mainAgentSelect" class="header-select" disabled>
+									<option value="">(未连接)</option>
+								</select>
+								<button
+									onclick="newSession()"
+									class="header-btn"
+									title="新建会话"
+								>
+									新建会话
+								</button>
+							</div>
 						</div>
 						<div class="panel-body">
 							<div class="chat-box" id="chatBox"></div>

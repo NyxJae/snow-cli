@@ -144,6 +144,38 @@ body {
 	background: #333;
 }
 
+.header-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.header-select {
+	padding: 4px 8px;
+	font-size: 12px;
+	border: 1px solid #ccc;
+	border-radius: 3px;
+	background: white;
+	cursor: pointer;
+	min-width: 120px;
+	max-width: 180px;
+}
+
+.header-select:disabled {
+	background: #f0f0f0;
+	color: #999;
+	cursor: not-allowed;
+}
+
+.header-select.switching {
+	opacity: 0.6;
+	cursor: wait;
+}
+
+.panel-title {
+	flex-shrink: 0;
+}
+
 .event-count-badge {
 	display: inline-block;
 	background: #444;

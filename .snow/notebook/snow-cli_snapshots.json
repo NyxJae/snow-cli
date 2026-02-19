@@ -1,0 +1,85 @@
+{
+  "5d44de8a-d5e6-47a9-a451-3020c474883a:2": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1771478149195_7bs0m83xf"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771478149329_cgfw81aim"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771478149452_7h0fhq8s9"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771478149573_hpypjn8r8"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771478149697_iovnxgo37"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771478236512_49avnxm82"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771478236626_h1uenh7uo"
+    }
+  ],
+  "ba796024-2865-440a-8322-f2be8bfe7e7e:138": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1770979050662_42h7p1qh5",
+      "previousNote": "职责: SSE 服务端协议边界与连接管理.负责维护 SSEEventType/ClientMessage 等协议类型,建立 HTTP SSE 连接,并维护 connectionId <-> sessionId 的单对单绑定,把客户端消息分发给上层 messageHandler(通常为 SSEManager).\n不该做什么:\n- 不在本层实现主代理选择/切换逻辑,仅承载协议字段并把消息交给 SSEManager.\n- 不在本层持久化任何会话业务状态(如 currentMainAgentId/currentSessionAgentId),避免与 sessionManager/sseManager 职责重叠.\n接口摘要(协议层):\n- SSEEventType: 事件类型联合.新增扩展: agent_list,agent_switched.其他事件包括 connected,message,tool_call/tool_result,tool_confirmation_request,user_question_request,rollback_request 等.\n- ClientMessage: 客户端消息结构.新增扩展: type='switch_agent' + agentId 字段.其他消息包括 chat,image,tool_confirmation_response,user_question_response,abort,rollback.\n- AgentInfo: { id: string; name: string; description: string },用于 agent_list/error.availableAgents 下发(仅展示/选择,不包含敏感配置).\n接口摘要(连接与错误):\n- 建链成功后发送 connected 事件,其后由 SSEManager 决定是否立即推送 agent_list.\n- sessionId 绑定失败时返回 400,不再 fallback 到任意已有连接(避免跨 session 串扰与错误路由).\n- 连接断开时必须清理连接相关资源,包含 sessionConnections,避免 sessionId 残留指向无效 connectionId.\n依赖拓扑:\n- 上游: source/utils/sse/sseManager.ts 作为 messageHandler 调用方,并承载会话级主代理状态.\n- 下游: Node http createServer/IncomingMessage/ServerResponse.\n避坑指南:\n- 协议扩展必须向后兼容: 老客户端遇到未知 event.type 应静默忽略,因此新增事件不要复用旧类型语义.\n- sendEvent 的 data 字段只传业务必要字段,避免把完整 MainAgentConfig 或工具权限细节泄漏到客户端.\n- 单对单映射是核心约束: 不再支持\"同一 sessionId 多连接复用\".如果未来重启该方向,需要整体升级映射模型为 sessionId -> Set<connectionId>,并同步重做断线清理,并发一致性与广播策略评估."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771478236626_h1uenh7uo",
+      "previousNote": "职责: SSE 会话级业务管理器.负责: 维护 sessionId 与 connectionId 的绑定关系,分发客户端消息(chat,image,abort,rollback,switch_agent 等)到对话执行层,并把执行层输出封装为 SSEEvent 推送给对应连接.\\n主代理能力(已实现,客户端需对接):\\n- 连接绑定 session 后,可下发 agent_list({agents,currentAgentId}).\\n- 处理 switch_agent: 校验 agentId 格式与可用性,校验 session busy 状态,成功后更新 session->agentId 映射并推送 agent_switched({previousAgentId,currentAgentId,agentName}).\\n- 失败时推送 error,包含主代理相关 errorCode: invalid_agent_id,invalid_agent_id_format,agent_not_found(带 availableAgents),agent_busy,session_not_found.\\n接口摘要:\\n- 输入: ClientMessage(来自 source/api/sse-server.ts),包含 sessionId 可选字段;以及会话管理器(sessionManager)与主代理管理器(mainAgentManager).\\n- 输出: SSEEvent,包含 connected,message,agent_list,agent_switched,error 等.\\n依赖拓扑:\\n- 上游: source/api/sse-server.ts 负责协议层与 HTTP SSE 连接.\\n- 下游: sessionManager(会话持久化/状态),mainAgentManager(主代理配置与可用列表),对话执行器(产出 message/complete/tool_* 事件).\\n避坑指南:\\n- 主代理切换以 sessionId 为边界,不得以 connectionId 推断跨会话状态.\\n- agent_list 应在绑定/重绑定 session 后推送,客户端重连后必须等待该事件再启用选择器,避免使用过期 agents.\\n- error.availableAgents 仅用于展示/回填,不得泄漏完整代理配置(含工具权限/提示词等)."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771478149329_cgfw81aim",
+      "previousNote": "职责: SSE 客户端示例的主逻辑.负责连接管理(EventSource),统一事件分发(handleEvent),消息发送(chat,abort,rollback,tool/user_question 响应),会话列表与当前会话状态维护,以及聊天 UI 渲染.\\n接口摘要: \\n- connect()/disconnect(): 建立/关闭 SSE,维护在线状态.\\n- handleEvent(event): 按 event.type 分派到各处理分支,并更新 UI.\\n- sendMessage()/sendResponse()/...: 通过 fetch 发送客户端消息.\\n主代理扩展(本需求): \\n- 维护状态: agents: AgentInfo[], currentAgentId: string|null, isSwitching: boolean, pendingAgentId/previousAgentId(用于回滚).\\n- 处理事件: agent_list(刷新下拉,同步 currentAgentId), agent_switched(更新 currentAgentId,提示系统消息,结束 switching).\\n- 发送消息: switch_agent({agentId,sessionId}) 并在 UI 上表现 loading/回滚.\\n断线重连: \\n- onerror/close 时必须 reset agents/currentAgentId/isSwitching 并禁用选择器显示(未连接).\\n避坑指南: \\n- UI 事件(change)触发 switch_agent 时要做去抖/锁: isSwitching=true 时忽略重复切换.\\n- agent_switched 是服务端确认,客户端不得仅凭 change 事件就更新 currentAgentId(必须等确认或 error 回滚).\\n- error 事件需区分通用错误与主代理切换错误码(invalid_agent_id/_format,agent_not_found,agent_busy,session_not_found),并提供明确提示;对 agent_not_found 可利用 availableAgents 刷新/回填下拉."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771494873344_kvcdeq9mx"
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1770979050800_ws9seqhn5",
+      "previousNote": "职责: SSE 服务编排与会话交互管理.负责启动/停止 SSEServer,处理 ClientMessage(chat,image,abort,rollback,交互响应等),并与 sessionManager/useConversation 对接实现会话级对话.\n核心架构决策(会话隔离,关键约束):\n- 一个 sessionId 只对应一个 SSE 连接(不支持同 session 多连接复用).\n- 因此任何\"会话级\"状态都必须以 sessionId 为 key,且只影响该 sessionId 当前绑定的单个 connectionId.\n关键状态(本需求新增/修复):\n- sessionAgentIds: Map<string,string>,sessionId -> agentId.作为会话级主代理选择的唯一事实源,默认 defaultAgentId='general'.\n- connectionSessionMap: Map<string,string>,connectionId -> sessionId.用于替代穿透读取 (this.server as any).sessionConnections,并在断连时完成会话绑定清理.\n- pendingInteractions: 等待 tool_confirmation/user_question 的交互队列.本次修复要求 PendingInteraction 增加 sessionId 字段,busy 判定必须精确匹配 sessionId.\n本模块职责(与主代理选择相关):\n- 在 connected 后立即推送 agent_list(availableAgents),为客户端提供可选项.\n- 处理 switch_agent 客户端消息,完成会话级 agentId 切换并推送 agent_switched,或返回错误事件.\n- 统一错误事件结构,均附带 availableAgents,便于客户端恢复与重新选择.\n不该做什么:\n- 不在此处解析/加载 main-agents.toml 细节,通过 MainAgentManager 提供的查询接口获取可用代理列表与配置.\n- 不把主代理状态存成全局单例字段导致跨 session 串扰.\n接口摘要(与切换相关):\n- handleSwitchAgentRequest({ agentId },{ connectionId,sendEvent }):\n  - 先通过 connectionSessionMap 获取 sessionId,不存在则 errorCode=session_not_found.\n  - 校验 agentId: 空 -> invalid_agent_id;格式不匹配 ^[a-z0-9_-]+$ -> invalid_agent_id_format;不在 listAvailableAgents -> agent_not_found.\n  - busy 判定: 若该 sessionId 存在进行中的对话(sessionControllers)或该 sessionId 有 pendingInteractions,则 errorCode=agent_busy.\n  - 通过 MainAgentManager.getAgentConfig(agentId) 做最终存在性校验,并更新 sessionAgentIds.set(sessionId,agentId).\n  - 推送 agent_switched({ sessionId,agent:{id,name,description} }).\n错误码体系(固定枚举,客户端可依赖):\n- invalid_agent_id,invalid_agent_id_format,agent_not_found,agent_busy,session_not_found.\n依赖拓扑:\n- 依赖: source/api/sse-server.ts(协议与连接),source/utils/session/sessionManager.ts(会话创建/续接),source/utils/MainAgentManager.ts(可用代理列表与配置查询).\n- 被依赖: 启动入口(命令/服务模式)调用 start/stop,以及 SSEServer 回调.\n避坑指南:\n- busy 判定必须覆盖所有进行中的任务: 对话生成流(sessionControllers) + pendingInteractions(等待 tool_confirmation/user_question).\n- session 绑定验证: 任何需要 sessionId 的操作必须通过 connectionSessionMap 校验连接已绑定,防止\"幽灵 session\"(客户端伪造 sessionId 或断线残留).\n- 切换只影响后续新对话: 进行中的对话继续使用旧 agent 配置;若要立即生效,客户端应先 abort.\n- 错误事件统一附带 availableAgents,否则客户端无法在无 UI 的场景做自恢复.\n- agent_list/agent_switched 是协议扩展,必须允许老客户端忽略未知事件类型(向后兼容)."
+    },
+    {
+      "op": "delete",
+      "entry": {
+        "id": "notebook-1771478236626_h1uenh7uo",
+        "filePath": "source/utils/sse/sseManager.ts",
+        "note": "职责: SSE 会话级业务管理器.负责维护 sessionId <-> connectionId 的绑定镜像,分发客户端消息(chat,image,abort,rollback,switch_agent 等)到对话执行层,并把执行层输出封装为 SSEEvent 推送回对应连接.\n\n关键结论(会话绑定时序修复):\n- SSEServer 在 /session/create,/session/load 绑定会话后触发 sessionBoundHandler.\n- SSEManager.start() 必须注册 server.setSessionBoundHandler,调用自身 bindSessionToConnection 同步 connectionSessionMap,从而在严格校验 switch_agent 时避免 session_not_found 误判.\n\n接口摘要:\n- 输入: SSEServer 回调(messageHandler,connectionCreatedHandler,sessionCreatedHandler,sessionBoundHandler 等)与 sessionManager/mainAgentManager.\n- 输出: SSEEvent(connected,message,agent_list,agent_switched,error 等).\n\n依赖拓扑:\n- 上游: source/api/sse-server.ts(协议与连接).\n- 下游: source/utils/session/sessionManager.ts,source/utils/MainAgentManager.ts,对话执行器(useConversation/toolExecutor 等).\n\n避坑指南:\n- 会话隔离: 所有主代理状态与 busy 判定必须以 sessionId 为 key,禁止用 connectionId 推断跨会话状态.\n- 映射一致性: connectionSessionMap 是业务层的镜像,来源于 SSEServer 的绑定事实.不要从 (server as any).sessionConnections 穿透读取.\n- 回调职责: sessionBoundHandler 只负责同步映射,不要在回调里做额外 bind 或广播,避免重复触发与竞态.\n- 错误恢复: error.availableAgents 仅用于展示/回填,不得泄漏完整代理配置(提示词,工具权限等).",
+        "createdAt": "2026-02-19T13:17:16.625",
+        "updatedAt": "2026-02-19T17:54:33.032"
+      }
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771495044055_cbcvm3sjp"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771495044206_arra3wr1q"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771495044343_9q2dkp8qw"
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771478149195_7bs0m83xf",
+      "previousNote": "职责: 浏览器端 SSE 客户端示例(开发/联调用途),用于验证 Snow CLI 的 SSE 服务协议(connected,message,agent_list,agent_switched,error 等)与会话管理 API.\\n不该做什么: \\n- 不作为生产级前端架构,不引入复杂框架/构建工具.\\n- 不实现服务端业务逻辑,仅消费协议并展示.\\n接口摘要: \\n- 输入: EventSource(/events) 事件流 + fetch(/message,/session/*,/response) 等 HTTP 调用.\\n- 输出: DOM UI(聊天消息,状态,会话列表,主代理选择器) + 控制台/事件日志.\\n依赖拓扑: \\n- 依赖: source/api/sse-server.ts 的协议契约与 source/utils/sse/sseManager.ts 的事件/错误码实现,以及 docs/usage/zh/20.SSE服务模式.md 文档.\\n- 被依赖: 无(仅示例).\\n避坑指南: \\n- 必须对未知 event.type 做容错,避免服务端新增事件导致客户端崩溃.\\n- 断线重连时必须清理 UI 状态(禁用输入/选择器,清空 agents/currentAgentId/isSwitching),重连后等待 agent_list 再启用选择器,避免使用过期列表切换.\\n- 切换主代理必须以 sessionId 为边界,客户端已知 currentSessionId 时必须随 switch_agent 一并发送,避免依赖连接绑定产生歧义."
+    }
+  ]
+}
