@@ -12,9 +12,9 @@
     {
       "id": "notebook-1771495044343_9q2dkp8qw",
       "filePath": "requirements/",
-      "note": "职责: 需求与变更记录目录.存放功能需求、协议约束与验收标准,作为实现与回归测试的参考依据.\n\n接口摘要:\n- 输入: 产品/开发需求.\n- 输出: 可执行的实现约束(协议结构,UI 行为,错误码文案),指导 source/test/sse-client/ 示例与服务端协议演进.\n\n依赖拓扑:\n- 被依赖: 客户端示例实现(source/test/sse-client/*),以及服务端协议扩展评审.\n\n避坑指南:\n- 需求文档应成为 SSoT: 协议字段与错误码变更需同步更新对应文档,避免实现与文档漂移.\n- 标注兼容性要求: 明确 unknown event.type 静默忽略,以及 currentAgentId 可为 null 的语义.",
+      "note": "职责: 需求与变更记录目录(SSoT).存放功能需求、协议契约与验收标准,作为实现与回归测试的唯一依据.\n\n接口摘要:\n- 输入: 产品/开发需求.\n- 输出: 可执行的实现约束(协议字段,UI 行为,错误码文案,验收清单),指导:\n  - 正式 Web 客户端子项目(sse-client/)的长期实现.\n  - 浏览器测试客户端(source/test/sse-client/)的协议联调与回归.\n\n依赖拓扑:\n- 被依赖:\n  - sse-client/ 的产品实现与回归测试.\n  - source/test/sse-client/* 的示例实现与联调.\n  - 服务端 SSE 协议演进评审(source/api/sse-server.ts,source/utils/sse/sseManager.ts).\n\n避坑指南:\n- 需求文档必须保持 SSoT: 协议字段/错误码/事件类型变更,必须同步更新对应文档.\n- 标注兼容性要求: unknown event.type 必须静默忽略,避免客户端因协议扩展崩溃.\n- 明确歧义字段: 例如 currentAgentId 可为 null 的语义,以及 Git 视图隐藏区域的口径必须全篇一致.",
       "createdAt": "2026-02-19T17:57:24.343",
-      "updatedAt": "2026-02-19T17:57:24.343"
+      "updatedAt": "2026-02-19T23:40:49.131"
     }
   ],
   "requirements/SSE客户端适配主代理.md": [
@@ -24,6 +24,15 @@
       "note": "职责: SSE 客户端示例适配主代理的需求与协议约束的单一事实源.用于定义 agent_list,agent_switched,switch_agent 的数据结构,以及客户端 UI 交互规则与错误码提示策略.\n\n接口摘要:\n- 输入: 服务端协议能力(见 source/api/sse-server.ts,source/utils/sse/sseManager.ts).\n- 输出: 客户端实现准则(source/test/sse-client/ 下的 index.html,style.css,app.js),以及后续迭代的验收标准.\n\n依赖拓扑:\n- 被依赖: source/test/sse-client/app.js(事件处理与状态机),UI 文件(index.html/style.css).\n\n避坑指南:\n- currentAgentId 可为 null: 表示连接未绑定会话或服务端未确认当前代理,客户端 UI 必须能处理并进入预选或占位状态.\n- 错误消息语言策略: error.message 可能为英文或开发者向信息,客户端应优先用 errorCode 映射用户友好中文文案,仅在未知 errorCode 时回退展示 message.\n- 协议扩展需向后兼容: 客户端对未知 event.type 静默忽略,服务端新增事件不要复用旧类型语义.",
       "createdAt": "2026-02-19T17:54:33.344",
       "updatedAt": "2026-02-19T17:54:33.344"
+    }
+  ],
+  "requirements/全平台网页版Snow SSE客户端需求.md": [
+    {
+      "id": "notebook-1771515649312_x6aph0c29",
+      "filePath": "requirements/全平台网页版Snow SSE客户端需求.md",
+      "note": "职责: 正式 Web SSE 客户端(sse-client/)的唯一需求基线(SSoT).定义信息架构,UI 布局规则,本地控制 API 契约,以及验收标准.\n\n接口摘要:\n- 输入: 用户目标与现有 SSE 服务端能力边界.\n- 输出:\n  - Web 客户端必须实现的页面结构(聊天视图 vs Git 视图平级切换),弹窗交互(审批/提问),以及 Git 基础能力.\n  - 本地控制 API 的最小端点集合(/api/servers...).\n\n依赖拓扑:\n- 被依赖: sse-client/ 子项目的 UI/状态/控制 API 设计与实现.\n- 参考: docs/usage/zh/20.SSE服务模式.md(服务端协议),requirements/SSE客户端适配主代理.md(主代理事件/错误码).\n\n避坑指南:\n- 本文档为最终口径,与任何旧描述冲突时以本文档为准.\n- Git 视图隐藏范围,日志弹窗仅事件流,TODO 常驻等规则必须在实现中严格对齐.\n- 认证口径为 Web 入口门禁,不是要求改造 Snow SSE 各业务端点逐请求鉴权.",
+      "createdAt": "2026-02-19T23:40:49.312",
+      "updatedAt": "2026-02-19T23:40:49.312"
     }
   ],
   "source/api/": [
@@ -111,18 +120,18 @@
     {
       "id": "notebook-1771478149195_7bs0m83xf",
       "filePath": "source/test/sse-client/",
-      "note": "职责: 浏览器端 SSE 客户端示例(开发/联调用途),用于验证 Snow CLI 的 SSE 服务协议(connected,message,agent_list,agent_switched,error 等)与会话管理 API.\n\n不该做什么:\n- 不作为生产级前端架构,不引入复杂框架/构建工具.\n- 不实现服务端业务逻辑,仅消费协议并展示.\n\n接口摘要:\n- 输入: EventSource(/events) 事件流 + fetch(/message,/session/*,/response) 等 HTTP 调用.\n- 输出: DOM UI(聊天消息,状态,会话列表,主代理选择器) + 控制台/事件日志.\n\n依赖拓扑:\n- 依赖: source/api/sse-server.ts 的协议契约,source/utils/sse/sseManager.ts 的事件/错误码实现,docs/usage/zh/20.SSE服务模式.md,requirements/SSE客户端适配主代理.md.\n- 被依赖: 无(仅示例).\n\n避坑指南:\n- 兼容性: 必须对未知 event.type 静默忽略,避免服务端新增事件导致客户端崩溃.\n- 断线重连: 断线时必须清理 agents/currentAgentId/isSwitchingAgent 等连接态,并禁用选择器;但可选择保留 preferredAgentIdForNewSession,便于重连后新建会话继续使用预选主代理.\n- 主代理切换状态机: UI 不得仅凭 select change 更新 currentAgentId,必须等待 agent_switched 确认;切换失败(包括 error 无 errorCode)必须回滚到 lastConfirmedAgentId 并解锁 isSwitchingAgent/requestedAgentId,否则 UI 会卡死.\n- 会话边界: 切换主代理必须以 sessionId 为边界,客户端已知 currentSessionId 时必须随 switch_agent 一并发送,避免依赖连接绑定产生歧义.",
+      "note": "职责: 浏览器端 SSE 客户端示例(开发/联调用途),用于验证 Snow CLI 的 SSE 服务协议(connected,message,agent_list,agent_switched,error 等)与会话管理 API.\n\n不该做什么:\n- 不作为生产级前端架构,不引入复杂框架/构建工具.\n- 不实现服务端业务逻辑,仅消费协议并展示.\n\n接口摘要:\n- 输入: EventSource(/events) 事件流 + fetch(/message,/session/*) 等 HTTP 调用.\n- 输出: DOM UI(聊天消息,状态,会话列表,主代理选择器) + 控制台/事件日志.\n\n依赖拓扑:\n- 依赖: source/api/sse-server.ts 的协议契约,source/utils/sse/sseManager.ts 的事件/错误码实现,docs/usage/zh/20.SSE服务模式.md,requirements/SSE客户端适配主代理.md.\n- 被依赖: 无(仅示例).\n\n避坑指南:\n- 兼容性: 必须对未知 event.type 静默忽略,避免服务端新增事件导致客户端崩溃.\n- 断线重连: 断线时必须清理 agents/currentAgentId/isSwitchingAgent 等连接态,并禁用选择器;但可选择保留 preferredAgentIdForNewSession,便于重连后新建会话继续使用预选主代理.\n- 主代理切换状态机: UI 不得仅凭 select change 更新 currentAgentId,必须等待 agent_switched 确认;切换失败(包括 error 无 errorCode)必须回滚到 lastConfirmedAgentId 并解锁 isSwitchingAgent/requestedAgentId,否则 UI 会卡死.\n- 会话边界: 切换主代理必须以 sessionId 为边界,客户端已知 currentSessionId 时必须随 switch_agent 一并发送,避免依赖连接绑定产生歧义.",
       "createdAt": "2026-02-19T13:15:49.195",
-      "updatedAt": "2026-02-19T17:57:24.465"
+      "updatedAt": "2026-02-20T00:02:06.436"
     }
   ],
   "source/test/sse-client/app.js": [
     {
       "id": "notebook-1771478149329_cgfw81aim",
       "filePath": "source/test/sse-client/app.js",
-      "note": "职责: 浏览器端 SSE 客户端示例的主逻辑.负责连接管理(EventSource),统一事件分发(handleEvent),消息发送(chat,abort,rollback,tool/user_question 响应,switch_agent),会话列表与当前会话状态维护,以及聊天 UI 渲染.\n\n主代理扩展(已落地的状态机约束):\n- 状态字段: agents,currentAgentId,lastConfirmedAgentId,isSwitchingAgent,requestedAgentId,preferredAgentIdForNewSession.\n- 原则: UI 不得仅凭 select change 就更新 currentAgentId,必须等待服务端 agent_switched 确认;失败则回滚到 lastConfirmedAgentId.\n\n接口摘要:\n- 输入: EventSource(/events) 推送(agent_list,agent_switched,error 等) + fetch(/message,/session/create,/session/load,/response).\n- 输出: DOM UI(主代理选择器,系统消息,事件日志).\n\n依赖拓扑:\n- 依赖: source/api/sse-server.ts 的协议契约,source/utils/sse/sseManager.ts 的错误码与事件实现,requirements/SSE客户端适配主代理.md.\n- 被依赖: 无(仅示例).\n\n避坑指南:\n- 防 UI 卡死: 切换中收到 error 时,即使 errorCode 缺失也必须执行回滚与解锁(currentAgentId=lastConfirmedAgentId,isSwitchingAgent=false,requestedAgentId=null,renderMainAgentSelect),否则选择器会永久 disabled.\n- 网络异常鲁棒: switch_agent 发送失败提示使用 error?.message || String(error),覆盖非 Error 抛出场景.\n- 预选逻辑: 无 sessionId 时允许预选 preferredAgentIdForNewSession,仅在新建会话时作为 initialAgentId 传给服务端,不要提前发送 switch_agent.\n- 向后兼容: handleEvent 必须对未知 event.type 静默忽略,避免服务端协议扩展导致示例崩溃.",
+      "note": "职责: 浏览器端 SSE 客户端示例的主逻辑.负责连接管理(EventSource),统一事件分发(handleEvent),消息发送(chat,abort,rollback,tool/user_question 响应,switch_agent),会话列表与当前会话状态维护,以及聊天 UI 渲染.\n\n主代理扩展(已落地的状态机约束):\n- 状态字段: agents,currentAgentId,lastConfirmedAgentId,isSwitchingAgent,requestedAgentId,preferredAgentIdForNewSession.\n- 原则: UI 不得仅凭 select change 就更新 currentAgentId,必须等待服务端 agent_switched 确认;失败则回滚到 lastConfirmedAgentId.\n\n接口摘要:\n- 输入: EventSource(/events) 推送(agent_list,agent_switched,error 等) + fetch(/message,/session/create,/session/load) 等 HTTP 调用.\n- 输出: DOM UI(主代理选择器,系统消息,事件日志).\n\n依赖拓扑:\n- 依赖: source/api/sse-server.ts 的协议契约,source/utils/sse/sseManager.ts 的错误码与事件实现,requirements/SSE客户端适配主代理.md.\n- 被依赖: 无(仅示例).\n\n避坑指南:\n- 防 UI 卡死: 切换中收到 error 时,即使 errorCode 缺失也必须执行回滚与解锁(currentAgentId=lastConfirmedAgentId,isSwitchingAgent=false,requestedAgentId=null,renderMainAgentSelect),否则选择器会永久 disabled.\n- 网络异常鲁棒: switch_agent 发送失败提示使用 error?.message || String(error),覆盖非 Error 抛出场景.\n- 预选逻辑: 无 sessionId 时允许预选 preferredAgentIdForNewSession,仅在新建会话时作为 initialAgentId 传给服务端,不要提前发送 switch_agent.\n- 向后兼容: handleEvent 必须对未知 event.type 静默忽略,避免服务端协议扩展导致示例崩溃.",
       "createdAt": "2026-02-19T13:15:49.329",
-      "updatedAt": "2026-02-19T17:54:33.171"
+      "updatedAt": "2026-02-20T00:02:06.565"
     }
   ],
   "source/test/sse-client/dialogs.js": [
@@ -294,6 +303,200 @@
       "note": "职责: 生成主代理和子代理的系统环境上下文信息,包括平台,shell,工作目录和时间信息.\n接口摘要: 无参数输入,输出包含系统环境信息的字符串.\n关键设计决策:\n- 时间戳只放置于系统环境信息中(北京时间,精确到分钟),不在每条工具返回和 user 消息中添加.\n依赖拓扑:\n- 被 MainAgentManager.ts,subAgentExecutor.ts 调用.\n避坑指南:\n- MUST 使用北京时间(UTC+8).\n- 本文件不应引入任何 UI 导航状态(showMcpPanel,mcpPanelSource)或 screen 逻辑.\n- 本文件也不应承担\"MCP 服务禁用\"或\"代理工具权限\"等配置逻辑,仅提供系统环境上下文.\n备注:\n- 与\"流式 API idle timeout/断开后丢弃\"无关.不得通过提示词或上下文注入来替代真实的 stream idle timeout 机制(必须由 api adapters + utils/core 代码层保障).",
       "createdAt": "2026-02-10T11:30:45.812",
       "updatedAt": "2026-02-13T11:53:45.193"
+    }
+  ],
+  "sse-client/": [
+    {
+      "id": "notebook-1771515825742_q2ijvoqdm",
+      "filePath": "sse-client/",
+      "note": "职责: 正式 Web SSE 客户端子项目(PC + 手机协同),目录为 `sse-client/`.\n- Web UI(深色,移动优先)用于多服务端 Tab,会话,聊天,TODO,日志,Git 视图.\n- 本地 Node 控制 API(同源)用于启动/停止 Snow SSE 进程,以及执行项目级 Git 操作.\n\n技术栈决策(少依赖,可演进):\n- 主方案(推荐): TypeScript + 原生 DOM(ESM) + 轻量 store + Node.js http.\n  - 原因: 零重框架锁定,依赖最少,可逐步演进组件/状态层,长期维护成本最低.\n- 备选 A: TypeScript + 原生 DOM + esbuild 仅做 bundling(无框架).\n  - 适用: 需要单文件部署/减少模块请求数时.\n- 备选 B(不推荐,除非后续明确): Preact/React.\n  - 风险: 依赖与构建链膨胀,且会迫使引入更多生态(路由/状态/组件库).\n\n不该做什么:\n- 不替代 Snow CLI 核心(不改造对话执行/工具系统),仅作为可视化入口.\n- 不引入重前端框架/大型状态管理/组件库.\n- 不将认证扩展为对 Snow SSE 各业务端点的逐请求鉴权(仅 Web 入口门禁).\n\n接口摘要:\n- 输入:\n  - Snow SSE 服务端协议: `GET /events`(SSE),`POST /message`,`/session/*`.\n  - 控制面 API(同源): `/api/auth/*`,`/api/servers*`,`/api/git/*`.\n- 输出:\n  - 浏览器 UI + 对多个 Snow SSE 服务的连接与状态展示.\n\n依赖拓扑:\n- 依赖:\n  - Node.js runtime(仓库既有环境).\n  - Snow SSE 服务进程(snow --sse/--sse-daemon).\n  - git 可执行文件(用于 Git 视图能力).\n  - requirements/全平台网页版Snow SSE客户端需求.md(需求基线).\n- 被依赖: 无(独立子项目),但会被集成测试与文档引用.\n\n避坑指南:\n- 多服务端隔离: 任意可变状态必须以 serverId(tab) 分片,禁止共享 currentSessionId/yolo 等.\n- 协议向后兼容: unknown SSE event.type 必须静默忽略.\n- 控制面安全: 所有 workDir/filePath 必须严格校验,所有 child_process 必须用参数数组(execFile/spawn)防注入.\n- 进程与端口: 需要处理端口占用,孤儿进程,进程崩溃检测与列表自愈(刷新时重建状态).",
+      "createdAt": "2026-02-19T23:43:45.742",
+      "updatedAt": "2026-02-20T00:00:01.824"
+    }
+  ],
+  "sse-client/src/server/": [
+    {
+      "id": "notebook-1771515825877_9cmsogs35",
+      "filePath": "sse-client/src/server/",
+      "note": "职责: 本地 Node 控制面(同源).负责:\n- 提供 /api/servers* 控制 API,启动/停止/列举多个 Snow SSE 进程(按 workDir 隔离).\n- 承载 Web 入口登录门禁(基于 ~/.snow/sse-config.json).\n- 对每个 workDir 提供 Git 基础能力 API(init,status,stage/unstage,diff,commit).\n- 静态资源托管: 为手机端提供同一 URL 访问的 Web UI.\n\n不该做什么:\n- 不实现 Snow SSE 的业务逻辑(聊天/会话/工具执行),不替代 Snow SSE 进程.\n- 不把认证扩展为对 Snow SSE 各业务端点的逐请求鉴权(仅 Web 入口门禁).\n\n接口摘要:\n- 输入: 浏览器 fetch 请求(同源,携带 session cookie),以及本机 child_process 执行 snow 与 git.\n- 输出: JSON 响应(统一 ApiResponse) + 静态资源.\n\n关键架构约束(本轮定稿,必须落实):\n1) Auth API 契约与返回口径固定:\n- POST /api/auth/login,/api/auth/logout,GET /api/auth/me.\n- 密码错误: HTTP 200 + success=false,errorCode=invalid_password,message=密码错误.\n- me 未登录: HTTP 200 + success=true,data:{isLoggedIn:false}.\n2) 登录态必须浏览器会话级:\n- 推荐使用 HttpOnly session cookie,且不设置 expires/max-age.\n- 禁止 localStorage 等跨会话持久化.\n- 浏览器会话结束后重新打开页面,me 必须返回 isLoggedIn=false.\n3) /api/servers/start 并发串行:\n- 后一个请求必须等待前一个完成后再扫描端口(关键区: 扫描+启动+落库).\n4) Git 口径:\n- status 修改区必须包含: 已修改未暂存 + 未跟踪 + 已删除未暂存.\n\n依赖拓扑:\n- 上游: sse-client/src/web/ 通过同源访问.\n- 下游: Node http/fs/path/os,child_process, Snow CLI 可执行文件(snow),git.\n\n避坑指南:\n- 进程管理: 必须记录 pid/port/workDir 映射,并处理崩溃/端口占用/重复启动.\n- 安全: 所有 workDir/filePath 必须严格校验,child_process 必须用参数数组(execFile/spawn),禁止 shell 拼接.\n- 认证会话存储: 禁止把 session token 写入磁盘(仅内存 Map + 可选 TTL).",
+      "createdAt": "2026-02-19T23:43:45.877",
+      "updatedAt": "2026-02-20T01:48:26.992"
+    }
+  ],
+  "sse-client/src/server/http/": [
+    {
+      "id": "notebook-1771516217767_7wquqarsy",
+      "filePath": "sse-client/src/server/http/",
+      "note": "职责: sse-client 控制面 HTTP 服务内核.\n- 创建并启动本地 HTTP server(同源),托管静态 Web 资源,并将 /api/* 路由分发给 routes 层.\n- 提供最小中间件能力: JSON body 解析,错误捕获,统一响应封装(ApiResponse),CORS/缓存头(按需求),session/cookie.\n\n接口摘要:\n- 输入: Node http.IncomingMessage/ServerResponse.\n- 输出: 静态资源响应或 JSON(ApiResponse).\n\n推荐文件划分(便于长期维护):\n- server.ts/createServer.ts: create/start/stop.\n- router.ts: method+path 分发.\n- bodyParser.ts: 统一 JSON parse + size limit.\n- cookies.ts: cookie parse + set/clear session cookie(集中封装).\n- responses.ts: ok()/fail() 统一输出(ApiResponse).\n\n与本轮需求强相关的约束:\n- Auth 返回口径固定为 HTTP 200 + success 字段;HTTP 层不得擅自把 invalid_password 或未登录映射为 401/403.\n- 登录态必须浏览器会话级:\n  - 推荐使用 HttpOnly session cookie,且不设置 expires/max-age(浏览器关闭即失效).\n  - 禁止引导前端使用 localStorage 保存 token.\n\n依赖拓扑:\n- 上游: sse-client/src/web/ 同源访问.\n- 下游: routes/*,shared/contracts/*.\n\n避坑指南:\n- 安全: HTTP 层不可直接拼接命令行或路径,所有校验与执行在 routes/services.\n- JSON 解析必须有 size limit(建议 1MB)避免误操作导致内存膨胀.\n- cookie 解析与设置必须集中封装,避免各路由重复实现造成不一致(尤其是 Max-Age/Expires 的误设置).\n- 统一错误捕获必须覆盖同步与 Promise reject,避免未捕获异常导致控制面进程退出.",
+      "createdAt": "2026-02-19T23:50:17.767",
+      "updatedAt": "2026-02-20T01:50:02.264"
+    }
+  ],
+  "sse-client/src/server/routes/": [
+    {
+      "id": "notebook-1771516217926_jl610bu9d",
+      "filePath": "sse-client/src/server/routes/",
+      "note": "职责: 控制面 API 路由层.定义 /api/* 端点,做请求参数校验与 DTO 映射,调用 services 层,并返回统一响应结构(ApiResponse).\n\n推荐文件划分(后续实现时按端点拆分):\n- authRoutes.ts: POST /api/auth/login,POST /api/auth/logout,GET /api/auth/me.\n- serversRoutes.ts: GET /api/servers,POST /api/servers/start,POST /api/servers/stop,POST /api/servers/stop-all.\n- gitRoutes.ts: /api/git/* (init,status,stage,unstage,diff,commit).\n- index.ts: 注册 routes 到 http router.\n\n接口摘要:\n- 输入: HTTP 请求(JSON body,cookie).\n- 输出: HTTP 200 JSON:\n  - 成功: { success:true,data? }.\n  - 失败: { success:false,errorCode,message }.\n\n关键契约(必须严格遵守):\n- Auth:\n  - 禁止使用 401/403 表达未登录与密码错误(需求固定为 HTTP 200 + success 标志).\n  - login 密码错误必须返回: success=false,errorCode=invalid_password,message=密码错误.\n  - me 未登录必须返回: success=true,data:{isLoggedIn:false}.\n- Servers:\n  - POST /api/servers/start 必须接入串行队列(实现层在 services),routes 不得并发触发端口扫描.\n- Git:\n  - status 修改区范围固定包含: modified-unstaged + untracked + deleted-unstaged.\n\n依赖拓扑:\n- 依赖: server/services/*,server/utils/*,shared/contracts/*,shared/errors.\n- 被依赖: server/http/*.\n\n避坑指南:\n- 参数校验必须覆盖: workDir 必须绝对路径且禁止路径穿越;port/timeoutMs 必须为合法整数范围;git filePath 必须是相对路径.\n- 错误映射必须统一: services 抛 DomainError -> routes 映射为 {success:false,errorCode,message}.\n- 安全: routes 层禁止拼接 shell 命令,所有执行都在 services 层且必须使用参数数组(execFile/spawn).",
+      "createdAt": "2026-02-19T23:50:17.926",
+      "updatedAt": "2026-02-20T01:51:44.347"
+    }
+  ],
+  "sse-client/src/server/services/": [
+    {
+      "id": "notebook-1771516218068_iv4u5gk1l",
+      "filePath": "sse-client/src/server/services/",
+      "note": "职责: 控制面业务服务层(核心逻辑).\n- 进程管理: 启动/停止/枚举 Snow SSE 进程,维护 workDir <-> port <-> pid 的状态.\n- Git 服务: 在指定 workDir 执行安全的 git 命令(init,status,stage/unstage,diff,commit).\n- 认证服务: 读取 ~/.snow/sse-config.json 校验密码,并维护浏览器会话级登录态.\n\n推荐文件划分(后续实现时按职责拆分):\n- authService.ts: login/logout/me + session token 管理(只做 Web 门禁,不触碰 Snow SSE 端点).\n- serversService.ts: list/start/stop/stopAll + 端口扫描 + snow 进程 spawn.\n- gitService.ts: init/status/stage/unstage/diff/commit(严格相对路径校验).\n- index.ts: 仅导出 service 实例或 factory.\n\n接口摘要:\n- 输入: 结构化参数(workDir,port,timeoutMs,filePaths,message,password等).\n- 输出: 结构化结果或抛出领域错误(DomainError).\n\n必须落实的架构约束(本轮定稿):\n1) /api/servers/start 并发串行:\n- 必须在 services 层实现全局互斥/队列.\n- 关键区包含: 端口扫描 + 启动 + 写入运行中列表.\n- 后一个 start 必须等待前一个完成后再扫描端口.\n2) Auth 登录态(浏览器会话级):\n- 推荐: server 生成 session token,通过 HttpOnly session cookie 下发(不设置 expires/max-age).\n- server 侧会话存储: in-memory Map(token->metadata) + 可选 TTL 清理.\n- me 未登录返回 success=true + isLoggedIn=false(不抛错),login 密码错误返回 invalid_password.\n3) Git 修改区口径固定:\n- status 必须包含: modified-unstaged + untracked + deleted-unstaged.\n\n依赖拓扑:\n- 依赖: server/storage/*(servers 可持久化,auth sessions 建议仅内存),server/utils/*(校验/安全/child_process/队列),shared/errors.\n- 被依赖: server/routes/*.\n\n避坑指南:\n- 跨平台: Windows 路径与 shell 行为差异,必须使用 spawn/execFile 参数数组,避免拼接 shell.\n- 并发: 除 start 串行外,同一 workDir 的 git 操作也建议互斥,至少避免 git index.lock 冲突.\n- 可观测性: 日志中禁止输出 password,session token;错误 details 仅用于调试.",
+      "createdAt": "2026-02-19T23:50:18.068",
+      "updatedAt": "2026-02-20T01:51:44.191"
+    }
+  ],
+  "sse-client/src/server/storage/": [
+    {
+      "id": "notebook-1771516218216_dnvsa7uw8",
+      "filePath": "sse-client/src/server/storage/",
+      "note": "职责: 控制面持久化与状态存储.\n\n建议拆分存储语义(避免与需求冲突):\n- servers 存储(可落盘): 保存运行中服务端列表(端口,pid,workDir,displayName,startedAt,lastSeen),用于页面刷新后恢复 UI.\n- auth sessions 存储(默认不落盘): 浏览器会话级登录态建议仅内存持有,由 session cookie 驱动,浏览器关闭即失效.\n\n推荐文件划分(后续实现时):\n- serversStore.ts: load/save/list/upsert/remove + 原子写.\n- authSessionsStore.ts: in-memory Map(token->metadata) + revoke/sweep.\n\n接口摘要:\n- 输入: servers/authSessions 等实体.\n- 输出:\n  - servers: JSON 文件(建议 ~/.snow/sse-web-client/servers.json).\n  - authSessions: in-memory.\n\n依赖拓扑:\n- 被依赖: server/services/*.\n\n避坑指南:\n- 原子写: 写文件必须使用临时文件 + rename.\n- schema 兼容: 新增字段必须可选并提供默认值.\n- 安全: 禁止把明文 password 或 session token 写入磁盘;错误 details 也不得包含敏感信息.",
+      "createdAt": "2026-02-19T23:50:18.216",
+      "updatedAt": "2026-02-20T01:51:44.485"
+    }
+  ],
+  "sse-client/src/server/utils/": [
+    {
+      "id": "notebook-1771516218375_eeoe2ele6",
+      "filePath": "sse-client/src/server/utils/",
+      "note": "职责: 控制面通用工具.\n- 参数与路径校验(绝对路径,禁止路径穿越,相对文件路径白名单).\n- 端口扫描与占用检测.\n- child_process 调用封装(spawn/execFile),统一超时,stdout/stderr 截断.\n- 并发互斥/队列工具(供 services/start 串行化复用).\n\n推荐文件划分(后续实现时):\n- validatePaths.ts: validateWorkDir,validateRelativeFilePath.\n- portScanner.ts: findAvailablePort(basePort,maxAttempts,isPortFree).\n- processRunner.ts: execFileWithTimeout,spawnWithTimeout.\n- asyncMutex.ts: AsyncMutex/runExclusive.\n\n接口摘要:\n- 输入: 字符串/数字/命令参数.\n- 输出: 校验后的值或抛错.\n\n与本轮需求强相关的约束:\n- 端口扫描必须被串行队列保护,避免并发 start 互相抢端口.\n- workDir 必须绝对路径,且禁止 '..' 穿越;手机端输入 Windows 路径需兼容 'F:/...' 形式.\n\n依赖拓扑:\n- 被依赖: services/*(主要),routes/*(少量校验辅助).\n\n避坑指南:\n- 任何来自 web 的字符串都必须经过这里的校验,禁止在 service 内部临时拼 patch.\n- child_process 必须使用参数数组,禁止 shell:true.\n- Mutex/Queue 必须 try/finally release,否则会导致 start 永久阻塞.",
+      "createdAt": "2026-02-19T23:50:18.375",
+      "updatedAt": "2026-02-20T01:51:44.610"
+    }
+  ],
+  "sse-client/src/shared/": [
+    {
+      "id": "notebook-1771515826135_hxgd7zhxi",
+      "filePath": "sse-client/src/shared/",
+      "note": "职责: sse-client 子项目内部共享的类型与协议定义(仅 TypeScript types).\n- 本地控制 API 的 request/response DTO(ApiResponse + auth/servers/git).\n- Web UI 与 server 侧共享的 errorCode 枚举与最小错误结构(DomainError).\n\n不该做什么:\n- 不依赖 Snow CLI 的 source/api 类型(避免跨包耦合与编译复杂度).\n- 不放运行时代码(纯 types/常量枚举).\n\n接口摘要:\n- 输入: requirements/全平台网页版Snow SSE客户端需求.md 的契约.\n- 输出: 稳定的 TS 类型,供 web/server 双端编译期约束.\n\n关键契约(本轮定稿):\n- Auth:\n  - login/logout/me 三端点固定.\n  - 字段名必须为 isLoggedIn(禁止 loggedIn 等替代).\n  - password 错误必须走 errorCode=invalid_password,且 HTTP 200.\n- Servers:\n  - start 字段名 workDir,port,timeoutMs.\n  - 并发 start 串行是实现约束,但 DTO 无需暴露锁状态.\n- Git:\n  - DiffViewer breakpoint 1200px 是 UI 契约,DTO 不承载.\n  - status 结果必须可表达 deleted-unstaged(已删除未暂存).\n\n依赖拓扑:\n- 被依赖: sse-client/src/server/*, sse-client/src/web/*.\n\n避坑指南:\n- 向后兼容: 新增字段必须可选.\n- errorCode 稳定性: 一旦发布不可随意更名;未知 code 前端兜底 message.\n- 禁止把 token/password 相关字段引入 contracts,避免误用与泄漏.",
+      "createdAt": "2026-02-19T23:43:46.135",
+      "updatedAt": "2026-02-20T01:48:27.282"
+    }
+  ],
+  "sse-client/src/shared/contracts/": [
+    {
+      "id": "notebook-1771516264548_jm7lqob06",
+      "filePath": "sse-client/src/shared/contracts/",
+      "note": "补充: Git 协议建议.\n- 第一阶段建议 server API 直接返回 unified diff 文本,前端 DiffViewer 渐进增强.\n- 后续如需更强的 UI(行内评论/跳转),再升级为结构化 diff DTO(保持向后兼容,新增字段可选).",
+      "createdAt": "2026-02-19T23:51:04.548",
+      "updatedAt": "2026-02-19T23:51:04.548"
+    },
+    {
+      "id": "notebook-1771516219540_xwornorap",
+      "filePath": "sse-client/src/shared/contracts/",
+      "note": "职责: sse-client 内部协议合同(contracts,TypeScript types).作为 web 与 server 双端的编译期约束,确保 API 契约与错误码稳定.\n\n接口摘要:\n- 输出: DTO types.\n  - Control API DTO: /api/auth/*,/api/servers*,/api/git/*.\n  - Snow SSE DTO: 仅抽取 Web 客户端实际消费的 SSEEvent/ClientMessage(unknown event.type 必须可被忽略).\n\n必须固化的 Control API 契约(与 requirements/全平台网页版Snow SSE客户端需求.md 一致):\n- Auth:\n  - POST /api/auth/login.\n    - 成功: HTTP 200 + { success:true }.\n    - 密码错误: HTTP 200 + { success:false,errorCode:'invalid_password',message:'密码错误' }.\n  - POST /api/auth/logout.\n    - 成功: HTTP 200 + { success:true }.\n  - GET /api/auth/me.\n    - 未登录: HTTP 200 + { success:true,data:{ isLoggedIn:false } }.\n    - 已登录: HTTP 200 + { success:true,data:{ isLoggedIn:true } }.\n  - 约束: 浏览器会话级登录态,禁止 localStorage 跨会话持久化.\n- Servers:\n  - GET /api/servers.\n  - POST /api/servers/start(字段: workDir,port,timeoutMs).\n  - POST /api/servers/stop,/api/servers/stop-all.\n  - 约束: start 并发请求必须串行处理(后一个等待前一个完成后再扫描端口).\n- Git(项目级,以 workDir 或 serverId 作为隔离边界):\n  - status 必须覆盖 3 类修改区: 已修改未暂存 + 未跟踪 + 已删除未暂存.\n  - diff 第一阶段建议返回 unified diff text;后续如需结构化 diff,必须保持向后兼容(新增字段可选).\n\n依赖拓扑:\n- 被依赖: sse-client/src/server/routes, sse-client/src/server/services, sse-client/src/web/services, sse-client/src/web/state.\n\n避坑指南:\n- 字段命名必须与需求一致(如 isLoggedIn,timeoutMs,workDir),不要使用 loggedIn 等替代名.\n- 向后兼容: DTO 新增字段必须可选,避免破坏旧页面/旧 server.\n- errorCode 稳定性: 一旦发布不可随意更名;客户端必须对未知 errorCode 做兜底展示.",
+      "createdAt": "2026-02-19T23:50:19.540",
+      "updatedAt": "2026-02-20T01:41:59.709"
+    }
+  ],
+  "sse-client/src/shared/errors/": [
+    {
+      "id": "notebook-1771516219690_9qehcnsq2",
+      "filePath": "sse-client/src/shared/errors/",
+      "note": "职责: sse-client 内部错误码与错误对象规范.\n- 定义 Control API errorCode 枚举(servers/auth/git).\n- 定义统一的 DomainError(ApiError) 结构,用于 server/services 抛出并在 routes 层映射.\n\n接口摘要:\n- 输入: 原始错误.\n- 输出: 结构化错误({ errorCode,message,details? }).\n\n错误码分层(建议,保持稳定):\n- Auth:\n  - invalid_password.\n  - unauthorized(可选,仅用于内部,但本需求未使用 401,仍返回 HTTP 200).\n- Servers:\n  - invalid_work_dir,port_in_use,start_failed,stop_failed.\n  - start_in_progress(可选,当选择显式返回而非排队时使用;当前需求倾向排队串行,不强制需要).\n- Git:\n  - git_not_installed,repo_not_initialized,git_command_failed,invalid_file_path.\n\n文案与返回口径(需求固定):\n- login 密码错误必须返回 message=密码错误,且 HTTP 200.\n- me 未登录不应返回 errorCode,而是 success=true,data:{isLoggedIn:false}.\n\n依赖拓扑:\n- 被依赖: sse-client/src/server/services, sse-client/src/server/routes, sse-client/src/web/services.\n\n避坑指南:\n- errorCode 稳定性: 一旦发布不可随意更名,否则前端映射会失效.\n- details 仅用于调试,不得包含 password/session token.\n- 未知 errorCode: Web 端必须兜底展示 message,同时保留 errorCode 便于排查.",
+      "createdAt": "2026-02-19T23:50:19.690",
+      "updatedAt": "2026-02-20T01:42:55.430"
+    }
+  ],
+  "sse-client/src/web/": [
+    {
+      "id": "notebook-1771516241433_9nd0jazox",
+      "filePath": "sse-client/src/web/",
+      "note": "职责补充(架构约束):\n- 采用\"渲染函数 + 小组件\"的模式,避免引入虚拟 DOM 框架.\n- 对复杂交互(会话管理弹窗,提问弹窗,Git diff)优先采用 view-model(纯数据)驱动渲染,减少直接 DOM 操作的分支.\n\n避坑指南补充:\n- 事件日志与 TODO: 只消费已收到的 SSE 事件,不新增后端日志查询 API(需求排除项).\n- unknown event.type: 必须在统一分发层忽略,不要在各视图重复写 switch.\n\n扩展点:\n- 未来若要引入微型模板/组件库,必须先证明其可被 tree-shake 且不引入运行时大依赖.",
+      "createdAt": "2026-02-19T23:50:41.433",
+      "updatedAt": "2026-02-19T23:50:41.433"
+    },
+    {
+      "id": "notebook-1771515826002_se55c2j3t",
+      "filePath": "sse-client/src/web/",
+      "note": "职责: 浏览器端 UI 与状态管理(移动优先,深色).负责:\n- 多服务端 Tab 管理,每 Tab 独立的会话侧栏 + 主区(聊天视图/Git 视图平级切换).\n- SSE 通信: 每个服务端维护 EventSource 连接与事件分发,并通过 fetch 调用服务端 /message,/session/* 等 HTTP API.\n- 交互弹窗: 审批弹窗,提问弹窗(单选/多选/编辑某条选项/自定义输入/取消).\n- TODO 常驻区(可滚动)与当前会话事件日志弹窗(仅展示已收到 SSE 事件流).\n\n不该做什么:\n- 不引入重框架或复杂编译链;优先原生 DOM + TypeScript 模块.\n- 不假设 SSE 事件类型固定不变;必须对未知 event.type 容错忽略.\n\n关键架构约束(本轮定稿,必须落实):\n1) 登录态与门禁:\n- 登录态以 GET /api/auth/me 为唯一事实源.\n- 禁止 localStorage 持久化登录态.\n- 页面启动/刷新必须先调用 me: 未登录(isLoggedIn=false)则仅展示 LoginView.\n- login 密码错误是 HTTP 200 + success=false,errorCode=invalid_password,message=密码错误,必须走业务错误分支.\n2) 多服务端隔离:\n- 任意可变状态必须以 serverId(tab) 分片,禁止跨 Tab 共享 currentSessionId/currentAgentId 等.\n3) Git DiffViewer 断点固定:\n- >=1200px 双列,<1200px 单列.\n\n接口摘要:\n- 输入: SSEEvent 流 + 本地控制 API + Snow SSE HTTP API.\n- 输出: DOM 渲染与用户操作,以及对控制 API/Snow SSE 的请求.\n\n依赖拓扑:\n- 依赖: sse-client/src/shared/ 类型; sse-client/src/server/ 提供的同源控制 API.\n- 参考: source/test/sse-client/(联调示例),requirements/全平台网页版Snow SSE客户端需求.md.\n\n避坑指南:\n- unknown SSE event.type 必须在统一分发层忽略,不要在各视图重复写 switch.\n- 日志弹窗禁止新增后端查询接口,仅使用已接收事件流(需求排除项).",
+      "createdAt": "2026-02-19T23:43:46.002",
+      "updatedAt": "2026-02-20T01:48:27.143"
+    }
+  ],
+  "sse-client/src/web/components/": [
+    {
+      "id": "notebook-1771516218735_1j1aaows4",
+      "filePath": "sse-client/src/web/components/",
+      "note": "职责: 浏览器端可复用 UI 组件(无框架).\n- Tabs,Sidebar,Modal,Toast,Select,SplitPane(宽屏并排/窄屏堆叠),DiffViewer,TodoPanel,StatusBar.\n\n不该做什么:\n- 不直接访问全局 store(通过 props/回调注入).\n- 不内置业务含义(例如不假设一定是 Git 或 Chat,保持可复用).\n\n接口摘要:\n- 输入: props(纯数据) + callbacks.\n- 输出: DOM 元素与事件绑定.\n\n依赖拓扑:\n- 被依赖: views/*.\n\n避坑指南:\n- 控件必须可在移动端可用(触摸尺寸,滚动区域,固定高度).\n- DiffViewer 必须支持宽屏双列/窄屏单列自适应(与需求一致).",
+      "createdAt": "2026-02-19T23:50:18.735",
+      "updatedAt": "2026-02-19T23:50:18.735"
+    }
+  ],
+  "sse-client/src/web/components/DiffViewer/": [
+    {
+      "id": "notebook-1771516264408_avgvj4tyx",
+      "filePath": "sse-client/src/web/components/DiffViewer/",
+      "note": "职责: Git diff 展示组件.\n\n接口摘要:\n- 输入: unified diff text(第一阶段)或结构化 diff(后续渐进增强,需向后兼容).\n- 输出: DOM(可滚动,可复制).\n\n核心布局规则(需求固定):\n- 视口宽度 >= 1200px: 双列对比.\n- 视口宽度 < 1200px: 单列展示.\n- 该 breakpoint 为产品契约,不做用户可配置.\n\n依赖拓扑:\n- 被依赖: web/views/GitView.\n\n避坑指南:\n- diff 文本可能很大,必须避免一次性 innerHTML 注入导致卡顿;优先分块渲染或按文件分页(性能优化可后置).\n- 禁止为了高亮引入重量级编辑器(如 Monaco);如需高亮,优先选择轻量方案或纯 CSS.",
+      "createdAt": "2026-02-19T23:51:04.408",
+      "updatedAt": "2026-02-20T01:42:00.427"
+    }
+  ],
+  "sse-client/src/web/components/SplitPane/": [
+    {
+      "id": "notebook-1771516264243_inj0p1yop",
+      "filePath": "sse-client/src/web/components/SplitPane/",
+      "note": "职责: 响应式分栏组件.\n- 宽屏: 左右并排(聊天消息区与 TODO 区),比例可配置且支持拖拽(可选).\n- 窄屏: 自动切换为上下堆叠.\n\n不该做什么:\n- 不包含任何业务逻辑(仅布局).\n\n接口摘要:\n- 输入: child nodes + layout options(breakpoint,ratio).\n- 输出: 结构化 DOM + CSS class.\n\n依赖拓扑:\n- 被依赖: web/views/ChatView(聊天消息区 + TODO 区布局).\n\n避坑指南:\n- 断点策略必须与需求示意一致,且可通过 CSS variables 调整.\n- 避免监听 window resize 产生性能问题,优先 CSS media query.",
+      "createdAt": "2026-02-19T23:51:04.243",
+      "updatedAt": "2026-02-19T23:51:04.243"
+    }
+  ],
+  "sse-client/src/web/services/": [
+    {
+      "id": "notebook-1771516219035_wrgm556z2",
+      "filePath": "sse-client/src/web/services/",
+      "note": "职责: 浏览器端通信层.\n- ControlApiClient: 调用同源控制 API(/api/auth/*,/api/servers*,/api/git/*).\n- SnowSseClient: 管理对单个 Snow SSE 服务端的连接(EventSource)与 HTTP 调用(/message,/session/*).\n\n推荐文件划分(后续实现时):\n- ControlApiClient.ts: 基于 fetch 的 DTO 调用,只处理 ApiResponse.\n- SnowSseClient.ts: EventSource 生命周期 + sendMessage/session API.\n- apiErrors.ts: 将网络错误/ApiResponse.errorCode 标准化为 UI 可展示错误.\n\n接口摘要:\n- 输入: baseUrl,request DTO.\n- 输出: Promise/事件回调,以及标准化错误.\n\n必须遵守的认证与状态约束:\n- 登录态以 GET /api/auth/me 为唯一事实源.\n- 禁止 localStorage 持久化登录态;页面刷新后必须重新调用 me.\n- 推荐服务端使用 HttpOnly session cookie,浏览器端 fetch 不需要手动保存 token(同源自动携带 cookie).\n\n依赖拓扑:\n- 依赖: shared/contracts,web/state.\n- 被依赖: web/views/*.\n\n避坑指南:\n- fetch 必须保证 cookie 会被携带(同源默认 same-origin;若配置 credentials,不能遗漏).\n- HTTP 200 但 success=false 属于业务错误,必须正常解析并交给 UI.\n- unknown SSE event.type 必须在统一分发层忽略.",
+      "createdAt": "2026-02-19T23:50:19.035",
+      "updatedAt": "2026-02-20T01:51:44.723"
+    }
+  ],
+  "sse-client/src/web/state/": [
+    {
+      "id": "notebook-1771516218882_kiyeb3xax",
+      "filePath": "sse-client/src/web/state/",
+      "note": "职责: 浏览器端状态层(轻量 store).\n- 按 serverId 分片保存状态: 连接信息,SSE 事件流,会话列表,当前会话ID,YOLO 状态,profile/model,Git 状态.\n- 提供 actions/reducers 或 command-style API,保证状态更新可追踪.\n\n接口摘要:\n- 输入: action(payload),来自 web/services 的事件.\n- 输出: 新 state + subscribe 通知.\n\n新增必须固化的状态隔离与认证约束:\n- 登录态不持久化: store 中的 isLoggedIn 仅是 UI 当前态,刷新页面应通过 GET /api/auth/me 重建.\n- 禁止 localStorage 作为登录态来源.\n- serverId 分片是硬约束: 任何 currentSessionId,currentAgentId,yoloEnabled,gitStatus 等必须属于 serverId slice.\n\n依赖拓扑:\n- 依赖: shared/contracts 事件/DTO.\n- 被依赖: web/views/*.\n\n避坑指南:\n- 断线重连: connection close 时必须清理该 serverId 下的 session 绑定,agent 列表与 switching 状态,等待新 agent_list 恢复.\n- 未知 SSE event.type 必须忽略,且不得污染 store(避免存入无法渲染的数据).",
+      "createdAt": "2026-02-19T23:50:18.882",
+      "updatedAt": "2026-02-20T01:42:55.699"
+    }
+  ],
+  "sse-client/src/web/styles/": [
+    {
+      "id": "notebook-1771516219213_85jvy09u6",
+      "filePath": "sse-client/src/web/styles/",
+      "note": "职责: 浏览器端样式与主题.\n- 深色主题为默认.\n- 响应式布局: 宽屏左右分栏(消息区 + TODO 并排,比例自适应),窄屏上下堆叠.\n- 统一 z-index 与 modal/backdrop 规则,避免弹窗覆盖错乱.\n\n不该做什么:\n- 不写与业务强绑定的选择器(尽量 class 化).\n\n接口摘要:\n- 输入: className.\n- 输出: UI 表现.\n\n依赖拓扑:\n- 被依赖: web/views,web/components.\n\n避坑指南:\n- 移动端滚动: 避免多层 scroll 互相抢夺,TODO 区滚动必须独立且可控.\n- Git 视图隐藏区域必须通过布局 class 一次性切换,避免散落多个 display:none 导致维护困难.",
+      "createdAt": "2026-02-19T23:50:19.213",
+      "updatedAt": "2026-02-19T23:50:19.213"
+    }
+  ],
+  "sse-client/src/web/utils/": [
+    {
+      "id": "notebook-1771516219389_hv21id8am",
+      "filePath": "sse-client/src/web/utils/",
+      "note": "职责: 浏览器端通用工具.\n- 安全: escapeHtml,DOM helper.\n- 时间/格式化: formatBytes,formatTokens.\n- Diff 渲染辅助(若不引入第三方库).\n\n不该做什么:\n- 不包含业务状态.\n\n接口摘要:\n- 输入: string/number.\n- 输出: string/HTMLElement.\n\n依赖拓扑:\n- 被依赖: views/components/services.",
+      "createdAt": "2026-02-19T23:50:19.389",
+      "updatedAt": "2026-02-19T23:50:19.389"
+    }
+  ],
+  "sse-client/src/web/views/": [
+    {
+      "id": "notebook-1771516218572_bohmwomzn",
+      "filePath": "sse-client/src/web/views/",
+      "note": "职责: 浏览器端页面级视图(无框架组件化).\n- ChatView: 会话栏 + 聊天区 + TODO + 状态栏(聊天视图下展示).\n- GitView: Git 主区(保留顶部 Tab 与左侧会话栏,隐藏聊天/TODO/日志/状态栏).\n- LoginView/ServerManagerModal/SessionManagerModal/Dialogs 等.\n\n推荐文件划分(后续实现时):\n- AppShell.ts: 顶部 Tab + 视图切换 + 左侧会话栏容器.\n- LoginView.ts: 登录表单 + 错误提示.\n- ChatView.ts/GitView.ts: 两个主视图.\n- modals/*: ServerManagerModal,SessionManagerModal,Dialogs.\n\n接口摘要:\n- 输入: state slice + view-model(纯数据) + 事件回调.\n- 输出: DOM 更新(render functions).\n\n与本轮需求强相关的 UI 规则:\n- 登录态: 页面启动先调用 GET /api/auth/me,未登录则只渲染 LoginView;禁止用 localStorage 绕过.\n- me 未登录属于正常分支(success=true,isLoggedIn=false),不可展示为错误 toast.\n- login 密码错误: HTTP 200 + success=false,errorCode=invalid_password,message=密码错误.\n- Git DiffViewer breakpoint 固定 1200px(>= 双列,< 单列).\n\n依赖拓扑:\n- 依赖: components/*,styles/*,state/*,services/*.\n\n避坑指南:\n- 视图切换口径必须严格按 requirements: Git 视图下隐藏聊天消息区,TODO 区,日志按钮与底部状态栏,但保留顶部 Tab 与左侧会话栏.\n- modal 打开时应锁定底层滚动与焦点.\n- 同一 UI 控件不得跨 serverId 读写状态,避免 Tab 串扰.",
+      "createdAt": "2026-02-19T23:50:18.572",
+      "updatedAt": "2026-02-20T01:51:44.853"
+    }
+  ],
+  "CurrentTaskPlan.md": [
+    {
+      "id": "notebook-1771516802144_rjjhd9mej",
+      "filePath": "CurrentTaskPlan.md",
+      "note": "CurrentTaskPlan.md 微调建议(基于已定稿的新需求).\n\n现状:\n- CurrentTaskPlan.md 已完成与 requirements/全平台网页版Snow SSE客户端需求.md 的统一.\n- 但仍建议在计划书中显式固化 3 个实现要点,避免后续开发偏离.\n\n建议增补点:\n1) M0 增补 shared/errors 固化:\n- 除 shared/contracts 外,建议在 M0 明确固化 shared/errors(errorCode 枚举 + DomainError 结构),避免各层随意抛字符串.\n\n2) M1 增补 Auth 登录态实现建议(会话级):\n- 明确推荐使用 HttpOnly session cookie 且不设置 expires/max-age(浏览器关闭即失效).\n- 强调: login/me 返回口径固定 HTTP 200,不使用 401/403.\n\n3) M5 增补 Git status 口径:\n- 明确 status 的修改区必须包含: modified-unstaged + untracked + deleted-unstaged.\n- DiffViewer breakpoint 已在计划书中固化为 1200px,无需调整.\n\n说明:\n- 当前环境限制对 .md 文件编辑权限,因此以上建议以 notebook 形式记录,供主Agent或人工合入 CurrentTaskPlan.md.",
+      "createdAt": "2026-02-20T00:00:02.144",
+      "updatedAt": "2026-02-20T01:46:07.712"
     }
   ]
 }

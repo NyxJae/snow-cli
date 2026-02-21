@@ -81,5 +81,246 @@
       "notebookId": "notebook-1771478149195_7bs0m83xf",
       "previousNote": "职责: 浏览器端 SSE 客户端示例(开发/联调用途),用于验证 Snow CLI 的 SSE 服务协议(connected,message,agent_list,agent_switched,error 等)与会话管理 API.\\n不该做什么: \\n- 不作为生产级前端架构,不引入复杂框架/构建工具.\\n- 不实现服务端业务逻辑,仅消费协议并展示.\\n接口摘要: \\n- 输入: EventSource(/events) 事件流 + fetch(/message,/session/*,/response) 等 HTTP 调用.\\n- 输出: DOM UI(聊天消息,状态,会话列表,主代理选择器) + 控制台/事件日志.\\n依赖拓扑: \\n- 依赖: source/api/sse-server.ts 的协议契约与 source/utils/sse/sseManager.ts 的事件/错误码实现,以及 docs/usage/zh/20.SSE服务模式.md 文档.\\n- 被依赖: 无(仅示例).\\n避坑指南: \\n- 必须对未知 event.type 做容错,避免服务端新增事件导致客户端崩溃.\\n- 断线重连时必须清理 UI 状态(禁用输入/选择器,清空 agents/currentAgentId/isSwitching),重连后等待 agent_list 再启用选择器,避免使用过期列表切换.\\n- 切换主代理必须以 sessionId 为边界,客户端已知 currentSessionId 时必须随 switch_agent 一并发送,避免依赖连接绑定产生歧义."
     }
+  ],
+  "8b0f5855-a011-4562-8149-82eccb7a5d89:315": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1771495044343_9q2dkp8qw",
+      "previousNote": "职责: 需求与变更记录目录.存放功能需求、协议约束与验收标准,作为实现与回归测试的参考依据.\n\n接口摘要:\n- 输入: 产品/开发需求.\n- 输出: 可执行的实现约束(协议结构,UI 行为,错误码文案),指导 source/test/sse-client/ 示例与服务端协议演进.\n\n依赖拓扑:\n- 被依赖: 客户端示例实现(source/test/sse-client/*),以及服务端协议扩展评审.\n\n避坑指南:\n- 需求文档应成为 SSoT: 协议字段与错误码变更需同步更新对应文档,避免实现与文档漂移.\n- 标注兼容性要求: 明确 unknown event.type 静默忽略,以及 currentAgentId 可为 null 的语义."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771515649312_x6aph0c29"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771515825742_q2ijvoqdm"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771515825877_9cmsogs35"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771515826002_se55c2j3t"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771515826135_hxgd7zhxi"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516217767_7wquqarsy"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516217926_jl610bu9d"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516218068_iv4u5gk1l"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516218216_dnvsa7uw8"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516218375_eeoe2ele6"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516218572_bohmwomzn"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516218735_1j1aaows4"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516218882_kiyeb3xax"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516219035_wrgm556z2"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516219213_85jvy09u6"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516219389_hv21id8am"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516219540_xwornorap"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516219690_9qehcnsq2"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516241433_9nd0jazox"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516264243_inj0p1yop"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516264408_avgvj4tyx"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516264548_jm7lqob06"
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771515825742_q2ijvoqdm",
+      "previousNote": "职责: 正式 Web SSE 客户端子项目(PC + 手机协同).提供:\n1) Web UI(深色,移动优先)用于多服务端 Tab,会话,聊天,TODO,日志,Git 视图.\n2) 本地 Node 控制 API(同源)用于启动/停止 Snow SSE 进程,以及执行项目级 Git 操作.\n\n不该做什么:\n- 不替代 Snow CLI 核心(不改造对话执行/工具系统),仅作为可视化入口.\n- 不引入重前端框架(React/Vue/Angular)或复杂状态管理生态.\n- 不将认证扩展为对 Snow SSE 所有业务端点的逐请求鉴权(仅做 Web 入口门禁).\n\n接口摘要:\n- 输入:\n  - Snow SSE 服务端协议: GET /events,POST /message,POST /session/create,/session/load,GET /session/list,DELETE /session/:id,...\n  - 本地控制 API: GET/POST /api/servers*,以及 Git 相关端点(由本子项目定义).\n- 输出:\n  - 浏览器 UI + 对多个 Snow SSE 服务的连接与状态展示.\n\n依赖拓扑:\n- 依赖:\n  - Node.js runtime(本仓库既有环境).\n  - Snow SSE 服务进程(snow --sse/--sse-daemon).\n  - requirements/全平台网页版Snow SSE客户端需求.md(需求基线).\n- 被依赖: 无(独立子项目),但会被集成测试与文档引用.\n\n避坑指南:\n- 多服务端隔离: 每个 Tab 独立维护连接状态,会话列表,当前会话ID,YOLO 状态等,禁止共享可变状态导致串扰.\n- 协议向后兼容: 未知 SSE event.type 必须忽略,未知字段不得导致页面崩溃.\n- 最小依赖策略: 优先自研薄封装(路由,store),仅在明显降低维护成本时才引入小依赖.\n- 安全边界: 控制 API 只面向局域网开发使用,仍需基本登录门禁,避免误操作."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516219540_xwornorap",
+      "previousNote": "职责: sse-client 内部协议合同(contracts).\n- Control API DTO: /api/servers*,/api/auth*,/api/git* 的 request/response.\n- Snow SSE DTO: 仅抽取本 Web 客户端实际消费的 SSEEvent 与 ClientMessage 结构(避免全量复制 server 端类型).\n\n不该做什么:\n- 不包含运行时逻辑.\n\n接口摘要:\n- 输出: TypeScript types.\n\n依赖拓扑:\n- 被依赖: server/routes,server/services,web/state,web/services.\n\n避坑指南:\n- DTO 向后兼容: 新增字段必须可选.\n- 命名必须与需求文档一致(timeoutMs,workDir 等)."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1771516802144_rjjhd9mej"
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771478149195_7bs0m83xf",
+      "previousNote": "职责: 浏览器端 SSE 客户端示例(开发/联调用途),用于验证 Snow CLI 的 SSE 服务协议(connected,message,agent_list,agent_switched,error 等)与会话管理 API.\n\n不该做什么:\n- 不作为生产级前端架构,不引入复杂框架/构建工具.\n- 不实现服务端业务逻辑,仅消费协议并展示.\n\n接口摘要:\n- 输入: EventSource(/events) 事件流 + fetch(/message,/session/*,/response) 等 HTTP 调用.\n- 输出: DOM UI(聊天消息,状态,会话列表,主代理选择器) + 控制台/事件日志.\n\n依赖拓扑:\n- 依赖: source/api/sse-server.ts 的协议契约,source/utils/sse/sseManager.ts 的事件/错误码实现,docs/usage/zh/20.SSE服务模式.md,requirements/SSE客户端适配主代理.md.\n- 被依赖: 无(仅示例).\n\n避坑指南:\n- 兼容性: 必须对未知 event.type 静默忽略,避免服务端新增事件导致客户端崩溃.\n- 断线重连: 断线时必须清理 agents/currentAgentId/isSwitchingAgent 等连接态,并禁用选择器;但可选择保留 preferredAgentIdForNewSession,便于重连后新建会话继续使用预选主代理.\n- 主代理切换状态机: UI 不得仅凭 select change 更新 currentAgentId,必须等待 agent_switched 确认;切换失败(包括 error 无 errorCode)必须回滚到 lastConfirmedAgentId 并解锁 isSwitchingAgent/requestedAgentId,否则 UI 会卡死.\n- 会话边界: 切换主代理必须以 sessionId 为边界,客户端已知 currentSessionId 时必须随 switch_agent 一并发送,避免依赖连接绑定产生歧义."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771478149329_cgfw81aim",
+      "previousNote": "职责: 浏览器端 SSE 客户端示例的主逻辑.负责连接管理(EventSource),统一事件分发(handleEvent),消息发送(chat,abort,rollback,tool/user_question 响应,switch_agent),会话列表与当前会话状态维护,以及聊天 UI 渲染.\n\n主代理扩展(已落地的状态机约束):\n- 状态字段: agents,currentAgentId,lastConfirmedAgentId,isSwitchingAgent,requestedAgentId,preferredAgentIdForNewSession.\n- 原则: UI 不得仅凭 select change 就更新 currentAgentId,必须等待服务端 agent_switched 确认;失败则回滚到 lastConfirmedAgentId.\n\n接口摘要:\n- 输入: EventSource(/events) 推送(agent_list,agent_switched,error 等) + fetch(/message,/session/create,/session/load,/response).\n- 输出: DOM UI(主代理选择器,系统消息,事件日志).\n\n依赖拓扑:\n- 依赖: source/api/sse-server.ts 的协议契约,source/utils/sse/sseManager.ts 的错误码与事件实现,requirements/SSE客户端适配主代理.md.\n- 被依赖: 无(仅示例).\n\n避坑指南:\n- 防 UI 卡死: 切换中收到 error 时,即使 errorCode 缺失也必须执行回滚与解锁(currentAgentId=lastConfirmedAgentId,isSwitchingAgent=false,requestedAgentId=null,renderMainAgentSelect),否则选择器会永久 disabled.\n- 网络异常鲁棒: switch_agent 发送失败提示使用 error?.message || String(error),覆盖非 Error 抛出场景.\n- 预选逻辑: 无 sessionId 时允许预选 preferredAgentIdForNewSession,仅在新建会话时作为 initialAgentId 传给服务端,不要提前发送 switch_agent.\n- 向后兼容: handleEvent 必须对未知 event.type 静默忽略,避免服务端协议扩展导致示例崩溃."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771515826002_se55c2j3t",
+      "previousNote": "职责: 浏览器端 UI 与状态管理(移动优先,深色).负责:\n- 多服务端 Tab 管理,每 Tab 独立的会话侧栏 + 主区(聊天视图/Git 视图平级切换).\n- SSE 通信: 对每个服务端维护 EventSource 连接与事件分发,并通过 fetch 调用服务端 /message,/session/*,/response.\n- 交互弹窗: 审批弹窗,提问弹窗(单选/多选/编辑某条选项/自定义输入/取消).\n- TODO 常驻区(可滚动)与当前会话事件日志弹窗.\n\n不该做什么:\n- 不引入重框架或复杂编译链;优先使用原生 DOM + TypeScript 模块.\n- 不假设 SSE 事件类型固定不变;必须对未知 event.type 容错忽略.\n\n接口摘要:\n- 输入: SSEEvent 流 + 本地控制 API + Snow SSE HTTP API.\n- 输出: DOM 渲染与用户操作,以及对控制 API/Snow SSE 的请求.\n\n依赖拓扑:\n- 依赖: sse-client/src/shared/ 类型; sse-client/src/server/ 提供的同源控制 API.\n- 参考: source/test/sse-client/(联调示例),requirements/全平台网页版Snow SSE客户端需求.md(布局/验收).\n\n避坑指南:\n- 状态隔离: store 必须按 serverId(tab) 分片,避免跨 Tab 共享 currentSessionId.\n- 视图切换: Git 视图必须隐藏聊天消息区/TODO/日志按钮/底部状态栏,但保留顶部 Tab 与左侧会话栏.\n- 自适应布局: 宽屏消息区与 TODO 并排且比例自适应;窄屏上下堆叠."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516219035_wrgm556z2",
+      "previousNote": "职责: 浏览器端通信层.\n- ControlApiClient: 调用同源控制 API(/api/servers*,/api/auth*,/api/git*).\n- SnowSseClient: 管理对单个 Snow SSE 服务端的连接(EventSource)与 HTTP 调用(/message,/session/*,/response).\n\n不该做什么:\n- 不做业务编排与 UI 逻辑(归 state/views).\n\n接口摘要:\n- 输入: server baseUrl,request DTO.\n- 输出: Promise/事件回调,以及标准化错误.\n\n依赖拓扑:\n- 依赖: shared/contracts,web/state.\n\n避坑指南:\n- 兼容性: 未知 SSE event.type 必须忽略.\n- 安全: baseUrl 仅允许本地/局域网白名单(可选),避免被恶意页面诱导访问外部.\n- 错误收敛: 对 fetch/EventSource error 做标准化,减少 UI 分支."
+    }
+  ],
+  "93fe1069-f248-49c9-9f37-749174eb3713:120": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516219540_xwornorap",
+      "previousNote": "职责: sse-client 内部协议合同(contracts).\n- Control API DTO: /api/auth*,/api/servers*,/api/git* 的 request/response.\n- Snow SSE DTO: 仅抽取 Web 客户端实际消费的 SSEEvent 与 ClientMessage 结构(避免全量复制 server 端类型).\n\n接口摘要:\n- 输出: TypeScript types,供 server/routes,server/services,web/state,web/services 共享.\n\n必含 DTO(建议按文件拆分):\n- ApiResponse<T>: `{ success: boolean, data?: T, errorCode?: string, message?: string }`.\n- Auth:\n  - LoginRequest `{ password: string }`\n  - LoginResponse `ApiResponse<{ loggedIn: true }>`\n  - MeResponse `ApiResponse<{ loggedIn: boolean }>`\n- Servers:\n  - ServerInfo `{ serverId: string, workDir: string, port: number, timeoutMs: number, startedAt: number, displayName?: string }`\n  - StartRequest `{ workDir: string, port: number, timeoutMs: number }`\n  - ListResponse `ApiResponse<{ servers: ServerInfo[] }>`\n- Git(项目级,以 workDir 或 serverId 作为隔离边界):\n  - StatusResponse(含 staged/unstaged/untracked 列表)\n  - Stage/Unstage request(文件路径必须是相对路径)\n  - DiffResponse(第一阶段建议 unified diff text)\n  - CommitRequest `{ message: string }`\n  - InitResponse(仓库未初始化时的动作)\n\n依赖拓扑:\n- 被依赖: server/routes,server/services,web/state,web/services.\n\n避坑指南:\n- DTO 向后兼容: 新增字段必须可选,避免破坏旧页面/旧 server.\n- 命名与需求一致: timeoutMs/workDir 等字段名必须与 requirements 口径一致.\n- 安全字段: 对 filePath 等必须明确约束(相对路径 + 白名单校验),并在 DTO 文档注释中写清."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516217926_jl610bu9d",
+      "previousNote": "职责: 控制面 API 路由层.\n- 定义 /api/servers*,/api/auth*,/api/git* 等端点.\n- 做请求参数校验与 DTO 映射,调用 services 层,并返回统一响应结构.\n\n不该做什么:\n- 不直接调用 child_process 执行 snow/git(归 services).\n- 不读写持久化存储文件(归 storage).\n\n接口摘要:\n- 输入: HTTP 请求(已解析的 JSON/body/cookie),shared/contracts 的 DTO.\n- 输出: ApiResponse JSON.\n\n依赖拓扑:\n- 依赖: services/*,storage/*(只通过 service 访问),shared/contracts/*.\n- 被依赖: http/*.\n\n避坑指南:\n- 参数校验必须覆盖: workDir 必须是绝对路径,port/timeoutMs 必须是合法整数范围,避免命令注入与崩溃.\n- 统一错误码: 与 requirements/全平台网页版Snow SSE客户端需求.md 中的 errorCode 保持一致,新增必须记录在 requirements/ 或 shared/errors."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516218068_iv4u5gk1l",
+      "previousNote": "职责: 控制面业务服务层(核心逻辑).\n- 进程管理: 启动/停止/枚举 Snow SSE 进程,维护 workDir <-> port <-> pid 的状态.\n- Git 服务: 在指定 workDir 执行安全的 git 命令(init,status,stage/unstage,diff,commit).\n- 认证服务: 读取 ~/.snow/sse-config.json 校验密码,生成并验证 Web 会话 token.\n\n不该做什么:\n- 不直接处理 HTTP 细节(归 routes/http).\n- 不直接依赖浏览器 DOM 或 UI 状态.\n\n接口摘要:\n- 输入: 结构化参数(workDir,port,timeoutMs,paths,message等).\n- 输出: 结构化结果(servers 列表,git 状态,diff 文本,commit 结果)或抛出领域错误.\n\n依赖拓扑:\n- 依赖: storage/*(持久化),utils/*(校验/安全),shared/errors.\n- 被依赖: routes/*.\n\n避坑指南:\n- 跨平台: Windows 路径与 shell 行为差异,必须尽量使用 spawn/execFile 参数数组,避免拼接 shell 字符串.\n- 并发: 同一 workDir 的 start/stop 与 git 操作要有互斥/队列,避免状态乱序.\n- 可观测性: 建议提供最小日志,但不要输出敏感信息(密码,token)."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516218216_dnvsa7uw8",
+      "previousNote": "职责: 控制面持久化与状态存储.\n- 保存运行中服务端列表(端口,pid,workDir,displayName,lastSeen)以支持页面刷新后恢复.\n- 保存认证会话(浏览器会话级)与过期清理.\n\n不该做什么:\n- 不做业务决策(归 services).\n- 不在此层执行 git/snow.\n\n接口摘要:\n- 输入: servers/authSessions 等实体.\n- 输出: 读写到本地 JSON 文件(建议存放 ~/.snow/sse-web-client/* 或 sse-client 自己的 data 目录,需在实现时确定).\n\n依赖拓扑:\n- 被依赖: services/*.\n\n避坑指南:\n- 原子写: 写文件必须使用临时文件 + rename,避免进程中断造成损坏.\n- 兼容升级: 存储 schema 新增字段必须可选,并提供默认值."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516219035_wrgm556z2",
+      "previousNote": "职责: 浏览器端通信层.\n- ControlApiClient: 调用同源控制 API(/api/auth/*,/api/servers*,/api/git/*).\n- SnowSseClient: 管理对单个 Snow SSE 服务端的连接(EventSource)与 HTTP 调用(如 /message,/session/*).\n\n不该做什么:\n- 不做业务编排与 UI 逻辑(归 state/views).\n\n接口摘要:\n- 输入: server baseUrl,request DTO.\n- 输出: Promise/事件回调,以及标准化错误.\n\n依赖拓扑:\n- 依赖: shared/contracts,web/state.\n\n避坑指南:\n- 兼容性: 未知 SSE event.type 必须忽略.\n- 安全: baseUrl 仅允许本地/局域网白名单(可选),避免被恶意页面诱导访问外部.\n- 错误收敛: 对 fetch/EventSource error 做标准化,减少 UI 分支."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516264408_avgvj4tyx",
+      "previousNote": "职责: Git diff 展示组件.\n- 支持宽屏双列对比,窄屏单列.\n- 支持文件级 diff 切换与基础高亮(可选).\n\n不该做什么:\n- 不执行 git 命令(只展示文本/结构化 diff).\n\n接口摘要:\n- 输入: unified diff text 或 server 侧结构化 diff(二选一,建议先 unified text).\n- 输出: DOM.\n\n依赖拓扑:\n- 被依赖: web/views/GitView.\n\n避坑指南:\n- diff 文本可能很大,必须支持按需渲染/分块(可后置到性能里程碑).\n- 高亮依赖可选,不要为了高亮引入重量级编辑器(如 Monaco)."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516219690_9qehcnsq2",
+      "previousNote": "职责: sse-client 内部错误码与错误对象规范.\n- 定义 Control API errorCode 枚举(servers/auth/git).\n- 定义统一的 DomainError(ApiError) 结构,用于 server/services 抛出并在 routes 层映射.\n\n不该做什么:\n- 不引入复杂国际化/错误堆栈收集系统.\n\n接口摘要:\n- 输入: 原始错误.\n- 输出: 结构化错误({errorCode,message,details?}).\n\n依赖拓扑:\n- 被依赖: server/services,server/routes,web/services.\n\n避坑指南:\n- message 面向用户时应尽量中文且可理解,但保留 details 供调试.\n- errorCode 稳定性: 一旦发布不可随意更名,否则前端映射会失效."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516217767_7wquqarsy",
+      "previousNote": "职责: sse-client 控制面 HTTP 服务内核.\n- 创建并启动本地 HTTP server(同源),托管静态 Web 资源,并将 /api/* 路由分发给 routes 层.\n- 处理基础中间件: JSON body 解析,错误捕获,统一响应封装,CORS/缓存头(按需求),以及简易 session/cookie.\n\n不该做什么:\n- 不直接实现业务逻辑(启动进程/Git 操作/认证校验),仅做请求调度与通用能力.\n- 不引入重量级 Web 框架(Express/Koa/Fastify)除非后续明确收益大于维护成本.\n\n接口摘要:\n- 输入: Node http.IncomingMessage/ServerResponse.\n- 输出: 静态资源响应或 JSON(统一 ApiResponse).\n\n依赖拓扑:\n- 上游: sse-client/src/web/ 通过同源访问.\n- 下游: routes/*,shared/contracts/*.\n\n避坑指南:\n- 安全: 任何来自浏览器的 path/workDir/filePath 都必须在 routes/service 层做严格校验,HTTP 层不可直接拼接命令行.\n- 错误一致性: 必须把异常映射为 {success:false,errorCode,message} 防止前端分支爆炸."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516218882_kiyeb3xax",
+      "previousNote": "职责: 浏览器端状态层(轻量 store).\n- 按 serverId 分片保存状态: 连接信息,SSE 事件流,会话列表,当前会话ID,YOLO 状态,profile/model(按需求),Git 状态.\n- 提供 actions/reducers 或 command-style API,保证状态更新可追踪.\n\n不该做什么:\n- 不操作 DOM(归 views/components).\n- 不直接做网络请求(归 services).\n\n接口摘要:\n- 输入: action(payload),来自 services 的事件.\n- 输出: 新 state + subscribe 通知.\n\n依赖拓扑:\n- 依赖: shared/contracts 事件/DTO 类型.\n- 被依赖: views/*,services/*.\n\n避坑指南:\n- 防串扰: 必须保证每个 Tab 的状态完全隔离,禁止复用单例 currentSessionId.\n- 断线重连: 必须在 connection close 时清理 session 绑定与 agent 列表,等待新 agent_list 恢复."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516218572_bohmwomzn",
+      "previousNote": "职责: 浏览器端页面级视图(无框架组件化).\n- ChatView: 聊天视图布局(会话栏 + 聊天区 + TODO + 状态栏).\n- GitView: Git 视图布局(保留顶部 Tab 与左侧会话栏,隐藏聊天/TODO/日志/状态栏).\n- LoginView/ServerManagerModal/SessionManagerModal/Dialogs 等.\n\n不该做什么:\n- 不直接持有跨 Tab 的业务状态(归 state/store).\n- 不直接调用 fetch/EventSource(归 services).\n\n接口摘要:\n- 输入: state slice + view-model(纯数据) + 事件回调.\n- 输出: DOM 更新(建议以 id/class + render 函数为主).\n\n依赖拓扑:\n- 依赖: components/*,styles/*,state/*,services/*.\n\n避坑指南:\n- 视图切换规则必须严格按 requirements: Git 视图下隐藏区域,聊天视图下 TODO 常驻且可滚动.\n- 无障碍: modal 打开时应锁定底层滚动与焦点,避免手机端滚动穿透."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516218375_eeoe2ele6",
+      "previousNote": "职责: 控制面通用工具.\n- 参数与路径校验(绝对路径,禁止路径穿越,相对文件路径白名单).\n- 端口扫描与占用检测.\n- child_process 调用封装(spawn/execFile),统一超时,stdout/stderr 截断.\n\n不该做什么:\n- 不依赖 routes/http(保持纯函数/无副作用为主).\n\n接口摘要:\n- 输入: 字符串/数字.\n- 输出: 校验后的值或抛错.\n\n依赖拓扑:\n- 被依赖: services/*(主要),routes/*(少量校验辅助).\n\n避坑指南:\n- 任何来自 web 的字符串都必须经过这里的校验,禁止在 service 内部临时拼 patch."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516802144_rjjhd9mej",
+      "previousNote": "⚠️ 计划书更新提醒: 当前环境对 `.md` 文件的直接编辑被权限限制,因此本笔记用于记录\"建议的 CurrentTaskPlan 更新方向\".\n\n建议将 CurrentTaskPlan.md 从\"测试客户端适配主代理\"切换为\"正式 Web SSE 客户端(sse-client)\"计划,并覆盖:\n- 需求基线: requirements/全平台网页版Snow SSE客户端需求.md\n- 目标: 建立 sse-client 子项目骨架 + 同源控制 API(/api/servers*) + 登录门禁 + 最小 ChatView 骨架.\n- 分层与目录: shared/contracts,server/routes/services/storage,web/state/services/views/components.\n- 里程碑: M0 骨架+contracts -> M1 登录+servers 管理 -> M2 单服务端聊天 -> M3 弹窗+TODO+日志 -> M4 多服务端+会话管理 -> M5 Git 视图.\n\n如需我输出可直接粘贴替换的完整 CurrentTaskPlan.md 内容,请告知,我会在聊天回复中给出可复制版本."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771515825877_9cmsogs35",
+      "previousNote": "职责: 本地 Node 控制面(同源).负责:\n- 提供 /api/servers* 等控制 API,启动/停止/列举多个 Snow SSE 进程(按 workDir 隔离).\n- 承载 Web 入口登录门禁(基于 ~/.snow/sse-config.json).\n- 对每个 workDir 提供 Git 基础能力 API(init,status,stage/unstage,diff,commit).\n- 静态资源托管: 为手机端提供同一 URL 访问的 Web UI.\n\n不该做什么:\n- 不实现 Snow SSE 的业务逻辑(聊天/会话/工具执行),不替代 Snow SSE 进程.\n- 不把 Git 能力塞进 Snow SSE 服务端(除非后续明确决策需要上游统一).\n\n接口摘要:\n- 输入: 浏览器 fetch 请求(同源),以及本机 shell/child_process 执行 snow 与 git.\n- 输出: JSON 响应(统一 {success,errorCode,message,data}).\n\n依赖拓扑:\n- 上游: sse-client/src/web/ 通过同源 API 调用.\n- 下游: Node child_process,fs,path,os; Snow CLI 可执行文件(snow); git 可执行文件.\n\n避坑指南:\n- 进程管理: 必须记录 pid/port/workDir 的映射,并处理崩溃/端口占用/重复启动.\n- 端口扫描: 按需求从 3000 起或 max+1,最多尝试 100 次.\n- Git 命令安全: 所有入参必须做严格校验(只允许相对路径文件名,禁止任意命令注入).\n- 跨平台: Windows 路径与 Git Bash 差异,必须统一用 Node path 处理,不要拼接 shell 字符串."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771515826002_se55c2j3t",
+      "previousNote": "职责: 浏览器端 UI 与状态管理(移动优先,深色).负责:\n- 多服务端 Tab 管理,每 Tab 独立的会话侧栏 + 主区(聊天视图/Git 视图平级切换).\n- SSE 通信: 对每个服务端维护 EventSource 连接与事件分发,并通过 fetch 调用服务端 /message,/session/* 等 HTTP API.\n- 交互弹窗: 审批弹窗,提问弹窗(单选/多选/编辑某条选项/自定义输入/取消).\n- TODO 常驻区(可滚动)与当前会话事件日志弹窗(仅展示已收到 SSE 事件流).\n\n不该做什么:\n- 不引入重框架或复杂编译链;优先使用原生 DOM + TypeScript 模块.\n- 不假设 SSE 事件类型固定不变;必须对未知 event.type 容错忽略.\n\n接口摘要:\n- 输入: SSEEvent 流 + 本地控制 API + Snow SSE HTTP API.\n- 输出: DOM 渲染与用户操作,以及对控制 API/Snow SSE 的请求.\n\n依赖拓扑:\n- 依赖: sse-client/src/shared/ 类型; sse-client/src/server/ 提供的同源控制 API.\n- 参考: source/test/sse-client/(联调示例),requirements/全平台网页版Snow SSE客户端需求.md(布局/验收).\n\n避坑指南:\n- 状态隔离: store 必须按 serverId(tab) 分片,避免跨 Tab 共享 currentSessionId.\n- 视图切换: Git 视图必须隐藏聊天消息区/TODO/日志按钮/底部状态栏,但保留顶部 Tab 与左侧会话栏.\n- 自适应布局: 宽屏消息区与 TODO 并排且比例自适应;窄屏上下堆叠."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771515826135_hxgd7zhxi",
+      "previousNote": "职责: sse-client 子项目内部共享的类型与协议定义.\n- 本地控制 API 的请求/响应 DTO.\n- Web UI 与 server 侧共享的 errorCode 枚举与最小数据结构.\n\n不该做什么:\n- 不直接依赖 Snow CLI 的 source/api 类型(避免跨包耦合与编译复杂度).\n- 不放入任何运行时逻辑或 Node 特有实现.\n\n接口摘要:\n- 输入: 需求文档中的控制 API 契约.\n- 输出: 稳定的 TypeScript 类型,供 web/server 双端编译期约束.\n\n避坑指南:\n- 向后兼容: DTO 新增字段必须可选,避免破坏旧前端/旧 server 的编译与运行.\n- 字段命名与需求文档保持一致(如 timeoutMs)."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516217767_7wquqarsy",
+      "previousNote": "职责: sse-client 控制面 HTTP 服务内核.\n- 创建并启动本地 HTTP server(同源),托管静态 Web 资源,并将 /api/* 路由分发给 routes 层.\n- 处理基础中间件: JSON body 解析,错误捕获,统一响应封装,CORS/缓存头(按需求),以及 session/cookie.\n\n接口摘要:\n- 输入: Node http.IncomingMessage/ServerResponse.\n- 输出: 静态资源响应或 JSON(ApiResponse).\n\n与本轮需求强相关的约束:\n- Auth 返回口径固定为 HTTP 200 + success 字段;HTTP 层不得擅自把 invalid_password 或未登录映射为 401/403.\n- 登录态必须浏览器会话级:\n  - 推荐使用 HttpOnly session cookie,且不设置 expires/max-age(浏览器关闭即失效).\n  - 禁止引导前端使用 localStorage 保存 token.\n\n依赖拓扑:\n- 上游: sse-client/src/web/ 同源访问.\n- 下游: routes/*,shared/contracts/*.\n\n避坑指南:\n- 安全: HTTP 层不可直接拼接命令行或路径,所有校验与执行在 routes/services.\n- JSON 解析必须有 size limit(建议 1MB)避免误操作导致内存膨胀.\n- cookie 解析与设置要集中封装,避免各路由重复实现造成不一致."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516218068_iv4u5gk1l",
+      "previousNote": "职责: 控制面业务服务层(核心逻辑).\n- 进程管理: 启动/停止/枚举 Snow SSE 进程,维护 workDir <-> port <-> pid 的状态.\n- Git 服务: 在指定 workDir 执行安全的 git 命令(init,status,stage/unstage,diff,commit).\n- 认证服务: 读取 ~/.snow/sse-config.json 校验密码,并维护浏览器会话级登录态.\n\n接口摘要:\n- 输入: 结构化参数(workDir,port,timeoutMs,filePaths,message,password等).\n- 输出: 结构化结果或抛出领域错误(DomainError).\n\n新增必须落实的架构约束(本轮需求定稿):\n1) /api/servers/start 并发串行:\n- 必须在 services 层实现全局互斥/队列(StartRequestQueue/Mutex).\n- 关键区包含: 端口扫描 + 启动 + 写入运行中列表.\n- 后一个 start 必须等待前一个完成后再扫描端口,避免端口竞争与状态乱序.\n2) Auth 登录态(浏览器会话级):\n- 推荐: server 生成 session token,通过 HttpOnly session cookie 下发(无 expires),浏览器关闭即失效.\n- server 侧会话存储推荐仅内存(Map + TTL),不落盘,避免跨会话残留造成误判.\n- me 未登录返回 success=true + isLoggedIn=false(不抛错),login 密码错误返回 invalid_password.\n3) Git 修改区口径固定:\n- status 计算必须包含: modified-unstaged + untracked + deleted-unstaged.\n- deleted-unstaged 在 git 层通常来自 diff-index 或 status --porcelain,必须显式覆盖.\n\n依赖拓扑:\n- 依赖: server/storage/*(运行中 servers 可持久化),server/utils/*(校验/安全/child_process/队列),shared/errors.\n- 被依赖: server/routes/*.\n\n避坑指南:\n- 跨平台: Windows 路径与 shell 行为差异,必须尽量使用 spawn/execFile 参数数组,避免拼接 shell 字符串.\n- 并发: 除 start 串行外,同一 workDir 的 stop 与 git 操作也建议互斥,至少避免同目录同时执行 git 与 stop 导致锁冲突.\n- 可观测性: 日志中禁止输出 password,session token;错误 details 仅用于调试."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516217926_jl610bu9d",
+      "previousNote": "职责: 控制面 API 路由层.定义 /api/* 端点,做请求参数校验与 DTO 映射,调用 services 层,并返回统一响应结构(ApiResponse).\n\n接口摘要:\n- 输入: HTTP 请求(JSON body,cookie).\n- 输出: HTTP 200 JSON:\n  - 成功: { success:true,data? }.\n  - 失败: { success:false,errorCode,message }.\n\n关键契约(必须严格遵守):\n- Auth:\n  - POST /api/auth/login,/api/auth/logout,GET /api/auth/me.\n  - 禁止使用 401/403 表达未登录与密码错误(需求固定为 HTTP 200 + success 标志).\n  - login 密码错误必须返回: success=false,errorCode=invalid_password,message=密码错误.\n  - me 未登录必须返回: success=true,data:{isLoggedIn:false}.\n- Servers:\n  - POST /api/servers/start 必须接入串行队列(实现层在 services),routes 不得并发触发端口扫描.\n- Git:\n  - 修改区范围固定包含: modified-unstaged + untracked + deleted-unstaged.\n\n依赖拓扑:\n- 依赖: server/services/*,server/utils/*,shared/contracts/*,shared/errors.\n- 被依赖: server/http/*.\n\n避坑指南:\n- 参数校验必须覆盖: workDir 必须绝对路径且禁止路径穿越;port/timeoutMs 必须为合法整数范围;git filePath 必须是相对路径.\n- 错误映射必须统一: services 抛 DomainError -> routes 映射为 {success:false,errorCode,message}.\n- 安全: routes 层禁止拼接 shell 命令,所有执行都在 services 层且必须使用参数数组(execFile/spawn)."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516218216_dnvsa7uw8",
+      "previousNote": "职责: 控制面持久化与状态存储.\n\n建议拆分存储语义(避免与需求冲突):\n- servers 存储(可落盘): 保存运行中服务端列表(端口,pid,workDir,displayName,startedAt,lastSeen),用于页面刷新后恢复 UI.\n- auth sessions 存储(默认不落盘): 浏览器会话级登录态建议仅内存持有,由 session cookie 驱动,浏览器关闭即失效.\n\n接口摘要:\n- 输入: servers 等实体.\n- 输出:\n  - servers: 读写本地 JSON 文件(建议 ~/.snow/sse-web-client/servers.json).\n  - authSessions: in-memory Map(token->metadata),可选 TTL 清理.\n\n依赖拓扑:\n- 被依赖: server/services/*.\n\n避坑指南:\n- 原子写: 写文件必须使用临时文件 + rename,避免进程中断造成损坏.\n- schema 兼容: 新增字段必须可选并提供默认值.\n- 安全: 禁止把明文 password 或 session token 写入磁盘;即使要调试,也应通过日志开关且默认关闭."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516218375_eeoe2ele6",
+      "previousNote": "职责: 控制面通用工具.\n- 参数与路径校验(绝对路径,禁止路径穿越,相对文件路径白名单).\n- 端口扫描与占用检测.\n- child_process 调用封装(spawn/execFile),统一超时,stdout/stderr 截断.\n- 并发互斥/队列工具(建议在此目录提供 Mutex/Queue,供 services/start 串行化复用).\n\n接口摘要:\n- 输入: 字符串/数字/命令参数.\n- 输出: 校验后的值或抛错.\n\n与本轮需求强相关的约束:\n- 端口扫描必须可被串行队列保护,避免并发 start 互相抢端口.\n- workDir 必须绝对路径,且禁止 '..' 穿越;手机端输入 Windows 路径时需兼容 'F:/...' 形式.\n\n依赖拓扑:\n- 被依赖: services/*(主要),routes/*(少量校验辅助).\n\n避坑指南:\n- 任何来自 web 的字符串都必须经过这里的校验,禁止在 service 内部临时拼 patch.\n- child_process 必须使用参数数组,禁止 shell:true.\n- Queue/Mutex 实现必须保证 await 完整释放(try/finally),否则会导致 start 永久阻塞."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516219035_wrgm556z2",
+      "previousNote": "职责: 浏览器端通信层.\n- ControlApiClient: 调用同源控制 API(/api/auth/*,/api/servers*,/api/git/*).\n- SnowSseClient: 管理对单个 Snow SSE 服务端的连接(EventSource)与 HTTP 调用(/message,/session/* 等).\n\n接口摘要:\n- 输入: baseUrl,request DTO.\n- 输出: Promise/事件回调,以及标准化错误.\n\n必须遵守的认证与状态约束:\n- 登录态以 GET /api/auth/me 为唯一事实源.\n- 禁止使用 localStorage 持久化登录态;页面刷新后可直接调用 me 判断,未登录则回到 LoginView.\n- 推荐服务端使用 HttpOnly session cookie,浏览器端 fetch 不需要手动保存 token(同源自动携带 cookie).\n\n依赖拓扑:\n- 依赖: shared/contracts,web/state.\n- 被依赖: web/views/*.\n\n避坑指南:\n- 兼容性: unknown SSE event.type 必须在统一分发层忽略.\n- 错误收敛: 对 fetch/EventSource error 做标准化,未知 errorCode 必须回退展示 message.\n- me 未登录不应走错误分支(HTTP 200 + success=true + isLoggedIn=false),避免 UI 分支爆炸."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771516218572_bohmwomzn",
+      "previousNote": "职责: 浏览器端页面级视图(无框架组件化).\n- ChatView: 会话栏 + 聊天区 + TODO + 状态栏(聊天视图下展示).\n- GitView: Git 主区(保留顶部 Tab 与左侧会话栏,隐藏聊天/TODO/日志/状态栏).\n- LoginView/ServerManagerModal/SessionManagerModal/Dialogs 等.\n\n接口摘要:\n- 输入: state slice + view-model(纯数据) + 事件回调.\n- 输出: DOM 更新(render functions).\n\n与本轮需求强相关的 UI 规则:\n- 登录态: 页面启动先调用 GET /api/auth/me,未登录则只渲染 LoginView;禁止用 localStorage 绕过.\n- me 未登录属于正常分支(success=true,isLoggedIn=false),不可展示为错误 toast.\n- Git DiffViewer breakpoint 固定 1200px(>= 双列,< 单列).\n\n依赖拓扑:\n- 依赖: components/*,styles/*,state/*,services/*.\n\n避坑指南:\n- 视图切换口径必须严格按 requirements: Git 视图下隐藏聊天消息区,TODO 区,日志按钮与底部状态栏,但保留顶部 Tab 与左侧会话栏.\n- modal 打开时应锁定底层滚动与焦点,避免手机端滚动穿透.\n- 同一 UI 控件不得跨 serverId 读写状态,避免 Tab 串扰."
+    }
   ]
 }

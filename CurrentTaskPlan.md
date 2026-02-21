@@ -1,125 +1,150 @@
-# CurrentTaskPlan - SSE客户端适配主代理
+# CurrentTaskPlan - 正式 Web SSE 客户端(sse-client)
 
-## 0. 需求来源
-- 需求文档: `requirements/SSE客户端适配主代理.md`
-- 目标: 为 `source/test/sse-client/` 浏览器端 SSE 客户端示例增加主代理列表展示与切换能力,对齐服务端 SSE 协议(agent_list,agent_switched,switch_agent,error 扩展).
+## 0. 需求基线(SSoT)
 
-## 1. 范围与边界(必须遵守)
-- 仅修改示例客户端文件,不修改 SSE 服务端逻辑.
-- 切换主代理以 `sessionId` 为边界,客户端已知 `currentSessionId` 时必须随 `switch_agent` 一并发送.
-- 客户端对未知 `event.type` 与未知 `errorCode` 必须容错,不崩溃.
-- 断线重连时必须清理主代理相关状态,重连后等待新的 `agent_list` 再启用选择器.
+- 核心需求文档: `requirements/全平台网页版Snow SSE客户端需求.md`
+- 协议参考:
+  - Snow SSE 协议与端点: `docs/usage/zh/20.SSE服务模式.md`
+  - 主代理协议: `requirements/SSE客户端适配主代理.md`
 
-## 2. 目标交付物
-- UI: 聊天面板头部右侧,紧邻"新建会话"按钮,新增主代理选择器 `select#mainAgentSelect`.
-- 逻辑: app.js 维护 agents/currentAgentId/isSwitching/pendingAgentId/previousAgentId 状态,并实现事件处理与消息发送.
-- 反馈: 切换成功/失败有清晰系统消息,错误码提示明确.
+## 1. 项目目标与边界
 
-## 3. 实施步骤(按顺序执行)
+### 1.1 本迭代目标(先跑起来,再逐步做全功能)
 
-### 3.1 index.html: 添加主代理选择器DOM
-文件: `source/test/sse-client/index.html`
-- 在聊天面板 `.panel-header` 内,"新建会话"按钮右侧追加:
-  - `<select id="mainAgentSelect" class="header-select" disabled>`
-  - 默认 option: `(未连接)` 或 `(等待agent_list...)`
-  - (可选) 增加一个小的 `<span id="mainAgentSwitchingHint">切换中...</span>` 用于无障碍提示(也可仅用 CSS).
-- 保持现有按钮与标题不变,仅扩展头部右侧控件.
+1. 在仓库根目录启用独立子项目目录 `sse-client/`(正式 Web 客户端).
+2. 建立"网页 + 本地 Node 控制 API(同源)"的最小闭环:
+   - Web 登录门禁(基于 `~/.snow/sse-config.json`,浏览器会话内免重复登录).
+   - 服务端进程管理: `GET/POST /api/servers*`.
+   - 静态资源托管(手机端可通过同一 URL 访问).
+3. 建立浏览器端最小 UI 骨架:
+   - 顶部: 服务端 Tab + [聊天|Git] 平级切换.
+   - 左侧: 最近会话栏(先做空态/占位,后续接会话接口).
+   - 右侧: ChatView/GitView 主区(按需求切换隐藏/保留区域).
 
-验收:
-- 页面加载后,在聊天头部能看到禁用的下拉框.
+### 1.2 必须遵守的边界(不可违背)
 
-### 3.2 style.css: 增加选择器样式与loading态
-文件: `source/test/sse-client/style.css`
-- 为聊天面板头部提供右侧布局:
-  - 让 `.panel-header` 支持 `display:flex; align-items:center; justify-content:space-between;` 或保持原布局并为按钮+select 包一层容器.
-- 新增样式建议:
-  - `.header-actions` 容器(包裹新建会话按钮 + select)
-  - `.header-select` 主代理下拉框(紧凑宽度)
-  - `.header-select.switching` 或 `[data-switching="true"]` 用于切换中态(降低透明度,显示 spinner 背景图等)
+- 少依赖: 不引入 React/Vue/Angular,不引入大型状态管理与 UI 组件库.
+- 可演进: 必须分层清晰(contracts/services/state/views/components),避免业务逻辑散落 DOM 事件回调.
+- 多服务端隔离: 任意状态必须以 serverId(tab) 分片,禁止跨 Tab 共享 currentSessionId 等可变状态.
+- 兼容性: 未知 SSE `event.type` 必须静默忽略,页面不可崩溃.
+- 认证口径: 仅 Web 入口门禁,不改造 Snow SSE 各业务端点逐请求鉴权.
 
-验收:
-- select 与新建会话按钮同一行,右侧对齐,且在窄屏不挤压标题.
+## 2. 推荐技术栈(落地口径)
 
-### 3.3 app.js: 新增主代理状态与UI更新函数
-文件: `source/test/sse-client/app.js`
-新增全局状态(与 currentSessionId 同级):
-- `let agents = [];`
-- `let currentAgentId = null;`
-- `let isSwitchingAgent = false;`
-- `let pendingAgentId = null;`
-- `let previousAgentId = null;`
+- 语言: TypeScript.
+- Web: 原生 DOM + ESM module,渲染函数/小组件(无框架).
+- Server: Node.js `http`(不引入 Express/Koa).
+- 构建:
+  - 优先 `tsc -p sse-client/tsconfig.json` 产出 ESM JS(避免 bundler).
+  - 如后续确需减少模块请求数,再评估用 esbuild 做无框架 bundling.
 
-新增UI函数:
-- `function resetMainAgentState(reason)`:
-  - 清空 agents/currentAgentId/isSwitching/pending/previous.
-  - 禁用 select,并设置 option 为 `(未连接)` 或 `(等待agent_list...)`.
-- `function renderMainAgentSelect()`:
-  - 根据 agents 填充 option(label=name,value=id,title=description).
-  - 无 agents 时显示 disabled option: `(暂无可用主代理)`.
-  - 根据 currentAgentId 设置 selected.
-  - 根据 isSwitchingAgent 设置 disabled + switching class.
+## 3. 目录结构(必须按边界放置代码)
+
+- `sse-client/src/server/`: 本地控制面与静态托管.
+- `sse-client/src/web/`: 浏览器 UI(views/components/state/services).
+- `sse-client/src/shared/`: 双端共享 contracts/errors(禁止放运行时代码).
+
+## 4. 渐进式里程碑计划(仅计划,不写代码)
+
+### M0. 项目骨架与 contracts 固化
+
+- [ ] 1. 固化 shared/contracts:
+  - ApiResponse<T>
+  - Auth: login,logout,me
+  - Servers: list,start,stop,stop-all
+- [ ] 2. 控制面 HTTP 最小内核:
+  - JSON body 解析
+  - 统一错误捕获与响应封装
+  - 静态资源托管
 
 验收:
-- connect/disconnect/onerror 会正确重置选择器.
 
-### 3.4 app.js: 处理 agent_list/agent_switched 事件
-文件: `source/test/sse-client/app.js`,函数 `handleEvent(event)` 增加分支:
-- `case 'agent_list'`:
-  - `agents = event.data?.agents ?? []`
-  - `currentAgentId = event.data?.currentAgentId ?? null`
-  - `isSwitchingAgent = false; pendingAgentId=null; previousAgentId=null;`
-  - `renderMainAgentSelect()`
-- `case 'agent_switched'`:
-  - 从 agents 中根据 `previousAgentId` 查 name,找不到用 id 兜底.
-  - 更新 `currentAgentId = event.data.currentAgentId`
-  - `isSwitchingAgent=false; pendingAgentId=null; previousAgentId=null;`
-  - `renderMainAgentSelect()`
-  - `addSystemMessage("主代理已切换: {prevName} -> {event.data.agentName}")`
+- 控制面进程可启动并提供静态页面(先空白页/占位页即可).
 
-验收:
-- 服务端推送 agent_list 时下拉框变为可选,默认选中 currentAgentId.
-- 收到 agent_switched 时显示系统消息且选中项更新.
+### M1. 登录门禁 + 服务端管理闭环
 
-### 3.5 app.js: 发送 switch_agent,并实现回滚与锁
-文件: `source/test/sse-client/app.js`
-- 在 `connect()` 成功后(或页面初始化时)为 `#mainAgentSelect` 绑定 `change` 事件:
-  - 若 `!currentSessionId`: 提示 `请先创建或加载会话` ,并立即把 select 选中项回滚为 currentAgentId.
-  - 若 `isSwitchingAgent`: 忽略(或提示"切换中").
-  - 若选择与 currentAgentId 相同: 直接 return.
-  - 否则:
-    - `previousAgentId = currentAgentId; pendingAgentId = selectedId; isSwitchingAgent=true; renderMainAgentSelect();`
-    - 发送 fetch 到 `${serverUrl}/message` payload: `{ type:'switch_agent', agentId:selectedId, sessionId: currentSessionId }`
+- [ ] 1. 登录门禁:
+  - 读取 `~/.snow/sse-config.json` 校验密码.
+  - 登录成功后,浏览器会话内免重复登录(会话结束后需重新登录).
+- [ ] 2. /api/auth\*:
+  - `POST /api/auth/login`,`POST /api/auth/logout`,`GET /api/auth/me` 按需求实现.
+  - `login` 密码错误口径: HTTP 200 + `success=false,errorCode=invalid_password,message=密码错误`.
+  - `me` 未登录口径: HTTP 200 + `success=true,data:{isLoggedIn:false}`.
+- [ ] 3. /api/servers\*:
+  - list/start/stop/stop-all 全部按需求实现.
+  - `start` 支持 `workDir,port,timeoutMs`,并返回统一响应结构.
+  - 端口默认策略与端口扫描(最多 100 次)按需求实现.
+  - 多个 `start` 并发请求按到达顺序串行处理,后一个请求等待前一个完成后再扫描端口.
+  - 扫描耗尽或启动失败时返回明确错误码与用户可读提示.
 
 验收:
-- 切换时 select 禁用并显示 switching 态.
-- 未绑定会话时不发送请求且回滚.
 
-### 3.6 app.js: 扩展 error 事件处理(主代理错误码)
-文件: `source/test/sse-client/app.js`,在 `case 'error'` 内扩展:
-- 若 `event.data?.errorCode` 属于:
-  - `invalid_agent_id`,`invalid_agent_id_format`: 提示固定中文文案.
-  - `agent_not_found`: 使用 message + 展示 availableAgents 列表(可简要),并回滚选择器为 previousAgentId.
-  - `agent_busy`: 提示"当前会话有进行中的任务...".
-  - `session_not_found`: 提示"会话不存在,请先创建或加载会话".
-- 若当前处于 `isSwitchingAgent`:
-  - `isSwitchingAgent=false; pendingAgentId=null;`
-  - 回滚 select 到 `previousAgentId`(并保留 currentAgentId 不变)
-  - `previousAgentId=null; renderMainAgentSelect();`
-- 其他未知 errorCode: 保持原逻辑 `错误: message`.
+- `POST /api/auth/login`,`POST /api/auth/logout`,`GET /api/auth/me` 可用并满足需求口径.
+- 密码错误时 `login` 返回 HTTP 200 + `success=false,errorCode=invalid_password,message=密码错误`.
+- 未登录时 `me` 返回 HTTP 200 + `success=true,data:{isLoggedIn:false}`.
+- 浏览器会话结束后重新打开页面时,`me` 返回 `success=true,data:{isLoggedIn:false}`.
+- 可在网页中按绝对路径启动 Snow SSE,并在 UI 中看到服务端 Tab.
+- 端口按需求规则自动预填并跳过占用端口,最多扫描 100 次后给出手动输入提示.
+- 并发触发多个 `start` 请求时,控制面按顺序串行处理并返回各自结果.
+- `start` 失败时可看到清晰 `errorCode + message`(如 `port_in_use`,`invalid_work_dir`,`start_failed`).
+
+### M2. 单服务端 ChatView 最小闭环
+
+- [ ] 1. 为单个 serverTab 建立 EventSource 连接并消费核心事件(connected,message,error,complete).
+- [ ] 2. 通过 Snow SSE `POST /message` 发送 chat.
+- [ ] 3. 未知 SSE event.type 忽略.
+- [ ] 4. 连接建立后自动拉取当前 Tab 会话列表,左侧最近 5 会话与会话管理弹窗使用同源数据.
+- [ ] 5. 当会话收到新消息或状态变化时,同步更新 `lastUpdatedAt` 并触发最近会话重排.
 
 验收:
-- 切换失败后 select 恢复可用并回滚.
-- 未知 errorCode 不导致崩溃.
 
-## 4. 冒烟测试清单(人工)
-1. 打开 `source/test/sse-client/index.html`,连接本地 SSE 服务.
-2. 连接成功后应收到 agent_list,下拉框启用且有选项.
-3. 新建会话或加载会话后,切换主代理应触发 switch_agent.
-4. 切换成功: 收到 agent_switched,聊天框出现系统消息,下拉框选中更新.
-5. 切换失败: 模拟 agent_busy 等错误,下拉框回滚并提示.
-6. 断开连接/网络错误: 下拉框禁用显示(未连接),重连后等待 agent_list 恢复.
+- 单 Tab 下可发送文本并收到回复.
+- 左侧最近会话会随消息更新自动重排,不会出现旧顺序残留.
 
-## 5. 代码质量要求
-- 仅示例代码但仍保持可读性: 抽离 render/reset 函数,避免在 handleEvent 分支堆叠大量 DOM 代码.
-- 尽量复用现有 addSystemMessage/logEvent/escapeHtml 等工具函数.
-- 所有新增 DOM id/class 必须在 index.html/app.js/style.css 三者一致.
+### M3. 交互弹窗 + TODO + 日志
+
+- [ ] 1. 审批弹窗(tool_confirmation_request).
+- [ ] 2. 提问弹窗(user_question_request): 单选/多选/编辑某条选项/自定义输入/取消.
+- [ ] 3. TODO 常驻区(聊天视图)可滚动.
+- [ ] 4. 会话日志弹窗仅展示当前会话 SSE 事件流.
+
+### M4. 多服务端 Tab + 会话管理
+
+- [ ] 1. 多服务端并行连接与隔离状态.
+- [ ] 2. 左侧最近 5 会话展示 + 会话管理弹窗(分页,继续会话,删除二次确认).
+- [ ] 3. Tab 切换时会话数据严格按 serverId 隔离,禁止跨 Tab 串会话.
+
+验收:
+
+- 多个服务端同时在线时,任一 Tab 的会话刷新,删除,继续会话都不影响其他 Tab.
+- 左侧最近 5 与会话管理弹窗数据一致,排序规则一致(`lastUpdatedAt` 降序).
+
+### M5. Git 视图
+
+- [ ] 1. Git 视图与聊天视图平级切换.
+- [ ] 2. Git API: init,status,stage/unstage,diff,commit.
+- [ ] 3. DiffViewer: 视口宽度 >= 1200px 双列,视口宽度 < 1200px 单列.
+- [ ] 4. Git 初始化时序: 点击后显示 loading,成功后自动刷新状态,失败保留重试入口.
+
+验收:
+
+- 初始化 Git 后可立即看到最新状态.
+- DiffViewer 在 >= 1200px 时双列展示,在 < 1200px 时单列展示.
+- 初始化失败时有明确错误提示,且用户可直接重试.
+
+## 5. 风险与回滚策略
+
+- Windows/路径差异: workDir/path 必须统一用 Node path 处理,禁止拼接 shell.
+- git 不可用: 必须给出明确错误提示,并允许用户继续使用聊天功能.
+- 端口占用/孤儿进程: 控制面需要有 stop-all 与列表自愈策略.
+
+回滚策略:
+
+- 控制面与 Snow SSE 进程强隔离,停止控制面服务即可恢复现状.
+- Git 能力按"只读 diff -> stage/unstage -> commit"渐进开放,每步可独立回滚.
+
+## 6. 参考文件
+
+- `requirements/全平台网页版Snow SSE客户端需求.md`
+- `docs/usage/zh/20.SSE服务模式.md`
+- `source/test/sse-client/`(仅作为联调参考)
