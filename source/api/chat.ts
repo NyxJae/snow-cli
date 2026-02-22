@@ -2,7 +2,6 @@ import {
 	getOpenAiConfig,
 	getCustomHeadersForConfig,
 	getCustomSystemPromptForConfig,
-	getCustomSystemPrompt,
 } from '../utils/config/apiConfig.js';
 import {mainAgentManager} from '../utils/MainAgentManager.js';
 import {
@@ -40,7 +39,7 @@ export interface ChatCompletionOptions {
 	model: string; // 使用的模型名称
 	messages: ChatMessage[]; // 对话消息数组
 	stream?: boolean; // 是否使用流式输出
-	temperature?: number; // 采样温度，控制输出的随机性
+	temperature?: number; // 采样温度,控制输出的随机性
 	max_tokens?: number; // 最大生成token数
 	tools?: ChatCompletionTool[]; // 可用的工具列表
 	tool_choice?:
@@ -48,13 +47,13 @@ export interface ChatCompletionOptions {
 		| 'none'
 		| 'required'
 		| {type: 'function'; function: {name: string}};
-	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
-	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
+	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词(默认 true)
+	teamMode?: boolean; // 启用 Team 模式(使用 Team 模式系统提示词)
 	// 子代理配置覆盖
-	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
+	configProfile?: string; // 子代理配置文件名(覆盖模型等设置)
 	customSystemPromptId?: string; // 自定义系统提示词 ID
 	customHeaders?: Record<string, string>; // 自定义请求头
-	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词（包含role等信息）
+	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词(包含role等信息)
 }
 
 export interface ChatCompletionChunk {
@@ -96,36 +95,29 @@ export interface ChatCompletionMessageParam {
 
 /**
  * 将我们的ChatMessage格式转换为OpenAI格式
- * 支持纯文本和多模态(文本+图片)消息
- * 系统提示词处理:
- * 1. 如果提供自定义系统提示词: 将其作为system消息,默认作为user消息
- * 2. 如果没有自定义系统提示词: 使用默认作为system
+ * 支持纯文本和多模态(文本+图片)消息.
+ * 输入中的system消息不会直接透传,会在转换后按统一优先级重建.
+ * 统一优先级: 子代理自定义 -> 子代理角色定义 -> 主代理自定义 -> 主代理角色定义.
  * @param messages - 要转换的消息数组
  * @param includeBuiltinSystemPrompt - 是否包含内置系统提示词(默认true)
- * @param customSystemPromptOverride - 自定义系统提示词内容(用于子代理)
+ * @param customSystemPromptOverride - 自定义系统提示词数组(用于本次调用覆盖)
  */
 function convertToOpenAIMessages(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
-	customSystemPromptOverride?: string,
+	customSystemPromptOverride?: string[],
 	isSubAgentCall: boolean = false,
 	subAgentSystemPrompt?: string,
-	// 为 true 时,使用 Team 模式系统提示词(已弃用)
 ): ChatCompletionMessageParam[] {
-	// 子代理调用：使用传递的 customSystemPrompt（由全局配置决定）
-	// 如果没有 customSystemPrompt，则使用子代理自己组装的提示词
-	// 子代理不会使用主代理自己组装的系统提示词
-	const customSystemPrompt = isSubAgentCall
-		? customSystemPromptOverride // 子代理使用传递的 customSystemPrompt（遵循全局配置）
-		: customSystemPromptOverride || getCustomSystemPrompt(); // 主代理可以回退到默认的customSystemPrompt
+	const customSystemPrompts = customSystemPromptOverride;
 
-	// 对于子代理调用，完全忽略includeBuiltinSystemPrompt参数
+	// 对于子代理调用,完全忽略 includeBuiltinSystemPrompt 参数
 	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
 		? false
 		: includeBuiltinSystemPrompt;
 
 	let result = messages.flatMap(msg => {
-		// 如果消息包含图片，使用 content 数组格式
+		// 如果消息包含图片,使用 content 数组格式
 		if (msg.role === 'user' && msg.images && msg.images.length > 0) {
 			const contentParts: Array<{
 				type: 'text' | 'image_url';
@@ -141,7 +133,7 @@ function convertToOpenAIMessages(
 				});
 			}
 
-			// 添加图片内容，统一处理 data URL 格式
+			// 添加图片内容,统一处理 data URL 格式
 			for (const image of msg.images) {
 				const imageUrl =
 					/^data:/i.test(image.data) || /^https?:\/\//i.test(image.data)
@@ -244,52 +236,59 @@ function convertToOpenAIMessages(
 		return [baseMessage as ChatCompletionMessageParam];
 	});
 
-	// 如果第一条消息已经是 system 消息，跳过
-	if (result.length > 0 && result[0]?.role === 'system') {
-		return result;
-	}
+	// 输入中的 system 消息不直接透传,统一由下方优先级逻辑重建
+	result = result.filter(msg => msg.role !== 'system');
 
-	// 统一的系统提示词逻辑
-	// 1. 子代理调用且有自定义系统提示词：使用自定义系统提示词
-	if (isSubAgentCall && customSystemPrompt) {
+	// 统一系统提示词优先级: 子代理自定义 -> 子代理角色定义 -> 主代理自定义 -> 主代理角色定义
+	if (isSubAgentCall && customSystemPrompts && customSystemPrompts.length > 0) {
 		result = [
 			{
 				role: 'system',
-				content: customSystemPrompt,
+				content: customSystemPrompts.map(text => ({
+					type: 'text' as const,
+					text,
+				})),
 			} as ChatCompletionMessageParam,
 			...result,
 		];
-		// subAgentSystemPrompt 会作为 user 消息保留在 messages 中（已在第一条或特殊user位置）
-	}
-	// 2. 子代理调用且没有自定义系统提示词：使用子代理组装的提示词
-	else if (isSubAgentCall && subAgentSystemPrompt) {
+	} else if (isSubAgentCall && subAgentSystemPrompt) {
 		result = [
 			{
 				role: 'system',
-				content: subAgentSystemPrompt,
+				content: [
+					{
+						type: 'text' as const,
+						text: subAgentSystemPrompt,
+					},
+				],
 			} as ChatCompletionMessageParam,
 			...result,
 		];
-		// finalPrompt 会同时在 system 和 user 中存在（已在 messages 第一条）
-	}
-	// 3. 主代理调用且有自定义系统提示词：使用自定义系统提示词，不添加主代理角色定义
-	else if (customSystemPrompt && !isSubAgentCall) {
+	} else if (
+		!isSubAgentCall &&
+		customSystemPrompts &&
+		customSystemPrompts.length > 0
+	) {
 		result = [
 			{
 				role: 'system',
-				content: customSystemPrompt,
+				content: customSystemPrompts.map(text => ({
+					type: 'text' as const,
+					text,
+				})),
 			} as ChatCompletionMessageParam,
 			...result,
 		];
-		// 不再添加 mainAgentManager.getSystemPrompt()，让自定义系统提示词完全替代
-		// 主代理角色定义会在 sessionInitializer.ts 中作为特殊 user 消息动态插入
-	}
-	// 4. 主代理调用且没有自定义系统提示词：使用主代理角色定义
-	else if (effectiveIncludeBuiltinSystemPrompt) {
+	} else if (effectiveIncludeBuiltinSystemPrompt) {
 		result = [
 			{
 				role: 'system',
-				content: mainAgentManager.getSystemPrompt(),
+				content: [
+					{
+						type: 'text' as const,
+						text: mainAgentManager.getSystemPrompt(),
+					},
+				],
 			} as ChatCompletionMessageParam,
 			...result,
 		];
@@ -372,7 +371,7 @@ async function* parseSSEStream(
 			if (done) {
 				// 连接异常中断时,残留半包不应被静默丢弃,应抛出可重试错误
 				if (buffer.trim()) {
-					// 连接异常中断，抛出明确错误，包含更详细的断点信息
+					// 连接异常中断,抛出明确错误,包含更详细的断点信息
 					const errorContext = {
 						dataCount,
 						lastEventType,
@@ -434,7 +433,7 @@ async function* parseSSEStream(
 	} catch (error) {
 		const {logger} = await import('../utils/core/logger.js');
 
-		// 增强错误日志，包含断点状态
+		// 增强错误日志,包含断点状态
 		const errorContext = {
 			error: error instanceof Error ? error.message : 'Unknown error',
 			dataCount,
@@ -493,7 +492,7 @@ export async function* createStreamingChatCompletion(
 	}
 
 	// Get system prompt (with custom override support)
-	let customSystemPromptContent: string | undefined;
+	let customSystemPromptContent: string[] | undefined;
 	if (options.customSystemPromptId) {
 		const {getSystemPromptConfig} = await import(
 			'../utils/config/apiConfig.js'
@@ -502,12 +501,12 @@ export async function* createStreamingChatCompletion(
 		const customPrompt = systemPromptConfig?.prompts.find(
 			p => p.id === options.customSystemPromptId,
 		);
-		if (customPrompt) {
-			customSystemPromptContent = customPrompt.content;
+		if (customPrompt?.content) {
+			customSystemPromptContent = [customPrompt.content];
 		}
 	}
 
-	// 如果没有显式的 customSystemPromptId，则按当前配置（含 profile 覆盖）解析
+	// 如果没有显式的 customSystemPromptId,则按当前配置(含 profile 覆盖)解析
 	customSystemPromptContent ||= getCustomSystemPromptForConfig(config);
 
 	// 使用重试包装生成器
@@ -553,7 +552,7 @@ export async function* createStreamingChatCompletion(
 			try {
 				response = await fetch(url, fetchOptions);
 			} catch (error) {
-				// 捕获 fetch 底层错误（网络错误、连接超时等）
+				// 捕获 fetch 底层错误(网络错误、连接超时等)
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
 				throw new Error(

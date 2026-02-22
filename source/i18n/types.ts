@@ -143,6 +143,7 @@ export type TranslationKeys = {
 		deleteConfirmMessage: string;
 		confirmHint: string;
 		saveError: string;
+		activeCount: string;
 	};
 	// Config Screen
 	configScreen: {
@@ -228,6 +229,7 @@ export type TranslationKeys = {
 		followGlobalWithParentheses: string;
 		followGlobalNoneWithParentheses: string;
 		notUse: string;
+		systemPromptMultiSelectHint: string;
 	};
 	// Custom Headers Screen
 	customHeaders: {

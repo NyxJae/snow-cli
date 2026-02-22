@@ -34,23 +34,23 @@ export interface ResponseOptions {
 	reasoning?: {
 		summary?: 'auto' | 'none';
 		effort?: 'low' | 'medium' | 'high' | 'xhigh';
-	} | null; // null 表示不传递 reasoning 参数（用于小模型）
+	} | null; // null 表示不传递 reasoning 参数(用于小模型)
 	prompt_cache_key?: string;
 	store?: boolean;
 	include?: string[];
-	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
-	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
+	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词(默认 true)
+	teamMode?: boolean; // 启用 Team 模式(使用 Team 模式系统提示词)
 	// 子代理配置覆盖
-	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
+	configProfile?: string; // 子代理配置文件名(覆盖模型等设置)
 	customSystemPromptId?: string; // 自定义系统提示词 ID
 	customHeaders?: Record<string, string>; // 自定义请求头
-	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词（包含role等信息）
+	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词(包含role等信息)
 }
 
 /**
  * 确保 schema 符合 Responses API 的要求：
  * 1. additionalProperties: false
- * 2. 保持原有的 required 数组（不修改）
+ * 2. 保持原有的 required 数组(不修改)
  */
 function ensureStrictSchema(
 	schema?: Record<string, any>,
@@ -63,7 +63,7 @@ function ensureStrictSchema(
 	const stringified = JSON.stringify(schema);
 	const parseResult = parseJsonWithFix(stringified, {
 		toolName: 'Schema 深拷贝',
-		fallbackValue: schema, // 如果失败，使用原始 schema
+		fallbackValue: schema, // 如果失败,使用原始 schema
 		logWarning: true,
 		logError: true,
 	});
@@ -90,7 +90,7 @@ function ensureStrictSchema(
 			}
 		}
 
-		// 如果 properties 为空且有 required 字段，删除它
+		// 如果 properties 为空且有 required 字段,删除它
 		if (
 			strictSchema['properties'] &&
 			Object.keys(strictSchema['properties']).length === 0 &&
@@ -188,22 +188,17 @@ function toResponseImageUrl(image: {data: string; mimeType?: string}): string {
 function convertToResponseInput(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
-	customSystemPromptOverride?: string,
-	isSubAgentCall: boolean = false, // 是否为子代理调用
-	subAgentSystemPrompt?: string, // 子代理组装的提示词
-	// 当为 true 时，使用 Team 模式系统提示词（已弃用）
+	customSystemPromptOverride?: string[],
+	isSubAgentCall: boolean = false,
+	subAgentSystemPrompt?: string,
 ): {
 	input: any[];
 	systemInstructions: string;
 } {
-	// 子代理调用：使用传递的 customSystemPrompt（由全局配置决定）
-	// 如果没有 customSystemPrompt，则使用子代理自己组装的提示词
-	// 子代理不会使用主代理自己组装的系统提示词
-	const customSystemPrompt = isSubAgentCall
-		? customSystemPromptOverride // 子代理使用传递的 customSystemPrompt（遵循全局配置）
-		: customSystemPromptOverride || getCustomSystemPrompt(); // 主代理可以回退到默认的customSystemPrompt
+	const customSystemPrompts = isSubAgentCall
+		? customSystemPromptOverride
+		: customSystemPromptOverride || getCustomSystemPrompt();
 
-	// 对于子代理调用，完全忽略includeBuiltinSystemPrompt参数
 	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
 		? false
 		: includeBuiltinSystemPrompt;
@@ -213,12 +208,12 @@ function convertToResponseInput(
 	for (const msg of messages) {
 		if (!msg) continue;
 
-		// 跳过 system 消息（不放入 input，也不放入 instructions）
+		// 跳过 system 消息(不放入 input,也不放入 instructions)
 		if (msg.role === 'system') {
 			continue;
 		}
 
-		// 用户消息：content 必须是数组格式，使用 type: "message" 包裹
+		// 用户消息:content 必须是数组格式,使用 type: "message" 包裹
 		if (msg.role === 'user') {
 			const contentParts: any[] = [];
 
@@ -235,11 +230,18 @@ function convertToResponseInput(
 				for (const image of msg.images) {
 					// Responses API 的 input_image.image_url 必须是 http(s) URL 或 data URL
 					// 使用 toResponseImageUrl 函数处理图片 URL
+					const imageUrl = toResponseImageUrl(image);
+					if (!imageUrl) continue;
 					contentParts.push({
 						type: 'input_image',
-						image_url: toResponseImageUrl(image),
+						image_url: imageUrl,
 					});
 				}
+			}
+
+			// 避免发送空内容的user消息,提升中转渠道兼容性
+			if (contentParts.length === 0) {
+				continue;
 			}
 
 			result.push({
@@ -250,14 +252,14 @@ function convertToResponseInput(
 			continue;
 		}
 
-		// Assistant 消息（带工具调用）
-		// 在 Responses API 中，需要将工具调用转换为 function_call 类型的独立项
+		// Assistant 消息(带工具调用)
+		// 在 Responses API 中,需要将工具调用转换为 function_call 类型的独立项
 		if (
 			msg.role === 'assistant' &&
 			msg.tool_calls &&
 			msg.tool_calls.length > 0
 		) {
-			// 如果存在自然语言说明内容，先添加文本消息
+			// 如果存在自然语言说明内容,先添加文本消息
 			if (msg.content) {
 				result.push({
 					type: 'message',
@@ -283,7 +285,7 @@ function convertToResponseInput(
 			continue;
 		}
 
-		// Assistant 消息（纯文本）
+		// Assistant 消息(纯文本)
 		if (msg.role === 'assistant') {
 			result.push({
 				type: 'message',
@@ -320,16 +322,20 @@ function convertToResponseInput(
 					text: `[Tool Result Image] The tool "${msg.tool_call_id}" returned the following image(s):`,
 				});
 				for (const image of msg.images) {
+					const imageUrl = toResponseImageUrl(image);
+					if (!imageUrl) continue;
 					imageContentParts.push({
 						type: 'input_image',
-						image_url: toResponseImageUrl(image),
+						image_url: imageUrl,
 					});
 				}
-				result.push({
-					type: 'message',
-					role: 'user',
-					content: imageContentParts,
-				});
+				if (imageContentParts.length > 1) {
+					result.push({
+						type: 'message',
+						role: 'user',
+						content: imageContentParts,
+					});
+				}
 			} else {
 				result.push({
 					type: 'function_call_output',
@@ -341,34 +347,20 @@ function convertToResponseInput(
 		}
 	}
 
-	// 确定系统提示词：与 anthropic.ts, chat.ts, gemini.ts 保持一致的优先级逻辑
-	let systemInstructions: string | undefined;
-	// 统一的系统提示词逻辑
-	// 1. 子代理调用且有自定义系统提示词：使用自定义系统提示词
-	if (isSubAgentCall && customSystemPrompt) {
-		systemInstructions = customSystemPrompt;
-		// subAgentSystemPrompt 会作为 user 消息保留在 messages 中（已在第一条或特殊user位置）
-	}
-	// 2. 子代理调用且没有自定义系统提示词：使用子代理组装的提示词
-	else if (isSubAgentCall && subAgentSystemPrompt) {
+	// 确定系统提示词：与其他适配器保持一致优先级
+	let systemInstructions = '';
+	if (isSubAgentCall && customSystemPrompts && customSystemPrompts.length > 0) {
+		systemInstructions = customSystemPrompts.join('\n\n');
+	} else if (isSubAgentCall && subAgentSystemPrompt) {
 		systemInstructions = subAgentSystemPrompt;
-		// finalPrompt 会同时在 system 和 user 中存在（已在 messages 第一条）
-	}
-	// 3. 主代理调用且有自定义系统提示词：使用自定义系统提示词，不添加主代理角色定义
-	else if (customSystemPrompt && !isSubAgentCall) {
-		systemInstructions = customSystemPrompt;
-		// 不再添加 mainAgentManager.getSystemPrompt()，让自定义系统提示词完全替代
-		// 主代理角色定义会在 sessionInitializer.ts 中作为特殊 user 消息动态插入
-	}
-	// 4. 主代理调用且没有自定义系统提示词：使用主代理角色定义
-	else if (effectiveIncludeBuiltinSystemPrompt) {
+	} else if (
+		!isSubAgentCall &&
+		customSystemPrompts &&
+		customSystemPrompts.length > 0
+	) {
+		systemInstructions = customSystemPrompts.join('\n\n');
+	} else if (effectiveIncludeBuiltinSystemPrompt) {
 		systemInstructions = mainAgentManager.getSystemPrompt();
-	}
-	// 5. 其他情况：不设置系统提示词（与 anthropic.ts, chat.ts, gemini.ts 保持一致）
-	else {
-		// Responses API 要求 systemInstructions 为 string 类型
-		// 使用空字符串表示未设置，与其他 API 的行为保持一致
-		systemInstructions = '';
 	}
 
 	return {input: result, systemInstructions};
@@ -419,7 +411,7 @@ async function* parseSSEStream(
 			if (done) {
 				// 连接异常中断时,残留半包不应被静默丢弃,应抛出可重试错误
 				if (buffer.trim()) {
-					// 连接异常中断，抛出明确错误
+					// 连接异常中断,抛出明确错误
 					throw new Error(
 						`Stream terminated unexpectedly with incomplete data: ${buffer.substring(
 							0,
@@ -444,7 +436,7 @@ async function* parseSSEStream(
 
 				// 处理 "event: " 和 "event:" 两种格式
 				if (trimmed.startsWith('event:')) {
-					// 事件类型，后面会跟随数据
+					// 事件类型,后面会跟随数据
 					continue;
 				}
 
@@ -484,8 +476,8 @@ async function* parseSSEStream(
  * 使用Responses API创建流式聊天补全
  *
  * @param options - Responses API调用选项
- * @param abortSignal - 中断信号，用于取消请求
- * @param onRetry - 重试回调函数，在重试时调用
+ * @param abortSignal - 中断信号,用于取消请求
+ * @param onRetry - 重试回调函数,在重试时调用
  * @returns 流式响应生成器
  */
 export async function* createStreamingResponse(
@@ -493,7 +485,7 @@ export async function* createStreamingResponse(
 	abortSignal?: AbortSignal,
 	onRetry?: (error: Error, attempt: number, nextDelay: number) => void,
 ): AsyncGenerator<ResponseStreamChunk, void, unknown> {
-	// 加载配置：如果指定了 configProfile，则加载它；否则使用主配置
+	// 加载配置:如果指定了 configProfile,则加载它;否则使用主配置
 	let config: ReturnType<typeof getOpenAiConfig>;
 	if (options.configProfile) {
 		try {
@@ -502,7 +494,7 @@ export async function* createStreamingResponse(
 			if (profileConfig?.snowcfg) {
 				config = profileConfig.snowcfg;
 			} else {
-				// 未找到配置文件，回退到主配置
+				// 未找到配置文件,回退到主配置
 				config = getOpenAiConfig();
 				const {logger} = await import('../utils/core/logger.js');
 				logger.warn(
@@ -510,7 +502,7 @@ export async function* createStreamingResponse(
 				);
 			}
 		} catch (error) {
-			// 如果加载配置文件失败，回退到主配置
+			// 如果加载配置文件失败,回退到主配置
 			config = getOpenAiConfig();
 			const {logger} = await import('../utils/core/logger.js');
 			logger.warn(
@@ -519,12 +511,12 @@ export async function* createStreamingResponse(
 			);
 		}
 	} else {
-		// 未指定 configProfile，使用主配置
+		// 未指定 configProfile,使用主配置
 		config = getOpenAiConfig();
 	}
 
-	// 获取系统提示词（支持自定义覆盖）
-	let customSystemPromptContent: string | undefined;
+	// 获取系统提示词(支持自定义覆盖)
+	let customSystemPromptContent: string[] | undefined;
 	if (options.customSystemPromptId) {
 		const {getSystemPromptConfig} = await import(
 			'../utils/config/apiConfig.js'
@@ -533,12 +525,12 @@ export async function* createStreamingResponse(
 		const customPrompt = systemPromptConfig?.prompts.find(
 			p => p.id === options.customSystemPromptId,
 		);
-		if (customPrompt) {
-			customSystemPromptContent = customPrompt.content;
+		if (customPrompt?.content) {
+			customSystemPromptContent = [customPrompt.content];
 		}
 	}
 
-	// 如果没有显式的 customSystemPromptId，则按当前配置（含 profile 覆盖）解析
+	// 如果没有显式的 customSystemPromptId,则按当前配置(含 profile 覆盖)解析
 	customSystemPromptContent ||= getCustomSystemPromptForConfig(config);
 
 	// 提取系统提示词和转换后的消息
@@ -548,7 +540,7 @@ export async function* createStreamingResponse(
 		customSystemPromptContent,
 		!!options.customSystemPromptId || !!options.subAgentSystemPrompt, // 子代理调用的判断：只要有customSystemPromptId或subAgentSystemPrompt就认为是子代理调用
 		options.subAgentSystemPrompt,
-		// 传递 teamMode 以使用正确的系统提示词（已弃用）
+		// 传递 teamMode 以使用正确的系统提示词(已弃用)
 	);
 
 	// 获取配置的 reasoning 设置
@@ -576,7 +568,7 @@ export async function* createStreamingResponse(
 
 			const url = `${config.baseUrl}/responses`;
 
-			// 如果提供了选项中的自定义请求头，则使用它们；否则从当前配置获取（支持配置文件覆盖）
+			// 如果提供了选项中的自定义请求头,则使用它们;否则从当前配置获取(支持配置文件覆盖)
 			const customHeaders =
 				options.customHeaders || getCustomHeadersForConfig(config);
 
@@ -600,7 +592,7 @@ export async function* createStreamingResponse(
 			try {
 				response = await fetch(url, fetchOptions);
 			} catch (error) {
-				// 捕获 fetch 底层错误（网络错误、连接超时等）
+				// 捕获 fetch 底层错误(网络错误、连接超时等)
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
 				throw new Error(
@@ -714,7 +706,7 @@ export async function* createStreamingResponse(
 							toolCallsBuffer[callId].function.arguments = item.arguments;
 						}
 					} else if (item?.type === 'reasoning') {
-						// 捕获完整的 reasoning 对象（包括 encrypted_content）
+						// 捕获完整的 reasoning 对象(包括 encrypted_content)
 						reasoningData = {
 							summary: item.summary,
 							content: item.content,
@@ -726,7 +718,7 @@ export async function* createStreamingResponse(
 					// 内容部分添加 - 忽略
 					continue;
 				} else if (eventType === 'response.reasoning_summary_text.delta') {
-					// 推理摘要增量更新（仅用于 token 计数，不包含在响应内容中）
+					// 推理摘要增量更新(仅用于 token 计数,不包含在响应内容中)
 					const delta = chunk.delta;
 					if (delta) {
 						yield {
@@ -778,7 +770,7 @@ export async function* createStreamingResponse(
 				}
 			}
 
-			// 如果有工具调用，返回它们
+			// 如果有工具调用,返回它们
 			if (hasToolCalls) {
 				yield {
 					type: 'tool_calls',
@@ -786,7 +778,7 @@ export async function* createStreamingResponse(
 				};
 			}
 
-			// 如果有推理数据，返回它们
+			// 如果有推理数据,返回它们
 			if (reasoningData) {
 				yield {
 					type: 'reasoning_data',
@@ -794,7 +786,7 @@ export async function* createStreamingResponse(
 				};
 			}
 
-			// 如果有使用信息，返回它们
+			// 如果有使用信息,返回它们
 			if (usageData) {
 				// 在 API 层保存使用信息到文件系统
 				saveUsageToFile(options.model, usageData);
@@ -805,7 +797,7 @@ export async function* createStreamingResponse(
 				};
 			}
 
-			// 发送完成信号 - 对于 Responses API，思考内容在 reasoning 对象中，不是单独的 thinking 字段
+			// 发送完成信号 - 对于 Responses API,思考内容在 reasoning 对象中,不是单独的 thinking 字段
 			yield {
 				type: 'done',
 			};

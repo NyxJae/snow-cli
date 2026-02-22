@@ -3,7 +3,6 @@ import {
 	getOpenAiConfig,
 	getCustomSystemPromptForConfig,
 	getCustomHeadersForConfig,
-	getCustomSystemPrompt,
 	type ThinkingConfig,
 } from '../utils/config/apiConfig.js';
 import {mainAgentManager} from '../utils/MainAgentManager.js';
@@ -30,14 +29,14 @@ export interface AnthropicOptions {
 	max_tokens?: number;
 	tools?: ChatCompletionTool[];
 	sessionId?: string; // 用于用户跟踪和缓存的会话 ID
-	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
-	disableThinking?: boolean; // 禁用 Extended Thinking 功能（用于 agents 等场景，默认 false）
-	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
+	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词(默认 true)
+	disableThinking?: boolean; // 禁用 Extended Thinking 功能(用于 agents 等场景,默认 false)
+	teamMode?: boolean; // 启用 Team 模式(使用 Team 模式系统提示词)
 	// 子代理配置覆盖
-	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
+	configProfile?: string; // 子代理配置文件名(覆盖模型等设置)
 	customSystemPromptId?: string; // 自定义系统提示词 ID
 	customHeaders?: Record<string, string>; // 自定义请求头
-	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词（包含role等信息）
+	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词(包含role等信息)
 }
 
 export interface AnthropicStreamChunk {
@@ -94,8 +93,8 @@ let persistentUserId: string | null = null;
 
 /**
  * 将图片数据转换为 Anthropic API 所需的格式
- * 处理三种情况：
- * 1. 远程 URL (http/https): 返回 URL 类型（Anthropic 支持某些图片 URL）
+ * 处理三种情况:
+ * 1. 远程 URL (http/https): 返回 URL 类型(Anthropic 支持某些图片 URL)
  * 2. 已经是 data URL: 解析出 media_type 和 base64 数据
  * 3. 纯 base64 数据: 使用提供的 mimeType 补齐为完整格式
  */
@@ -117,7 +116,7 @@ function toAnthropicImageSource(image: {
 		};
 	}
 
-	// 已经是 data URL 格式，解析它
+	// 已经是 data URL 格式,解析它
 	const dataUrlMatch = data.match(/^data:([^;]+);base64,(.+)$/);
 	if (dataUrlMatch) {
 		return {
@@ -127,7 +126,7 @@ function toAnthropicImageSource(image: {
 		};
 	}
 
-	// 纯 base64 数据，补齐格式
+	// 纯 base64 数据,补齐格式
 	const mimeType = image.mimeType?.trim() || 'image/png';
 	return {
 		type: 'base64',
@@ -210,32 +209,28 @@ function convertToolsToAnthropic(
 function convertToAnthropicMessages(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
-	customSystemPromptOverride?: string, // 允许子代理覆盖
-	isSubAgentCall: boolean = false, // 是否为子代理调用
-	subAgentSystemPrompt?: string, // 子代理组装的提示词
-	cacheTTL: '5m' | '1h' = '5m', // 缓存 TTL 配置
-	disableThinking: boolean = false, // 为 true 时,从消息中移除 thinking 块
+	customSystemPromptOverride?: string[],
+	isSubAgentCall: boolean = false,
+	subAgentSystemPrompt?: string,
+	cacheTTL: '5m' | '1h' = '5m',
+	disableThinking: boolean = false,
 ): {
 	system?: any;
 	messages: AnthropicMessageParam[];
 } {
-	// 子代理使用传递的 customSystemPrompt(由全局配置决定),完全忽略 includeBuiltinSystemPrompt
-	// 避免子代理提示词与主代理内置提示词叠加导致越权或污染
-	const customSystemPrompt = isSubAgentCall
-		? customSystemPromptOverride
-		: customSystemPromptOverride || getCustomSystemPrompt();
+	const customSystemPrompts = customSystemPromptOverride;
 
-	// 对于子代理调用，完全忽略includeBuiltinSystemPrompt参数
+	// 对于子代理调用,完全忽略 includeBuiltinSystemPrompt 参数
 	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
 		? false
 		: includeBuiltinSystemPrompt;
 
-	let systemContent: string | undefined;
+	let systemContents: string[] | undefined;
 	const anthropicMessages: AnthropicMessageParam[] = [];
 
 	for (const msg of messages) {
 		if (msg.role === 'system') {
-			systemContent = msg.content;
+			// 输入中的system消息不直接透传,统一由下方优先级逻辑重建
 			continue;
 		}
 
@@ -307,7 +302,7 @@ function convertToAnthropicMessages(
 				});
 			}
 
-			// 使用辅助函数处理各种格式的图片数据，补齐纯 base64 数据
+			// 使用辅助函数处理各种格式的图片数据,补齐纯 base64 数据
 			for (const image of msg.images) {
 				const imageSource = toAnthropicImageSource(image);
 				if (imageSource) {
@@ -402,26 +397,19 @@ function convertToAnthropicMessages(
 		}
 	}
 
-	// 统一的系统提示词逻辑
-	// 1. 子代理调用且有自定义系统提示词：使用自定义系统提示词
-	if (isSubAgentCall && customSystemPrompt) {
-		systemContent = customSystemPrompt;
-		// subAgentSystemPrompt 会作为 user 消息保留在 messages 中（已在第一条或特殊user位置）
-	}
-	// 2. 子代理调用且没有自定义系统提示词：使用子代理组装的提示词
-	else if (isSubAgentCall && subAgentSystemPrompt) {
-		systemContent = subAgentSystemPrompt;
-		// finalPrompt 会同时在 system 和 user 中存在（已在 messages 第一条）
-	}
-	// 3. 主代理调用且有自定义系统提示词：使用自定义系统提示词，不添加主代理角色定义
-	else if (customSystemPrompt && !isSubAgentCall) {
-		systemContent = customSystemPrompt;
-		// 不再添加 mainAgentManager.getSystemPrompt()，让自定义系统提示词完全替代
-		// 主代理角色定义会在 sessionInitializer.ts 中作为特殊 user 消息动态插入
-	}
-	// 4. 主代理调用且没有自定义系统提示词：使用主代理角色定义
-	else if (effectiveIncludeBuiltinSystemPrompt) {
-		systemContent = mainAgentManager.getSystemPrompt();
+	// 统一系统提示词优先级: 子代理自定义 -> 子代理角色定义 -> 主代理自定义 -> 主代理角色定义
+	if (isSubAgentCall && customSystemPrompts && customSystemPrompts.length > 0) {
+		systemContents = customSystemPrompts;
+	} else if (isSubAgentCall && subAgentSystemPrompt) {
+		systemContents = [subAgentSystemPrompt];
+	} else if (
+		!isSubAgentCall &&
+		customSystemPrompts &&
+		customSystemPrompts.length > 0
+	) {
+		systemContents = customSystemPrompts;
+	} else if (effectiveIncludeBuiltinSystemPrompt) {
+		systemContents = [mainAgentManager.getSystemPrompt()];
 	}
 
 	let lastUserMessageIndex = -1;
@@ -453,15 +441,17 @@ function convertToAnthropicMessages(
 		}
 	}
 
-	const system = systemContent
-		? [
-				{
+	// 构造 system 字段：每个提示词作为独立的 text 对象
+	const system =
+		systemContents && systemContents.length > 0
+			? systemContents.map((text, index) => ({
 					type: 'text',
-					text: systemContent,
-					cache_control: {type: 'ephemeral', ttl: cacheTTL},
-				},
-		  ]
-		: undefined;
+					text,
+					...(index === systemContents!.length - 1
+						? {cache_control: {type: 'ephemeral', ttl: cacheTTL}}
+						: {}),
+			  }))
+			: undefined;
 
 	return {system, messages: anthropicMessages};
 }
@@ -513,7 +503,7 @@ async function* parseSSEStream(
 			if (done) {
 				// 检查buffer是否有残留数据
 				if (buffer.trim()) {
-					// 连接异常中断，抛出明确错误，并包含断点信息
+					// 连接异常中断,抛出明确错误,并包含断点信息
 					const errorContext = {
 						dataCount,
 						lastEventType,
@@ -575,7 +565,7 @@ async function* parseSSEStream(
 	} catch (error) {
 		const {logger} = await import('../utils/core/logger.js');
 
-		// 增强错误日志，包含断点状态
+		// 增强错误日志,包含断点状态
 		const errorContext = {
 			error: error instanceof Error ? error.message : 'Unknown error',
 			dataCount,
@@ -634,7 +624,7 @@ export async function* createStreamingAnthropicCompletion(
 			}
 
 			// 获取系统提示词(支持自定义覆盖)
-			let customSystemPromptContent: string | undefined;
+			let customSystemPromptContent: string[] | undefined;
 			if (options.customSystemPromptId) {
 				const {getSystemPromptConfig} = await import(
 					'../utils/config/apiConfig.js'
@@ -643,12 +633,12 @@ export async function* createStreamingAnthropicCompletion(
 				const customPrompt = systemPromptConfig?.prompts.find(
 					p => p.id === options.customSystemPromptId,
 				);
-				if (customPrompt) {
-					customSystemPromptContent = customPrompt.content;
+				if (customPrompt?.content) {
+					customSystemPromptContent = [customPrompt.content];
 				}
 			}
 
-			// 如果没有显式的 customSystemPromptId，则按当前配置（含 profile 覆盖）解析
+			// 如果没有显式的 customSystemPromptId,则按当前配置(含 profile 覆盖)解析
 			customSystemPromptContent ||= getCustomSystemPromptForConfig(config);
 
 			const {system, messages} = convertToAnthropicMessages(
@@ -657,7 +647,7 @@ export async function* createStreamingAnthropicCompletion(
 				customSystemPromptContent, // 传递自定义系统提示词
 				!!options.customSystemPromptId || !!options.subAgentSystemPrompt, // 子代理调用的判断：只要有customSystemPromptId或subAgentSystemPrompt就认为是子代理调用
 				options.subAgentSystemPrompt,
-				config.anthropicCacheTTL || '5m', // 使用配置的 TTL，默认 5m
+				config.anthropicCacheTTL || '5m', // 使用配置的 TTL,默认 5m
 				options.disableThinking || false, // 当 thinking 被禁用时移除 thinking 块
 				// 如果启用,使用 Team 模式系统提示词(已弃用)
 			);
@@ -705,7 +695,7 @@ export async function* createStreamingAnthropicCompletion(
 			// }
 
 			// 使用配置的 baseUrl 或默认 Anthropic URL
-			//移除末尾斜杠，避免拼接时出现双斜杠（如 /v1//messages）
+			//移除末尾斜杠,避免拼接时出现双斜杠(如 /v1//messages)
 			const baseUrl = (
 				config.baseUrl && config.baseUrl !== 'https://api.openai.com/v1'
 					? config.baseUrl
@@ -727,7 +717,7 @@ export async function* createStreamingAnthropicCompletion(
 			try {
 				response = await fetch(url, fetchOptions);
 			} catch (error) {
-				// 捕获 fetch 底层错误（网络错误、连接超时等）
+				// 捕获 fetch 底层错误(网络错误、连接超时等)
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
 				throw new Error(

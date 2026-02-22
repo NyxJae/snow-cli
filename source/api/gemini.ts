@@ -25,13 +25,13 @@ export interface GeminiOptions {
 	messages: ChatMessage[];
 	temperature?: number;
 	tools?: ChatCompletionTool[];
-	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词（默认 true）
-	teamMode?: boolean; // 启用 Team 模式（使用 Team 模式系统提示词）
+	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词(默认 true)
+	teamMode?: boolean; // 启用 Team 模式(使用 Team 模式系统提示词)
 	// 子代理配置覆盖
-	configProfile?: string; // 子代理配置文件名（覆盖模型等设置）
+	configProfile?: string; // 子代理配置文件名(覆盖模型等设置)
 	customSystemPromptId?: string; // 自定义系统提示词 ID
 	customHeaders?: Record<string, string>; // 自定义请求头
-	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词（包含role等信息）
+	subAgentSystemPrompt?: string; // 子代理组装好的完整提示词(包含role等信息)
 }
 
 /**
@@ -63,7 +63,7 @@ export interface GeminiStreamChunk {
 	};
 }
 
-// 已弃用：不再使用，保留作为参考
+// 已弃用：不再使用,保留作为参考
 // @ts-ignore - Variable kept for backward compatibility with resetGeminiClient export
 let geminiConfig: {
 	apiKey: string;
@@ -83,7 +83,7 @@ export function resetGeminiClient(): void {
  * 将图片数据转换为 Gemini API 所需的格式
  * 处理三种情况：
  * 1. 远程 URL (http/https): 返回 fileData 格式
- * 2. 已经是 data URL: 返回 inlineData 格式，并确保 data 带 data: 头
+ * 2. 已经是 data URL: 返回 inlineData 格式,并确保 data 带 data: 头
  * 3. 纯 base64 数据: 使用提供的 mimeType 补齐 data URL 格式
  */
 function toGeminiImagePart(image: {
@@ -106,7 +106,7 @@ function toGeminiImagePart(image: {
 		};
 	}
 
-	// 已经是 data URL 格式，直接使用原值作为 data
+	// 已经是 data URL 格式,直接使用原值作为 data
 	const dataUrlMatch = data.match(/^data:([^;]+);base64,(.+)$/);
 	if (dataUrlMatch) {
 		return {
@@ -117,7 +117,7 @@ function toGeminiImagePart(image: {
 		};
 	}
 
-	// 纯 base64 数据，补齐 data URL 格式
+	// 纯 base64 数据,补齐 data URL 格式
 	const mimeType = image.mimeType?.trim() || 'image/png';
 	return {
 		inlineData: {
@@ -162,36 +162,33 @@ function convertToolsToGemini(tools?: ChatCompletionTool[]): any[] | undefined {
  * 将我们的ChatMessage格式转换为Gemini格式
  *
  * @param messages - 要转换的消息数组
- * @param includeBuiltinSystemPrompt - 是否包含内置系统提示词（默认true）
- * @param customSystemPromptOverride - 自定义系统提示词（用于子代理）
+ * @param includeBuiltinSystemPrompt - 是否包含内置系统提示词(默认true)
+ * @param customSystemPromptOverride - 自定义系统提示词(用于子代理)
  * @param isSubAgentCall - 是否为子代理调用
  * @param subAgentSystemPrompt - 子代理组装好的完整提示词
- * @returns 转换后的对象，包含systemInstruction和contents
+ * @returns 转换后的对象,包含systemInstruction和contents
  */
 function convertToGeminiMessages(
 	messages: ChatMessage[],
 	includeBuiltinSystemPrompt: boolean = true,
-	customSystemPromptOverride?: string, // 允许子代理覆盖
-	isSubAgentCall: boolean = false, // 是否为子代理调用
-	subAgentSystemPrompt?: string, // 子代理组装的提示词
-	// 当为 true 时,使用 Team 模式系统提示词(已弃用)
+	customSystemPromptOverride?: string[],
+	isSubAgentCall: boolean = false,
+	subAgentSystemPrompt?: string,
 ): {
-	systemInstruction?: string;
+	systemInstruction?: string[];
 	contents: any[];
 } {
-	// 子代理调用：使用传递的 customSystemPrompt（由全局配置决定）
-	// 如果没有 customSystemPrompt，则使用子代理自己组装的提示词
-	// 子代理不会使用主代理自己组装的系统提示词
-	const customSystemPrompt = isSubAgentCall
-		? customSystemPromptOverride // 子代理使用传递的 customSystemPrompt（遵循全局配置）
-		: customSystemPromptOverride || getCustomSystemPrompt(); // 主代理可以回退到默认的customSystemPrompt
+	// 子代理调用: 使用传入覆盖; 主代理调用: 支持覆盖并可回退全局配置
+	const customSystemPrompts = isSubAgentCall
+		? customSystemPromptOverride
+		: customSystemPromptOverride || getCustomSystemPrompt();
 
-	// 对于子代理调用，完全忽略includeBuiltinSystemPrompt参数
+	// 子代理调用不使用 includeBuiltinSystemPrompt 兜底
 	const effectiveIncludeBuiltinSystemPrompt = isSubAgentCall
 		? false
 		: includeBuiltinSystemPrompt;
 
-	let systemInstruction: string | undefined;
+	let systemInstruction: string[] | undefined;
 	const contents: any[] = [];
 
 	// 构建 tool_call_id 到 function_name 的映射,用于并行调用
@@ -201,9 +198,8 @@ function convertToGeminiMessages(
 		const msg = messages[i];
 		if (!msg) continue;
 
-		// 提取 system 消息作为 systemInstruction
+		// 输入中的system消息不直接透传,统一由下方优先级逻辑重建
 		if (msg.role === 'system') {
-			systemInstruction = msg.content;
 			continue;
 		}
 
@@ -426,26 +422,26 @@ function convertToGeminiMessages(
 		contents.push({role, parts});
 	}
 
-	// 统一的系统提示词逻辑
-	// 1. 子代理调用且有自定义系统提示词：使用自定义系统提示词
-	if (isSubAgentCall && customSystemPrompt) {
-		systemInstruction = customSystemPrompt;
-		// subAgentSystemPrompt 会作为 user 消息保留在 messages 中（已在第一条或特殊user位置）
+	// 统一系统提示词优先级
+	// 1. 子代理调用且有自定义系统提示词
+	if (isSubAgentCall && customSystemPrompts && customSystemPrompts.length > 0) {
+		systemInstruction = customSystemPrompts;
 	}
-	// 2. 子代理调用且没有自定义系统提示词：使用子代理组装的提示词
+	// 2. 子代理调用且无自定义但有子代理角色定义提示词
 	else if (isSubAgentCall && subAgentSystemPrompt) {
-		systemInstruction = subAgentSystemPrompt;
-		// finalPrompt 会同时在 system 和 user 中存在（已在 contents 第一条）
+		systemInstruction = [subAgentSystemPrompt];
 	}
-	// 3. 主代理调用且有自定义系统提示词：使用自定义系统提示词，不添加主代理角色定义
-	else if (customSystemPrompt && !isSubAgentCall) {
-		systemInstruction = customSystemPrompt;
-		// 不再添加 mainAgentManager.getSystemPrompt()，让自定义系统提示词完全替代
-		// 主代理角色定义会在 sessionInitializer.ts 中作为特殊 user 消息动态插入
+	// 3. 主代理调用且有自定义系统提示词
+	else if (
+		!isSubAgentCall &&
+		customSystemPrompts &&
+		customSystemPrompts.length > 0
+	) {
+		systemInstruction = customSystemPrompts;
 	}
-	// 4. 主代理调用且没有自定义系统提示词：使用主代理角色定义
+	// 4. 无自定义系统提示词时使用主代理角色定义
 	else if (effectiveIncludeBuiltinSystemPrompt) {
-		systemInstruction = mainAgentManager.getSystemPrompt();
+		systemInstruction = [mainAgentManager.getSystemPrompt()];
 	}
 
 	return {systemInstruction, contents};
@@ -455,8 +451,8 @@ function convertToGeminiMessages(
  * 使用Gemini API创建流式聊天补全
  *
  * @param options - Gemini API调用选项
- * @param abortSignal - 中断信号，用于取消请求
- * @param onRetry - 重试回调函数，在重试时调用
+ * @param abortSignal - 中断信号,用于取消请求
+ * @param onRetry - 重试回调函数,在重试时调用
  * @returns 流式响应生成器
  */
 export async function* createStreamingGeminiCompletion(
@@ -495,7 +491,7 @@ export async function* createStreamingGeminiCompletion(
 	}
 
 	// 获取系统提示词(支持自定义覆盖)
-	let customSystemPromptContent: string | undefined;
+	let customSystemPromptContent: string[] | undefined;
 	if (options.customSystemPromptId) {
 		const {getSystemPromptConfig} = await import(
 			'../utils/config/apiConfig.js'
@@ -504,12 +500,12 @@ export async function* createStreamingGeminiCompletion(
 		const customPrompt = systemPromptConfig?.prompts.find(
 			p => p.id === options.customSystemPromptId,
 		);
-		if (customPrompt) {
-			customSystemPromptContent = customPrompt.content;
+		if (customPrompt?.content) {
+			customSystemPromptContent = [customPrompt.content];
 		}
 	}
 
-	// 如果没有显式的 customSystemPromptId，则按当前配置（含 profile 覆盖）解析
+	// 如果没有显式的 customSystemPromptId,则按当前配置(含 profile 覆盖)解析
 	customSystemPromptContent ||= getCustomSystemPromptForConfig(config);
 
 	// 使用重试包装生成器
@@ -528,7 +524,7 @@ export async function* createStreamingGeminiCompletion(
 			const requestBody: any = {
 				contents,
 				systemInstruction: systemInstruction
-					? {parts: [{text: systemInstruction}]}
+					? {parts: systemInstruction.map(text => ({text}))}
 					: undefined,
 			};
 
@@ -585,7 +581,7 @@ export async function* createStreamingGeminiCompletion(
 			try {
 				response = await fetch(url, fetchOptions);
 			} catch (error) {
-				// 捕获 fetch 底层错误（网络错误、连接超时等）
+				// 捕获 fetch 底层错误(网络错误、连接超时等)
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
 				throw new Error(
@@ -678,7 +674,7 @@ export async function* createStreamingGeminiCompletion(
 					if (done) {
 						// 连接异常中断时,残留半包不应被静默丢弃,应抛出可重试错误
 						if (buffer.trim()) {
-							// 连接异常中断，抛出明确错误
+							// 连接异常中断,抛出明确错误
 							const errorMsg = `[API_ERROR] [RETRIABLE] Gemini stream terminated unexpectedly with incomplete data`;
 							const bufferPreview = buffer.substring(0, 100);
 							logger.error(errorMsg, {

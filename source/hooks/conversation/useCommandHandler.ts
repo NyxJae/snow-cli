@@ -384,10 +384,9 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 			// Handle /ide command
 			if (commandName === 'ide') {
 				if (result.success) {
-					// Connection successful, set status to connected immediately
-					// The轮询 mechanism will also update the status, but we do it here for immediate feedback
+					// 连接成功后立即更新状态,避免用户在轮询同步前感知延迟
 					options.setVscodeConnectionStatus('connected');
-					// Don't add command message to keep UI clean
+					// 不追加command消息,避免消息区出现与连接状态无关的噪音
 				} else {
 					options.setVscodeConnectionStatus('error');
 				}
@@ -565,7 +564,31 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				options.setMessages(prev => [...prev, commandMessage]);
 			} else if (result.success && result.action === 'showProfilePanel') {
 				options.onSwitchProfile();
-				// Don't add command message to keep UI clean
+				// 不追加command消息,避免无效反馈挤占主对话区
+			} else if (result.success && result.action === 'home') {
+				// 先清理会话与缓存消息,避免返回首页后旧状态泄漏到新会话
+				sessionManager.clearCurrentSession();
+				options.clearSavedMessages();
+				// 重置终端显示,确保welcome页呈现干净的交互环境
+				resetTerminal(stdout);
+				void import('../../utils/core/folderNotebookPreprocessor.js').then(
+					({clearReadFolders}) => {
+						clearReadFolders();
+					},
+				);
+				navigateTo('welcome');
+			} else if (result.success && result.action === 'showUsagePanel') {
+				options.setShowUsagePanel(true);
+				const commandMessage: Message = {
+					role: 'command',
+					content: '',
+					commandName: commandName,
+				};
+				options.setMessages(prev => [...prev, commandMessage]);
+			} else if (result.success && result.action === 'help') {
+				// 帮助内容改为独立页面,避免在聊天区渲染超长文本导致布局溢出
+				navigateTo('help');
+				// 不追加command消息,避免无效反馈挤占主对话区
 			} else if (
 				result.success &&
 				result.action === 'showCustomCommandConfig'
@@ -670,7 +693,10 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					if (cmdOutputFlushTimer) {
 						clearTimeout(cmdOutputFlushTimer);
 					}
-					cmdOutputFlushTimer = setTimeout(flushCmdOutput, CMD_OUTPUT_FLUSH_DELAY);
+					cmdOutputFlushTimer = setTimeout(
+						flushCmdOutput,
+						CMD_OUTPUT_FLUSH_DELAY,
+					);
 				};
 
 				// Stream stdout
@@ -755,7 +781,10 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					options.setMessages(prev => [...prev, errorMessage]);
 				}
 			} else if (result.success && result.action === 'home') {
-				// Reset terminal before navigating to welcome screen
+				// 先清理会话与缓存消息,避免返回首页后旧状态泄漏到新会话
+				sessionManager.clearCurrentSession();
+				options.clearSavedMessages();
+				// 重置终端显示,确保welcome页呈现干净的交互环境
 				resetTerminal(stdout);
 				void import('../../utils/core/folderNotebookPreprocessor.js').then(
 					({clearReadFolders}) => {
@@ -764,8 +793,9 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				);
 				navigateTo('welcome');
 			} else if (result.success && result.action === 'toggleYolo') {
+				// 切换YOLO模式时不追加消息,避免命令噪音干扰会话阅读
 				options.setYoloMode(prev => !prev);
-				// Don't add command message to keep UI clean
+				// 不追加command消息,避免无效反馈挤占主对话区
 			} else if (
 				result.success &&
 				result.action === 'initProject' &&

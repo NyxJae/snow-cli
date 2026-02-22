@@ -16,8 +16,8 @@ import {getCustomSystemPrompt} from '../../../utils/config/apiConfig.js';
  * 初始化会话和TODO上下文
  *
  * @returns 初始化后的对话消息和会话信息
- * @deprecated planMode 和 vulnerabilityHuntingMode 参数已移除。
- * 现在由 mainAgentManager 管理代理状态。
+ * @deprecated planMode 和 vulnerabilityHuntingMode 参数已移除.
+ * 现在由 mainAgentManager 管理代理状态.
  */
 export async function initializeConversationSession(): Promise<{
 	conversationMessages: ChatMessage[];
@@ -41,10 +41,11 @@ export async function initializeConversationSession(): Promise<{
 	const todoService = getTodoService();
 	const existingTodoList = await todoService.getTodoList(currentSession.id);
 
-	// 步骤1: 构建对话历史，system消息始终为第一条
+	// 步骤1: 构建对话历史,system消息始终为第一条
 	// 根据是否有自定义系统提示词来决定 system 消息的内容
 	const customSystemPrompt = getCustomSystemPrompt();
-	const systemPrompt = customSystemPrompt || mainAgentManager.getSystemPrompt();
+	const systemPrompt =
+		customSystemPrompt?.join('\n\n') || mainAgentManager.getSystemPrompt();
 
 	const conversationMessages: ChatMessage[] = [
 		{
@@ -53,9 +54,9 @@ export async function initializeConversationSession(): Promise<{
 		},
 	];
 
-	// 添加会话历史消息（包含tool_calls和tool结果）
-	// 过滤掉内部子代理消息（标记为subAgentInternal: true）
-	// 只保留主代理和用户的消息，避免子代理内部逻辑干扰主代理上下文
+	// 添加会话历史消息(包含tool_calls和tool结果)
+	// 过滤掉内部子代理消息(标记为subAgentInternal: true)
+	// 只保留主代理和用户的消息,避免子代理内部逻辑干扰主代理上下文
 	const session = sessionManager.getCurrentSession();
 	if (session && session.messages.length > 0) {
 		const filteredMessages = session.messages.filter(
@@ -64,7 +65,7 @@ export async function initializeConversationSession(): Promise<{
 		conversationMessages.push(...filteredMessages);
 	}
 
-	// 收集特殊用户消息，动态插入到倒数第3条assistant之前，提高模型注意力和KV缓存命中率
+	// 收集特殊用户消息,动态插入到倒数第3条assistant之前,提高模型注意力和KV缓存命中率
 	const specialUserMessages: ChatMessage[] = [];
 
 	// 1. Agent角色定义(包含mainAgentRole + AGENTS.md + 环境上下文 + 任务完成标识)
@@ -122,7 +123,7 @@ export async function initializeConversationSession(): Promise<{
 			3,
 		);
 
-		// 确保插入位置至少在system之后（system在第0位）
+		// 确保插入位置至少在system之后(system在第0位)
 		const safeInsertPosition = Math.max(1, insertPosition);
 
 		// 使用insertMessagesAtPosition进行插入
