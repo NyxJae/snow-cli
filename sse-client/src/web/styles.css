@@ -1,0 +1,329 @@
+:root {
+	color-scheme: dark;
+	font-family: 'Segoe UI', 'PingFang SC', sans-serif;
+	background: #111827;
+	color: #e5e7eb;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: #111827;
+	color: #e5e7eb;
+}
+
+.app-shell {
+	min-height: 100vh;
+	padding: 16px;
+}
+
+.card {
+	background: #1f2937;
+	border: 1px solid #374151;
+	border-radius: 10px;
+	padding: 12px;
+	margin-bottom: 12px;
+}
+
+.row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+input,
+button,
+textarea {
+	background: #0f172a;
+	border: 1px solid #475569;
+	color: #e2e8f0;
+	border-radius: 8px;
+	padding: 8px;
+}
+
+button {
+	cursor: pointer;
+}
+
+button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.tabs {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.tab-btn.active {
+	border-color: #22d3ee;
+	color: #67e8f9;
+}
+
+.badge-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 999px;
+	background: #ef4444;
+	margin-right: 6px;
+}
+
+.badge-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 18px;
+	height: 18px;
+	padding: 0 6px;
+	margin-left: 6px;
+	border-radius: 999px;
+	font-size: 11px;
+	line-height: 1;
+	background: #ef4444;
+	color: #fff;
+}
+
+.server-form-row input {
+	min-width: 140px;
+}
+
+.server-tabs {
+	gap: 6px;
+}
+
+.tips-stack {
+	position: fixed;
+	top: 12px;
+	right: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	width: min(420px, calc(100vw - 24px));
+	z-index: 1200;
+}
+
+.tip-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 8px;
+	border: 1px solid #374151;
+	border-radius: 8px;
+	background: #111827;
+}
+
+.tip-meta {
+	font-size: 12px;
+	color: #94a3b8;
+}
+
+.tip-actions {
+	display: flex;
+	gap: 6px;
+}
+
+.chat-footer-actions {
+	justify-content: flex-start;
+}
+
+.quick-switch-row input {
+	min-width: 140px;
+}
+
+.sub-agent-card {
+	margin-bottom: 8px;
+}
+
+.sub-agent-log-list {
+	max-height: 220px;
+	overflow: auto;
+}
+
+.status-bar {
+	margin-top: 0;
+}
+
+.status-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 8px;
+	font-size: 12px;
+}
+
+.layout {
+	display: grid;
+	grid-template-columns: 280px 1fr;
+	gap: 12px;
+}
+
+.git-layout {
+	display: grid;
+	grid-template-columns: 320px 1fr;
+	gap: 12px;
+}
+
+.git-file-groups {
+	display: grid;
+	gap: 10px;
+}
+
+.git-group {
+	margin-bottom: 0;
+}
+
+.git-file-row {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.git-file-row > button:first-child {
+	flex: 1;
+	text-align: left;
+}
+
+.diff-wide {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+}
+
+.diff-single {
+	display: block;
+}
+
+.session-list,
+.log-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-height: 420px;
+	overflow: auto;
+}
+
+.session-item,
+.log-item {
+	padding: 8px;
+	background: #111827;
+	border: 1px solid #374151;
+	border-radius: 8px;
+	font-size: 13px;
+}
+
+.session-item.active {
+	border-color: #22d3ee;
+	color: #67e8f9;
+}
+
+.session-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px;
+	border: 1px solid #374151;
+	border-radius: 8px;
+	margin-bottom: 8px;
+}
+
+.session-row.selected {
+	border-color: #22d3ee;
+}
+
+.session-main {
+	flex: 1;
+	min-width: 0;
+}
+
+.session-title {
+	font-size: 13px;
+	word-break: break-all;
+}
+
+.modal-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.modal-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-height: 52vh;
+	overflow: auto;
+}
+
+.chat-input {
+	width: 100%;
+	min-height: 84px;
+}
+
+.hint {
+	font-size: 12px;
+	color: #94a3b8;
+}
+
+.error {
+	color: #f87171;
+}
+
+.hidden {
+	display: none !important;
+}
+
+.modal {
+	position: fixed;
+	inset: 0;
+	background: rgba(2, 6, 23, 0.7);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+}
+
+.modal-card {
+	width: min(760px, 100%);
+	max-height: 78vh;
+	overflow: auto;
+	background: #111827;
+	border: 1px solid #374151;
+	border-radius: 12px;
+	padding: 12px;
+}
+
+.modal-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 8px;
+}
+
+@media (max-width: 1199px) {
+	.git-layout {
+		grid-template-columns: 1fr;
+	}
+
+	.diff-wide {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (max-width: 960px) {
+	.layout {
+		grid-template-columns: 1fr;
+	}
+
+	.todo-list {
+		height: 214px;
+		max-height: 214px;
+		overflow: auto;
+	}
+}

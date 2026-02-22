@@ -10,6 +10,8 @@ import {
 	addMultipleToolsToPermissions,
 } from '../config/permissionsConfig.js';
 import {isSensitiveCommand} from '../execution/sensitiveCommandManager.js';
+import {getTodoService} from '../execution/mcpToolsManager.js';
+import {todoEvents} from '../events/todoEvents.js';
 import {randomUUID} from 'crypto';
 import {mainAgentManager} from '../MainAgentManager.js';
 
@@ -46,6 +48,63 @@ class SSEManager {
 	private connectionSessionMap: Map<string, string> = new Map();
 	// 默认主代理ID
 	private readonly defaultAgentId = 'general';
+	// TODO 事件桥接回调,保持引用稳定以便在 stop 时反注册
+	private readonly todoUpdateListener = (data: {
+		sessionId: string;
+		todos: Array<any>;
+	}): void => {
+		this.sendTodosToSessionConnections(
+			data.sessionId,
+			Array.isArray(data.todos) ? data.todos : [],
+			'todo_update',
+		);
+	};
+
+	/**
+	 * 向指定会话的所有连接推送 TODO 事件.
+	 */
+	private sendTodosToSessionConnections(
+		sessionId: string,
+		todos: Array<any>,
+		eventType: 'todo_update' | 'todos',
+	): void {
+		if (!this.server) {
+			return;
+		}
+		for (const [
+			connectionId,
+			mappedSessionId,
+		] of this.connectionSessionMap.entries()) {
+			if (mappedSessionId !== sessionId) {
+				continue;
+			}
+			this.server.sendToConnection(connectionId, {
+				type: eventType,
+				data: {
+					sessionId,
+					todos,
+				},
+				timestamp: new Date().toISOString(),
+			});
+		}
+	}
+
+	/**
+	 * 拉取并推送会话当前 TODO 全量快照.
+	 */
+	private async emitTodosSnapshot(sessionId: string): Promise<void> {
+		try {
+			const todoService = getTodoService();
+			const todoList = await todoService.getTodoList(sessionId);
+			this.sendTodosToSessionConnections(
+				sessionId,
+				todoList?.todos ?? [],
+				'todos',
+			);
+		} catch {
+			this.sendTodosToSessionConnections(sessionId, [], 'todos');
+		}
+	}
 
 	/**
 	 * 设置日志回调函数
@@ -54,6 +113,18 @@ class SSEManager {
 		callback: (message: string, level?: 'info' | 'error' | 'success') => void,
 	): void {
 		this.logCallback = callback;
+	}
+
+	/**
+	 * 同步 session 与连接映射,并在会话变更时触发 TODO 快照.
+	 */
+	private mirrorSessionBinding(sessionId: string, connectionId: string): void {
+		const previousSessionId = this.connectionSessionMap.get(connectionId);
+		// 维护本地映射，避免穿透 SSEServer 私有状态
+		this.connectionSessionMap.set(connectionId, sessionId);
+		if (previousSessionId !== sessionId) {
+			void this.emitTodosSnapshot(sessionId);
+		}
 	}
 
 	/**
@@ -66,8 +137,7 @@ class SSEManager {
 		if (this.server) {
 			this.server.bindSessionToConnection(sessionId, connectionId);
 		}
-		// 维护本地映射，避免穿透 SSEServer 私有状态
-		this.connectionSessionMap.set(connectionId, sessionId);
+		this.mirrorSessionBinding(sessionId, connectionId);
 	}
 
 	/**
@@ -78,8 +148,8 @@ class SSEManager {
 		connectionId: string,
 		initialAgentId?: string,
 	): void {
-		// 维护本地映射
-		this.connectionSessionMap.set(connectionId, sessionId);
+		// 同步本地映射,若本连接首次绑定该会话则触发一次 TODO 快照
+		this.mirrorSessionBinding(sessionId, connectionId);
 
 		// 设置初始主代理
 		let agentId = this.defaultAgentId;
@@ -208,7 +278,7 @@ class SSEManager {
 		);
 		// 同步 create/load 的会话绑定关系到本地映射,避免 switch_agent 校验误判
 		this.server.setSessionBoundHandler((sessionId, connectionId) => {
-			this.bindSessionToConnection(sessionId, connectionId);
+			this.mirrorSessionBinding(sessionId, connectionId);
 		});
 
 		// 设置连接创建处理器(用于发送初始 agent_list)
@@ -220,6 +290,8 @@ class SSEManager {
 		this.server.setConnectionClosedHandler(connectionId => {
 			this.handleConnectionClosed(connectionId);
 		});
+		// 订阅 TODO 更新,桥接到对应会话连接
+		todoEvents.onTodoUpdate(this.todoUpdateListener);
 
 		await this.server.start();
 		this.isRunning = true;
@@ -233,6 +305,8 @@ class SSEManager {
 		if (!this.isRunning || !this.server) {
 			return;
 		}
+		// 停止前反注册 TODO 监听,避免重复订阅导致重复推送
+		todoEvents.offTodoUpdate(this.todoUpdateListener);
 
 		await this.server.stop();
 		this.server = null;

@@ -18,7 +18,9 @@ export type SSEEventType =
 	| 'rollback_request'
 	| 'rollback_result'
 	| 'agent_list'
-	| 'agent_switched';
+	| 'agent_switched'
+	| 'todo_update'
+	| 'todos';
 
 /**
  * SSE 事件数据结构

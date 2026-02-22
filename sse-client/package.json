@@ -1,0 +1,13 @@
+{
+	"name": "snow-sse-client-web",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "node ../node_modules/typescript/bin/tsc -p tsconfig.json",
+		"start": "node dist/server/index.js"
+	},
+	"devDependencies": {
+		"playwright": "^1.58.2"
+	}
+}
