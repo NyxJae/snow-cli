@@ -1296,7 +1296,7 @@ export default function ConfigScreen({
 								isActive ? theme.colors.menuSelected : theme.colors.menuNormal
 							}
 						>
-							{isActive ? '> ' : '  '}
+							{isActive ? '❯ ' : '  '}
 							{t.configScreen.maxTokens}
 						</Text>
 						{isCurrentlyEditing && (
@@ -1322,7 +1322,7 @@ export default function ConfigScreen({
 								isActive ? theme.colors.menuSelected : theme.colors.menuNormal
 							}
 						>
-							{isActive ? '> ' : '  '}
+							{isActive ? '❯ ' : '  '}
 							{t.configScreen.toolResultTokenLimit}
 						</Text>
 						{isCurrentlyEditing && (
