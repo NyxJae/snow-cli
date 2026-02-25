@@ -1459,9 +1459,9 @@ export function useChatLogic(props: UseChatLogicProps) {
 		// Show message
 		const statusMessage: Message = {
 			role: 'command',
-			content: `Codebase indexing ${
-				newEnabled ? 'enabled' : 'disabled'
-			} for this project`,
+			content: newEnabled
+				? t.chatScreen.codebaseIndexingEnabled
+				: t.chatScreen.codebaseIndexingDisabled,
 			commandName: 'codebase',
 		};
 		setMessages(prev => [...prev, statusMessage]);

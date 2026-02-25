@@ -58,8 +58,7 @@ jobs:
 
             ### What's New
 
-            - Fix the status overflow issue when returning to the homepage
-            - Support multiple selection of system prompts
+            - Optimize some UI display effects
 
             ### Installation
             ```bash
