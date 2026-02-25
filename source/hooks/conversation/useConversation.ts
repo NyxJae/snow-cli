@@ -18,6 +18,7 @@ import {
 	type ToolCall,
 	type MCPExecutionContext,
 } from '../../utils/execution/toolExecutor.js';
+import type {SubAgentMessage} from '../../utils/execution/subAgentExecutor.js';
 import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
 import {unifiedHooksExecutor} from '../../utils/execution/unifiedHooksExecutor.js';
@@ -122,6 +123,7 @@ export type ConversationHandlerOptions = {
 	getCurrentContextPercentage?: () => number; // Get current context percentage from ChatInput
 	setCurrentModel?: React.Dispatch<React.SetStateAction<string | null>>; // Set current model name for display
 	setIsStopping?: React.Dispatch<React.SetStateAction<boolean>>; // Control stopping state
+	onRawSubAgentMessage?: (message: SubAgentMessage) => void; // 可选: 原始子代理消息透传回调(SSE 服务端用于转发事件)
 };
 
 /**
@@ -987,6 +989,8 @@ async function executeWithInternalRetry(
 					setStreamTokenCount,
 
 					async subAgentMessage => {
+						// 原始子代理消息透传(SSE 服务端用于转发 sub_agent_message 事件到客户端)
+						options.onRawSubAgentMessage?.(subAgentMessage);
 						// Handle sub-agent messages - display and save to session
 						setMessages(prev => {
 							// Handle sub-agent context usage update

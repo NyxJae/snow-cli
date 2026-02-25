@@ -14,6 +14,15 @@ import {getTodoService} from '../execution/mcpToolsManager.js';
 import {todoEvents} from '../events/todoEvents.js';
 import {randomUUID} from 'crypto';
 import {mainAgentManager} from '../MainAgentManager.js';
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+	unlinkSync,
+} from 'fs';
+import {join} from 'path';
+import {homedir} from 'os';
 
 /**
  * 待处理的交互请求
@@ -48,6 +57,8 @@ class SSEManager {
 	private connectionSessionMap: Map<string, string> = new Map();
 	// 默认主代理ID
 	private readonly defaultAgentId = 'general';
+	// 当前监听端口,用于管理 PID 文件生命周期
+	private currentPort: number | null = null;
 	// TODO 事件桥接回调,保持引用稳定以便在 stop 时反注册
 	private readonly todoUpdateListener = (data: {
 		sessionId: string;
@@ -295,6 +306,11 @@ class SSEManager {
 
 		await this.server.start();
 		this.isRunning = true;
+		this.currentPort = port;
+
+		// 写入 PID 文件, 供 sse-client 和 --sse-status 发现本服务
+		this.writePidFile(port, interactionTimeout);
+
 		this.log(`SSE 服务已启动,端口 ${port}`, 'success');
 	}
 
@@ -311,7 +327,89 @@ class SSEManager {
 		await this.server.stop();
 		this.server = null;
 		this.isRunning = false;
+
+		// 清理 PID 文件
+		this.removePidFile();
+
 		this.log('SSE 服务已停止', 'info');
+	}
+
+	/** 避免误覆盖外部守护进程或其他 snow 实例的 PID 文件, 与 sseDaemon.ts 共享 DaemonInfo 格式. */
+	private writePidFile(port: number, timeout: number): void {
+		const daemonDir = join(homedir(), '.snow', 'sse-daemons');
+		if (!existsSync(daemonDir)) {
+			mkdirSync(daemonDir, {recursive: true});
+		}
+		const pidFile = join(daemonDir, `port-${port}.pid`);
+
+		// 同端口 PID 文件若属于另一个存活进程则拒绝覆盖, 保护外部服务
+		if (existsSync(pidFile)) {
+			try {
+				const existing = JSON.parse(readFileSync(pidFile, 'utf-8'));
+				if (typeof existing?.pid === 'number' && existing.pid !== process.pid) {
+					try {
+						process.kill(existing.pid, 0);
+						this.log(
+							`端口 ${port} 的 PID 文件属于另一个存活进程(pid=${existing.pid}), 跳过写入`,
+							'info',
+						);
+						return;
+					} catch (err) {
+						// EPERM: 进程存在但无权限发信号, 保守视为存活
+						if (
+							err instanceof Error &&
+							'code' in err &&
+							(err as NodeJS.ErrnoException).code === 'EPERM'
+						) {
+							return;
+						}
+						// ESRCH 或其他: 进程已不存在, 可安全覆盖
+					}
+				}
+			} catch {
+				// PID 文件 JSON 损坏, 可安全覆盖
+			}
+		}
+
+		const info = {
+			pid: process.pid,
+			port,
+			workDir: process.cwd(),
+			timeout,
+			startTime: new Date().toISOString(),
+		};
+		try {
+			writeFileSync(pidFile, JSON.stringify(info, null, 2));
+		} catch (error) {
+			this.log(
+				`写入 PID 文件失败: ${error instanceof Error ? error.message : error}`,
+				'error',
+			);
+		}
+	}
+
+	/** 仅删除自身写入的 PID 文件, 避免误删其他 snow 实例的记录. */
+	private removePidFile(): void {
+		if (this.currentPort === null) {
+			return;
+		}
+		const pidFile = join(
+			homedir(),
+			'.snow',
+			'sse-daemons',
+			`port-${this.currentPort}.pid`,
+		);
+		try {
+			if (existsSync(pidFile)) {
+				const content = JSON.parse(readFileSync(pidFile, 'utf-8'));
+				if (content?.pid === process.pid) {
+					unlinkSync(pidFile);
+				}
+			}
+		} catch {
+			// 文件损坏或已被外部删除, 静默跳过
+		}
+		this.currentPort = null;
 	}
 
 	/**
@@ -482,19 +580,27 @@ class SSEManager {
 
 			sessionManager.setCurrentSession(currentSession);
 
+			// 快照系统使用 UI 消息索引, 消息截断使用原始 session.messages 索引
+			// snapshotIndex 由 rollback-points API 提供, 回退兼容旧客户端
+			const snapshotIdx = rollback.snapshotIndex ?? rollback.messageIndex;
+			const validSnapshotIdx =
+				Number.isInteger(snapshotIdx) && snapshotIdx >= 0;
+
 			let filesRolledBack = 0;
-			if (rollback.rollbackFiles) {
+			if (rollback.rollbackFiles && validSnapshotIdx) {
 				filesRolledBack = await hashBasedSnapshotManager.rollbackToMessageIndex(
 					sessionId,
-					rollback.messageIndex,
+					snapshotIdx,
 					rollback.selectedFiles,
 				);
 			}
 
-			await hashBasedSnapshotManager.deleteSnapshotsFromIndex(
-				sessionId,
-				rollback.messageIndex,
-			);
+			if (validSnapshotIdx) {
+				await hashBasedSnapshotManager.deleteSnapshotsFromIndex(
+					sessionId,
+					snapshotIdx,
+				);
+			}
 
 			await sessionManager.truncateMessages(rollback.messageIndex);
 
@@ -608,11 +714,77 @@ class SSEManager {
 			}
 		};
 
-		// setMessages 实现
 		const messagesRef: any[] = [];
-		let lastSentMessageId: string | undefined; // 跟踪最后发送的消息ID，避免重复发送
+		let lastSentMessageId: string | undefined;
+		let lastSentToolCallId: string | undefined;
+
+		/** 处理单条消息, 按类型分发为 SSE 事件 */
+		const processMessage = (msg: any) => {
+			if (msg.subAgentInternal || msg.role === 'subagent') {
+				return;
+			}
+
+			const messageId = `${msg.role}-${msg.content?.substring(0, 50)}-${
+				msg.streaming
+			}`;
+
+			if (
+				!msg.streaming &&
+				!msg.toolCall &&
+				!msg.toolResult &&
+				messageId === lastSentMessageId
+			) {
+				return;
+			}
+
+			if (msg.toolCall) {
+				if (msg.toolCallId === lastSentToolCallId) {
+					return;
+				}
+				sendEvent({
+					type: 'tool_call',
+					data: {
+						function: msg.toolCall,
+						toolCallId: msg.toolCallId,
+					},
+					timestamp: new Date().toISOString(),
+				});
+				lastSentToolCallId = msg.toolCallId;
+			} else if (msg.toolResult) {
+				// toolCall?.name 优先; 子代理完成消息无 toolCall, 从 content 格式"✓ toolName"回退提取
+				const extractedToolName =
+					msg.toolCall?.name ||
+					(typeof msg.content === 'string'
+						? msg.content.match(/^[✓✗]\s+([\w-]+)/)?.[1]
+						: undefined);
+				sendEvent({
+					type: 'tool_result',
+					data: {
+						content: msg.toolResult,
+						status: msg.messageStatus,
+						toolName: extractedToolName,
+					},
+					timestamp: new Date().toISOString(),
+				});
+			} else if (msg.role === 'assistant') {
+				sendEvent({
+					type: 'message',
+					data: {
+						role: 'assistant',
+						content: msg.content,
+						streaming: msg.streaming || false,
+					},
+					timestamp: new Date().toISOString(),
+				});
+
+				if (!msg.streaming) {
+					lastSentMessageId = messageId;
+				}
+			}
+		};
 
 		const setMessages = (updater: any) => {
+			const prevLength = messagesRef.length;
 			if (typeof updater === 'function') {
 				const newMessages = updater(messagesRef);
 				messagesRef.splice(0, messagesRef.length, ...newMessages);
@@ -620,52 +792,16 @@ class SSEManager {
 				messagesRef.splice(0, messagesRef.length, ...updater);
 			}
 
-			// 发送消息更新事件
-			const lastMessage = messagesRef[messagesRef.length - 1];
-			if (lastMessage) {
-				// 生成消息唯一ID（基于内容和类型）
-				const messageId = `${lastMessage.role}-${lastMessage.content?.substring(
-					0,
-					50,
-				)}-${lastMessage.streaming}`;
-
-				// 避免重复发送相同的非流式消息
-				if (!lastMessage.streaming && messageId === lastSentMessageId) {
-					return;
+			// 批量添加时遍历所有新增消息, 单条更新时只处理最后一条
+			const newCount = messagesRef.length - prevLength;
+			if (newCount > 1) {
+				// 批量: 遍历所有新增消息(如并行工具结果)
+				for (let i = prevLength; i < messagesRef.length; i++) {
+					processMessage(messagesRef[i]!);
 				}
-
-				if (lastMessage.role === 'assistant') {
-					// 发送 assistant 消息（包括流式和最终消息）
-					sendEvent({
-						type: 'message',
-						data: {
-							role: 'assistant',
-							content: lastMessage.content,
-							streaming: lastMessage.streaming || false,
-						},
-						timestamp: new Date().toISOString(),
-					});
-
-					// 更新最后发送的消息ID
-					if (!lastMessage.streaming) {
-						lastSentMessageId = messageId;
-					}
-				} else if (lastMessage.toolCall) {
-					sendEvent({
-						type: 'tool_call',
-						data: lastMessage.toolCall,
-						timestamp: new Date().toISOString(),
-					});
-				} else if (lastMessage.toolResult) {
-					sendEvent({
-						type: 'tool_result',
-						data: {
-							content: lastMessage.toolResult,
-							status: lastMessage.messageStatus,
-						},
-						timestamp: new Date().toISOString(),
-					});
-				}
+			} else if (messagesRef.length > 0) {
+				// 单条或就地更新: 只处理最后一条
+				processMessage(messagesRef[messagesRef.length - 1]!);
 			}
 		};
 
@@ -826,6 +962,14 @@ class SSEManager {
 				addMultipleToAlwaysApproved,
 				yoloModeRef: {current: message.yoloMode || false}, // 支持客户端传递 YOLO 模式
 				setContextUsage,
+				// 透传原始子代理消息, 让客户端能渲染子代理面板和插嘴下拉框
+				onRawSubAgentMessage: subAgentMessage => {
+					sendEvent({
+						type: 'sub_agent_message',
+						data: subAgentMessage,
+						timestamp: new Date().toISOString(),
+					});
+				},
 			});
 
 			// 发送完成事件（包含 sessionId）

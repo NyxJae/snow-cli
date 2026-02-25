@@ -1,4 +1,13 @@
 {
+  ".snow/notebook/": [
+    {
+      "id": "notebook-1771735997275_zjuil6i5h",
+      "filePath": ".snow/notebook/",
+      "note": "职责: Snow CLI 项目蓝图与知识库持久化目录(由工具管理).存放文件级与文件夹级 notebook 条目,用于约束架构边界与避坑指南.\n\n使用规范:\n- MUST 仅使用 notebook-* 工具增删改,禁止手动编辑 json.\n- 过程性内容(临时计划,冲突处理过程)应尽量写在 requirements/ 或 CurrentTaskPlan.md,并在完成后清理对应 notebook 条目.\n\n避坑指南:\n- notebook 条目应保持\"长期有效\",避免记录时间敏感的开发日志.\n- 目录级 notebook 用于跨文件约束,文件级 notebook 用于脆弱实现与关键接口契约.",
+      "createdAt": "2026-02-22T12:53:17.275",
+      "updatedAt": "2026-02-22T12:53:17.275"
+    }
+  ],
   "docs/usage/zh/20.SSE服务模式.md": [
     {
       "id": "notebook-1771478236512_49avnxm82",
@@ -15,6 +24,15 @@
       "note": "职责: 需求与变更记录目录(SSoT).存放功能需求、协议契约与验收标准,作为实现与回归测试的唯一依据.\n\n接口摘要:\n- 输入: 产品/开发需求.\n- 输出: 可执行的实现约束(协议字段,UI 行为,错误码文案,验收清单),指导:\n  - 正式 Web 客户端子项目(sse-client/)的长期实现.\n  - 浏览器测试客户端(source/test/sse-client/)的协议联调与回归.\n\n依赖拓扑:\n- 被依赖:\n  - sse-client/ 的产品实现与回归测试.\n  - source/test/sse-client/* 的示例实现与联调.\n  - 服务端 SSE 协议演进评审(source/api/sse-server.ts,source/utils/sse/sseManager.ts).\n\n避坑指南:\n- 需求文档必须保持 SSoT: 协议字段/错误码/事件类型变更,必须同步更新对应文档.\n- 标注兼容性要求: unknown event.type 必须静默忽略,避免客户端因协议扩展崩溃.\n- 明确歧义字段: 例如 currentAgentId 可为 null 的语义,以及 Git 视图隐藏区域的口径必须全篇一致.",
       "createdAt": "2026-02-19T17:57:24.343",
       "updatedAt": "2026-02-19T23:40:49.131"
+    }
+  ],
+  "requirements/API渠道冲突合并需求文档.md": [
+    {
+      "id": "notebook-1771735983400_at2zw7mca",
+      "filePath": "requirements/API渠道冲突合并需求文档.md",
+      "note": "职责: 模型渠道适配(source/api/*)合并冲突的需求与验收口径(过程性+规范性混合).该文档是本轮合并的 SSoT,用于定义必须吸收/必须保留的能力与统一行为.\n\n依赖拓扑:\n- 被依赖: source/api/ 模块级 notebook,以及四个适配器文件级 notebook(anthropic/chat/gemini/responses).\n\n避坑指南:\n- 文档中的\"统一规范\"应最终沉淀到 source/api/ 的长期 notebook 中,避免后续开发仅靠该需求文档口口相传.\n- 若未来再次发生渠道合并冲突,应先更新本文件的验收口径,再改代码,最后同步更新 notebook.",
+      "createdAt": "2026-02-22T12:53:03.400",
+      "updatedAt": "2026-02-22T12:53:03.400"
     }
   ],
   "requirements/SSE客户端适配主代理.md": [
@@ -35,49 +53,85 @@
       "updatedAt": "2026-02-21T20:17:37.305"
     }
   ],
+  "requirements/合并到0.6.32冲突解决需求文档.md": [
+    {
+      "id": "notebook-1771735973924_t53il5lc3",
+      "filePath": "requirements/合并到0.6.32冲突解决需求文档.md",
+      "note": "职责: 合并上游 0.6.32 时的冲突解决过程记录(过程性).用于回溯当时的取舍,不应作为长期架构规范.\n\n使用建议:\n- 若对应冲突已完全解决且代码已稳定,可考虑在后续整理时删除或仅保留关键架构结论到长期笔记(如 source/api/ 统一规范).\n\n避坑指南:\n- 不要在该文档中新增新需求或架构决策,新的架构约束应写入对应模块 notebook(如 source/api/ 或 source/utils/).",
+      "createdAt": "2026-02-22T12:52:53.924",
+      "updatedAt": "2026-02-22T12:52:53.924"
+    }
+  ],
+  "requirements/合并到0.6.33冲突解决需求文档.md": [
+    {
+      "id": "notebook-1771735974038_b0q52xqaa",
+      "filePath": "requirements/合并到0.6.33冲突解决需求文档.md",
+      "note": "职责: 合并上游 0.6.33 时的冲突解决过程记录(过程性).用于回溯当时的取舍,不应作为长期架构规范.\n\n使用建议:\n- 冲突解决完成后,应把长期有效的结论沉淀到模块级 notebook,并避免未来迭代继续引用该过程文档作为规范.\n\n避坑指南:\n- 禁止把该过程文档当作 SSoT,SSoT 应是 requirements/具体需求文档 + 模块级 notebook 约束.",
+      "createdAt": "2026-02-22T12:52:54.038",
+      "updatedAt": "2026-02-22T12:52:54.038"
+    }
+  ],
+  "source/": [
+    {
+      "id": "notebook-1771735800416_uz5vjb17k",
+      "filePath": "source/",
+      "note": "职责: Snow CLI(TUI)核心源码根目录.承载 CLI 入口、TUI 界面、对话执行、代理系统、模型渠道适配、MCP 集成、配置与工具体系.\n\n模块边界(长期规范):\n- source/ 只包含 Snow CLI 主程序相关代码,不包含独立子项目(sse-client/).\n- UI(ink/react)与核心逻辑必须分层: UI 只做状态展示与交互编排,对话执行/模型调用/工具系统在 utils/api/mcp/prompt 等模块.\n\n依赖拓扑:\n- 入口: source/cli.tsx,source/app.tsx.\n- 关键子模块:\n  - source/utils/: 对话执行、会话、代理运行时、SSE 管理、通用工具.\n  - source/api/: 模型渠道适配器(Anthropic/OpenAI Chat/OpenAI Responses/Gemini).\n  - source/mcp/: MCP 客户端与工具管理.\n  - source/config/: 内置配置(默认主代理,内置 mainAgents 等).\n  - source/prompt/: 系统提示词与提示词模块(shared 等).\n  - source/ui/: Ink 组件与屏幕(screen)体系.\n\n避坑指南:\n- 不在 UI 层直接调用模型适配器或拼接提示词,统一经由 utils 层的执行器/manager.\n- 新增跨模块能力必须补齐对应 notebook 条目(职责,接口摘要,依赖拓扑,避坑).",
+      "createdAt": "2026-02-22T12:50:00.416",
+      "updatedAt": "2026-02-22T12:50:00.416"
+    }
+  ],
+  "source/agents/": [
+    {
+      "id": "notebook-1771735800549_nrmgzgnnt",
+      "filePath": "source/agents/",
+      "note": "职责: 内置子代理实现集合.这些 agent 以代码形式提供固定能力(如 review/summary/compact/codebase-*),由主代理系统根据配置或命令触发.\n\n接口摘要:\n- 输入: 会话上下文 + 工具系统 + 角色定义提示词(由主代理系统注入).\n- 输出: agent 的文本回复,或通过工具调用产生的副作用.\n\n依赖拓扑:\n- 依赖: prompt 系统(系统提示词),utils 执行器,tools 注册.\n- 被依赖: 主代理运行时(MainAgentManager/执行层)用于 spawn/切换子代理.\n\n避坑指南:\n- 子代理不应直接读写 UI 状态,只通过标准工具接口与主代理通信.\n- 子代理能力变更必须同步 toml 配置与权限(限制可编辑文件类型等),避免运行时越权或能力缺失.",
+      "createdAt": "2026-02-22T12:50:00.549",
+      "updatedAt": "2026-02-22T12:50:00.549"
+    }
+  ],
   "source/api/": [
     {
       "id": "notebook-1771495044055_cbcvm3sjp",
       "filePath": "source/api/",
-      "note": "职责: API/HTTP 层.承载 Snow CLI 的对外 HTTP API 与第三方模型渠道适配器(source/api/*.ts).本层聚焦\"协议与适配\",不承载会话业务状态与 UI 逻辑.\n\n架构级原则(API 渠道冲突合并,SSoT: requirements/API渠道冲突合并需求文档.md):\n- 必须吸收 upstream:\n  1) 多条自定义系统提示词数组能力(用于特殊中转渠道兼容与可控性).\n  2) system/instruction 等字段映射增强语义,且 4 个适配器行为对齐.\n- 必须保留本地:\n  1) 主代理/子代理角色定义提示词严格隔离(禁止串扰/越权).\n  2) 特殊 user 消息动态\"后插\"能力(保持上下文顺序语义).\n  3) Responses API 多模态特殊处理与中转平台兼容路径.\n- 合并策略:\n  - 以\"能力并存\"代替\"二选一覆盖\".\n  - 先手动解冲突,再 build 验证;禁止借机做无关重构.\n  - 四文件系统提示词优先级,多条系统提示词注入方式,主/子代理隔离边界必须完全一致.\n\n统一系统提示词优先级规范(4 文件一致):\n1) 子代理调用且配置多条自定义系统提示词 -> 使用子代理自定义数组.\n2) 子代理调用且无自定义但有子代理角色定义提示词 -> 使用子代理角色定义.\n3) 主代理调用且配置多条自定义系统提示词 -> 使用主代理自定义数组.\n4) 无自定义系统提示词且允许内置 -> 使用对应代理的角色定义.\n5) 主/子代理自定义系统提示词处理规则必须一致,差异只能来自\"角色定义提示词来源\".\n\n主代理/子代理提示词隔离边界:\n- 角色定义提示词只来自各自 agent profile(主/子代理各自的角色定义配置),绝不跨注入.\n- 自定义系统提示词(customSystemPromptOverride)是\"调用侧\"显式传入,主/子代理能力等价,但只影响本次调用.\n\n多条自定义系统提示词支持规范:\n- 统一以 string[] 表达,保持顺序敏感(数组顺序即优先级/叠加顺序).\n- 四适配器对 customSystemPromptOverride 的参数类型与默认值语义保持一致,禁止单文件漂移.\n- 注入方式需兼容中转渠道: 允许把多个系统提示词拆分为多条 system 消息,或拼接为单条(由渠道约束决定),但\"语义一致,顺序一致\".\n\n特殊 user 消息后插语义规范:\n- 特殊 user 消息是对上下文的动态增强,必须插入到\"靠后位置\"(紧邻最新 user 或模型调用前约定位置),用于保持模型输出一致性.\n- 后插规则不得因系统提示词来源(主/子代理,自定义/角色定义)变化而丢失.\n\n多模态处理保留规范:\n- 必须保留对图片等多模态消息的特殊拆分/重写策略,目标: 兼容特殊中转平台与上游 Responses API 语义.\n- 禁止在本轮合并中将多模态路径回退为仅文本,或删除 tool_result/图片分离等兼容逻辑.\n\n实施顺序与验收门槛:\n- 顺序: anthropic.ts -> chat.ts -> gemini.ts -> responses.ts -> build.\n- 门槛: 4 文件无 conflict markers,提示词优先级一致,主/子代理隔离可追踪,后插能力与多模态兼容路径保留,npm run build 通过.\n\n常见错误与避坑清单:\n- 只在某一个适配器实现多系统提示词,导致调用层类型断裂.\n- 将主代理角色定义提示词注入到子代理请求(或反向)导致越权.\n- 拼接多系统提示词时丢失分隔/顺序,导致模型行为漂移.\n- 删除后插逻辑或改为前插,导致上下文语义变化.\n- 误删 Responses 多模态特殊处理(常见于解冲突时选择 upstream 版本).\n- 仅靠 reader.cancel() 期待停止流,忽略现有 streamGuards 竞态屏障(避免回归).",
+      "note": "职责: 模型渠道适配层.承载各第三方模型渠道适配器(source/api/*.ts),负责把内部统一的 ChatMessage/ToolCall 结构映射为各渠道请求格式,并解析渠道流式响应(SSE/HTTP stream).\n\n不该做什么:\n- 不承载会话业务状态,不维护 UI 状态.\n- 不做主代理/子代理选择逻辑与会话级状态管理(归 MainAgentManager + execution/session).\n\n统一架构原则(长期规范,跨 4 适配器一致,SSoT: requirements/API渠道冲突合并需求文档.md):\n1) 多条自定义 system prompt 支持:\n- customSystemPromptOverride 类型统一为 string[] | undefined,顺序敏感.\n- 各渠道可用等价映射表达(多条 system 消息或拼接为单条),但语义与顺序必须一致.\n\n2) system prompt 优先级模型(4 文件完全一致):\n1) 子代理调用且配置多条自定义 system prompts -> 使用子代理自定义数组.\n2) 子代理调用且无自定义但有子代理角色定义 -> 使用子代理角色定义.\n3) 主代理调用且配置多条自定义 system prompts -> 使用主代理自定义数组.\n4) 无自定义且允许内置 -> 使用对应代理的角色定义.\n\n3) 主/子代理提示词隔离(硬约束):\n- 角色定义提示词仅来自当前调用所属 agent profile,不得跨注入.\n- customSystemPromptOverride 仅影响本次调用,不得写回 profile.\n\n4) 特殊 user 消息后插语义:\n- 必须保留动态后插能力,且插入位置策略不得随 system prompt 来源变化.\n\n5) 多模态兼容与中转平台支持:\n- 必须保留本地对 Responses API 的多模态特殊处理(尤其是工具返回与图片消息拆分策略).\n- 合并 upstream 能力时,以\"能力并存\"为准则,禁止覆盖删除本地兼容路径.\n\n6) 流式健壮性(保护模式,所有适配器一致):\n- 必须接入 idle timeout guard(180000ms) + abandoned 丢弃.\n- abort 时必须 abandon 并 return,避免延迟 chunk 外泄.\n- done=true 但 buffer.trim() 非空必须抛可重试错误.\n\n依赖拓扑:\n- 依赖: source/utils/core/*(streamGuards,retryUtils 等),source/prompt/*(提示词组装),source/types/*.\n- 被依赖: source/utils/execution/* 与会话执行层.\n\n避坑指南:\n- 禁止单文件漂移: 任一适配器新增字段映射或 system prompt 处理规则,必须同步到其他 3 个适配器或明确标注差异原因.\n- 解冲突时优先保留本地多模态链路与主/子代理隔离边界,再吸收 upstream 的多 system prompts 能力.",
       "createdAt": "2026-02-19T17:57:24.055",
-      "updatedAt": "2026-02-22T11:29:46.116"
+      "updatedAt": "2026-02-22T12:51:53.936"
     }
   ],
   "source/api/anthropic.ts": [
     {
       "id": "notebook-1770694883398_3ow0urpes",
       "filePath": "source/api/anthropic.ts",
-      "note": "职责: Anthropic API 适配器.将内部 ChatMessage 转换为 Anthropic 消息格式,并实现 Anthropic 流式 SSE 解析与产出.\n\n接口摘要:\n- createStreamingAnthropicCompletion(options,abortSignal,onRetry) -> AsyncGenerator<AnthropicStreamChunk>.\n- parseSSEStream(reader,abortSignal?) 解析 SSE data 行 JSON 并 yield.\n\n合并蓝图(本轮 API 渠道冲突合并):\n- 本文件是 4 适配器的\"基准实现\".先在此处完成统一的系统提示词模型与参数签名,再同步到 chat/gemini/responses.\n\n系统提示词优先级(必须与其他 3 文件一致):\n1) 子代理调用且配置多条自定义系统提示词 -> 用子代理自定义数组.\n2) 子代理调用且无自定义但有子代理角色定义提示词 -> 用子代理角色定义.\n3) 主代理调用且配置多条自定义系统提示词 -> 用主代理自定义数组.\n4) 无自定义且允许内置 -> 用对应代理的角色定义.\n\n主/子代理提示词隔离边界:\n- 角色定义提示词只来自当前调用所属的代理(profile),禁止跨注入.\n- customSystemPromptOverride 作为调用侧显式输入,主/子代理能力等价,但不得覆盖隔离边界.\n\n多条自定义系统提示词支持规范:\n- customSystemPromptOverride 类型必须是 string[] (或可选),保持顺序敏感.\n- 注入方式需兼容特殊中转渠道: 允许多 system 消息或拼接为单 system,但必须跨 4 文件保持语义一致.\n\n特殊 user 消息后插语义规范:\n- 必须保留特殊 user 消息动态后插到上下文靠后位置的能力,其位置策略不得因系统提示词来源变化而改变.\n\n多模态处理保留规范:\n- 必须保留 tool_result 与图片分离等兼容处理,用于中转平台适配.\n\n流式 API 保护模式(既有约束,合并时不得破坏):\n- MUST 接入 createIdleTimeoutGuard(180000ms)+abandoned 丢弃.\n- abort 时 abandon 并 return,避免延迟 chunk 外泄.\n- done=true 但 buffer.trim() 非空必须抛可重试错误.\n\n避坑指南:\n- 解冲突时不要选择仅单字符串 systemPrompt 的上游/本地任一版本,必须合并为统一的多值能力.\n- 避免把主代理角色定义提示词误注入子代理请求(常见于共用变量名或默认值路径).",
+      "note": "职责: Anthropic API 适配器.将内部 ChatMessage 转换为 Anthropic 消息格式,并实现 Anthropic 流式 SSE 解析与产出.\n\n接口摘要:\n- createStreamingAnthropicCompletion(options,abortSignal,onRetry) -> AsyncGenerator<AnthropicStreamChunk>.\n- parseSSEStream(reader,abortSignal?) 解析 SSE data 行 JSON 并 yield.\n\n架构规范(必须与 chat/gemini/responses 对齐):\n- customSystemPromptOverride: 支持多条自定义 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 保留动态后插语义.\n\n流式保护模式(不得破坏):\n- idle timeout guard(180000ms) + abandoned 丢弃.\n- abort 时 abandon 并 return.\n- done=true 但 buffer.trim() 非空必须抛可重试错误.\n\n避坑指南:\n- 不要把 system prompts 在此文件中退化为单字符串,否则会与其他适配器产生语义漂移.\n- 解冲突时,先对齐统一提示词模型,再做渠道特有字段映射.",
       "createdAt": "2026-02-10T11:41:23.398",
-      "updatedAt": "2026-02-22T11:29:46.235"
+      "updatedAt": "2026-02-22T12:51:54.085"
     }
   ],
   "source/api/chat.ts": [
     {
       "id": "notebook-1770694883572_4ydxyl8k0",
       "filePath": "source/api/chat.ts",
-      "note": "职责: OpenAI ChatCompletions API 适配器.负责消息格式转换与 ChatCompletions 流式 SSE 解析.\n\n接口摘要:\n- createStreamingChatCompletion(options,abortSignal,onRetry) -> AsyncGenerator<ChatCompletionChunk|...>.\n- parseSSEStream(reader,abortSignal?) 解析 SSE data 行 JSON 并 yield.\n\n统一合并规范(必须与 anthropic/gemini/responses 行为对齐):\n- 参数签名: customSystemPromptOverride 必须统一支持多条自定义系统提示词(string[]),主/子代理能力等价.\n- 系统提示词优先级: 完全遵循 requirements/API渠道冲突合并需求文档.md 中的 1-4 顺序,禁止单文件漂移.\n- 主/子代理隔离: 角色定义提示词严格隔离,不得互相污染.\n- 特殊 user 消息后插: 必须保留且位置策略一致.\n- 多模态兼容: 保留本地多模态消息转换增强,避免解冲突回退.\n\n中转渠道兼容目标:\n- 多系统提示词数组增强的目的在于适配特殊中转渠道.注入方式可因渠道约束变化,但\"多条输入,顺序敏感,语义一致\"必须保持.\n\n流式 API 保护模式(既有约束):\n- createIdleTimeoutGuard + abandoned 丢弃 + finally dispose.\n- done=true 且 buffer.trim() 非空必须抛可重试错误.\n\n避坑指南:\n- 不要把多系统提示词数组在此文件中拼接成单字符串,却在其他适配器保留数组系统消息,会导致行为不一致.\n- 处理 abort 时必须 abandon,不要只依赖 reader.cancel().",
+      "note": "职责: OpenAI ChatCompletions API 适配器.负责消息格式转换与 ChatCompletions 流式 SSE 解析.\n\n接口摘要:\n- createStreamingChatCompletion(options,abortSignal,onRetry) -> AsyncGenerator<ChatCompletionChunk|...>.\n- parseSSEStream(reader,abortSignal?) 解析 SSE data 行 JSON 并 yield.\n\n统一规范(必须与 anthropic/gemini/responses 对齐):\n- customSystemPromptOverride: 多条 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 必须保留且位置策略一致.\n\n流式保护模式(不得破坏):\n- idle timeout guard(180000ms) + abandoned 丢弃 + finally dispose.\n- abort 时 abandon.\n- done=true 且 buffer.trim() 非空必须抛可重试错误.\n\n避坑指南:\n- 禁止把多 system prompts 在此文件拼接成单字符串,而其他适配器保持多条消息,会导致行为不一致.\n- 不要将 UI/会话状态写入该层.",
       "createdAt": "2026-02-10T11:41:23.572",
-      "updatedAt": "2026-02-22T11:29:46.375"
+      "updatedAt": "2026-02-22T12:51:54.218"
     }
   ],
   "source/api/gemini.ts": [
     {
       "id": "notebook-1770694883908_ow13cu46t",
       "filePath": "source/api/gemini.ts",
-      "note": "职责: Google Gemini API 适配器.将内部 ChatMessage 转换为 Gemini 消息格式,并实现 Gemini 流式 SSE 读取与产出.\n\n接口摘要:\n- createStreamingGeminiCompletion(options,abortSignal,onRetry) -> AsyncGenerator<GeminiStreamChunk>.\n\n统一合并规范(必须与 anthropic/chat/responses 对齐):\n- customSystemPromptOverride: 统一为多条自定义系统提示词数组能力(string[]),主/子代理能力等价.\n- 系统提示词优先级: 采用统一 1-4 优先级模型,禁止此文件单独改变 system 注入顺序.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用代理,不得跨注入.\n- 特殊 user 消息后插: 必须保留动态后插语义,不得因 Gemini 特有消息结构而丢失.\n- 多模态兼容: 保留 Gemini 多模态与工具调用转换中的本地兼容增强,并与中转渠道目标一致.\n\n中转渠道兼容目标:\n- 多系统提示词数组增强用于特殊中转渠道兼容与可控性.在 Gemini 渠道中可能需要映射为等价字段,但必须保持\"多条输入,顺序敏感\".\n\n流式 API 保护模式(既有约束):\n- idle timeout guard(180000ms),abort abandon,done 残留半包抛错,finally dispose.\n\n避坑指南:\n- Gemini 的 message/parts 映射容易把 systemPrompt 与普通文本混淆,合并时要确保系统提示词路径与用户消息路径严格区分.",
+      "note": "职责: Google Gemini API 适配器.将内部 ChatMessage 转换为 Gemini 请求格式,并实现 Gemini 流式读取与产出.\n\n接口摘要:\n- createStreamingGeminiCompletion(options,abortSignal,onRetry) -> AsyncGenerator<GeminiStreamChunk>.\n\n统一规范(必须与 anthropic/chat/responses 对齐):\n- customSystemPromptOverride: 多条 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 保留动态后插语义.\n\n流式保护模式(不得破坏):\n- idle timeout guard(180000ms),abort abandon,done 残留半包抛错,finally dispose.\n\n避坑指南:\n- Gemini 的 message/parts 映射容易把 system prompt 与普通文本混淆,必须确保系统提示词路径与用户消息路径严格区分.\n- 若渠道限制需要合并多条 system prompt,必须显式保留顺序语义.",
       "createdAt": "2026-02-10T11:41:23.908",
-      "updatedAt": "2026-02-22T11:29:46.489"
+      "updatedAt": "2026-02-22T12:51:54.334"
     }
   ],
   "source/api/responses.ts": [
     {
       "id": "notebook-1770694883742_l9t553m1w",
       "filePath": "source/api/responses.ts",
-      "note": "职责: OpenAI Responses API 适配器.将内部 ChatMessage 转换为 Responses API 请求格式,并实现 Responses 流式 SSE 解析.\n\n接口摘要:\n- createStreamingResponse(options,abortSignal,onRetry) -> AsyncGenerator<ResponseStreamChunk>.\n\n本文件是本轮合并的\"最后一站\":\n- 必须在 anthropic/chat/gemini 完成统一模型后,再按同一模型合并此文件,避免 Responses 的 system/instruction 映射差异导致整体漂移.\n\n统一系统提示词优先级(4 文件一致):\n1) 子代理多条自定义系统提示词 -> 用子代理自定义数组.\n2) 子代理角色定义提示词.\n3) 主代理多条自定义系统提示词.\n4) 默认角色定义提示词.\n\nsystem/instruction 映射一致性规范:\n- 多条自定义系统提示词数组在 Responses 渠道中可能需要映射到 system 或 instruction,但必须与其他 3 文件保持等价语义,并保持顺序敏感.\n- 不得出现\"chat 用 system,responses 用 instruction 且丢失顺序\"之类的不一致.\n\n主/子代理隔离边界:\n- 角色定义提示词严格隔离,不得跨注入.\n- 主/子代理的自定义系统提示词处理规则必须一致,仅角色定义来源不同.\n\n特殊 user 消息后插语义规范:\n- 必须保留特殊 user 消息动态后插到上下文靠后位置的能力.\n\n多模态处理保留规范(本地不可覆盖点):\n- 必须保留本地 Responses API 多模态特殊处理路径,包括为了中转平台兼容而进行的图片消息特殊处理(例如图片拆分为独立 user 消息等策略).\n- 解冲突时优先保留本地多模态链路,再把 upstream 的多系统提示词数组能力嵌入该链路,禁止反向覆盖.\n\n流式 API 保护模式(既有约束):\n- parseSSEStream 内 abort abandon,guard.touch/isAbandoned,timeout error throw,finally dispose.\n\n避坑指南:\n- Responses 最容易在解冲突时被 upstream 覆盖掉本地多模态处理,必须显式比对保留.\n- 注意 tool_result/图片等多模态与系统提示词注入的相对顺序,避免改变上下文语义.",
+      "note": "职责: OpenAI Responses API 适配器.将内部 ChatMessage 转换为 Responses API 请求格式,并实现 Responses 流式 SSE 解析.\n\n接口摘要:\n- createStreamingResponse(options,abortSignal,onRetry) -> AsyncGenerator<ResponseStreamChunk>.\n\n统一规范(必须与 anthropic/chat/gemini 对齐):\n- customSystemPromptOverride: 多条 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 必须保留.\n\nResponses 渠道映射约束:\n- 多条 system prompts 可能映射到 system 或 instruction 等字段,但必须保持与其他渠道等价语义与顺序.\n\n本地不可覆盖点(中转平台兼容):\n- 必须保留本地 Responses 多模态特殊处理路径,尤其是图片消息拆分与 tool_result 兼容策略.\n- 解冲突时以保留本地多模态链路为先,再吸收 upstream 的多 system prompts 能力,禁止反向覆盖.\n\n流式保护模式(不得破坏):\n- parseSSEStream 内 abort abandon,guard.touch/isAbandoned,timeout error throw,finally dispose.\n\n避坑指南:\n- 本文件最容易在解冲突时被 upstream 覆盖掉本地多模态处理,每次合并必须显式比对保留.\n- 注意多模态与系统提示词注入的相对顺序,避免改变上下文语义.",
       "createdAt": "2026-02-10T11:41:23.741",
-      "updatedAt": "2026-02-22T11:29:46.607"
+      "updatedAt": "2026-02-22T12:51:54.449"
     }
   ],
   "source/api/sse-server.ts": [
@@ -89,6 +143,15 @@
       "updatedAt": "2026-02-19T17:54:32.905"
     }
   ],
+  "source/config/mainAgents/": [
+    {
+      "id": "notebook-1771735800708_5a84pzbvn",
+      "filePath": "source/config/mainAgents/",
+      "note": "职责: 内置主代理配置集合(SSoT for built-in).提供每个内置主代理的默认 profile(名称,描述,系统提示词/角色定义,工具权限,限制可编辑文件类型等).\n\n接口摘要:\n- 输入: 无(静态内置配置).\n- 输出: 供 MainAgentManager 合并到运行时配置树的 BuiltinMainAgentConfig 列表/映射.\n\n依赖拓扑:\n- 被依赖: source/utils/MainAgentManager.ts 初始化阶段加载,并与用户自定义 main-agents.toml 合并.\n\n避坑指南:\n- 内置 id 必须稳定,且与 BUILTIN_AGENT_ORDER 对齐,否则 TUI 与 SSE 的 agent_list 顺序会漂移.\n- 修改内置代理的工具权限或可编辑文件类型限制时,必须同步更新文档/笔记中的隔离边界,避免主/子代理越权.",
+      "createdAt": "2026-02-22T12:50:00.708",
+      "updatedAt": "2026-02-22T12:50:00.708"
+    }
+  ],
   "source/hooks/ui/usePanelState.ts": [
     {
       "id": "notebook-1770950000003_usepanelstate",
@@ -96,6 +159,15 @@
       "note": "职责: UI 面板状态管理 hook,负责维护当前展示的 Panel 类型与来源等状态.\n接口摘要:\n- usePanelState() 提供 show/hide/toggle 等对面板状态的操作.\n依赖拓扑:\n- 上游: 各 TUI screen/组件.\n- 下游: 内部状态容器.\n避坑指南:\n- 本 hook 不应依赖 API 适配器或网络层逻辑,保持 UI 与 core/network 解耦.\n备注:\n- 与\"流式 API idle timeout/断开后丢弃\"无关.相关逻辑应由 api adapters + utils/core(streamGuards,retryUtils)处理,且属于固定 3 分钟不可配置的健壮性机制.不要把 hasYielded,timeoutMs 等网络状态塞进 UI 面板状态.",
       "createdAt": "2026-02-13T09:40:00.000",
       "updatedAt": "2026-02-13T11:52:16.686"
+    }
+  ],
+  "source/mcp/": [
+    {
+      "id": "notebook-1771735860039_agt0warvn",
+      "filePath": "source/mcp/",
+      "note": "职责: MCP(Model Context Protocol)集成层.负责连接 MCP server,发现/注册工具,并将 MCP 工具以统一接口暴露给对话执行层.\n\n接口摘要:\n- 输入: MCP 配置(全局/项目),会话上下文,工具调用请求.\n- 输出: Tool 列表,tool execution 结果,以及工具可用性状态.\n\n依赖拓扑:\n- 依赖: source/utils/config/ 读取与编辑配置,source/utils/execution/ 调用工具.\n- 被依赖: 主代理/子代理执行层与 UI 的 MCP 配置管理界面.\n\n避坑指南:\n- 工具权限必须受 agent profile 限制(包括限制可编辑文件类型的字段),避免越权编辑.\n- MCP server 连接生命周期要与会话/进程生命周期对齐,避免残留连接导致资源泄漏.\n- 不要在此层引入具体模型渠道差异,仅做工具协议与运行时管理.",
+      "createdAt": "2026-02-22T12:51:00.039",
+      "updatedAt": "2026-02-22T12:51:00.039"
     }
   ],
   "source/mcp/utils/filesystem/batch-operations.utils.ts": [
@@ -114,6 +186,15 @@
       "note": "职责: 文件编辑真实执行层,承载 editableFileSuffixes 拦截规则的统一落点.\n接口摘要: editFile/editFileBySearch 支持单文件与批量,输出 diff,diagnostics 与统计结果.\n依赖拓扑: 上游由 mcpToolsManager.ts 调用,批量聚合依赖 batch-operations.utils.ts.\n避坑指南:\n- 本层保持纯执行语义,不参与任何 UI 导航(showMcpPanel,mcpPanelSource,source)决策.\n- 拒绝项在批量中落成 success:false + 固定文案,保留部分成功.\n- 工具执行前应同时受\"MCP 服务开关(全局总闸)\"与\"代理工具权限(代理分闸)\"影响.\n- 服务级禁用应在 mcpToolsManager/disabledBuiltInTools 形成不可路由的最终集合,本层只对已授权且已启用的工具执行,不负责读取/写入全局禁用文件.\n- 与本需求相关: 流式 API idle timeout/断开丢弃属于网络请求层与 utils/core 的职责,不得在工具执行层实现任何与 HTTP/stream 相关的超时或重试,避免跨域耦合.",
       "createdAt": "2026-02-12T10:50:31.000",
       "updatedAt": "2026-02-13T10:33:36.781"
+    }
+  ],
+  "source/prompt/": [
+    {
+      "id": "notebook-1771735859888_jrblgmfub",
+      "filePath": "source/prompt/",
+      "note": "职责: 提示词系统(SSoT for prompting).承载系统提示词模板、共享片段(shared),以及与主/子代理角色定义提示词的拼装约束.\n\n接口摘要:\n- 输入: 当前调用上下文(主/子代理,会话信息,环境信息),以及可选的 customSystemPromptOverride(string[]).\n- 输出: 供模型适配器(source/api/*)使用的 system prompt 片段(可能为多条,顺序敏感).\n\n依赖拓扑:\n- 依赖: source/utils/agentsPromptUtils.ts(环境信息片段),主代理配置(MainAgentManager)提供的 role definition.\n- 被依赖: 对话执行层(execution)与各模型适配器在组装请求时引用.\n\n避坑指南:\n- 主/子代理隔离硬约束: 角色定义提示词只来自当前 agent profile,不得跨注入.\n- 多条 system prompt 必须保持顺序敏感,跨渠道(anthropic/chat/gemini/responses)语义等价.\n- 不要在此目录写 UI 文案或业务状态机逻辑,仅做 prompting 相关拼装.",
+      "createdAt": "2026-02-22T12:50:59.888",
+      "updatedAt": "2026-02-22T12:50:59.888"
     }
   ],
   "source/test/sse-client/": [
@@ -170,6 +251,15 @@
       "updatedAt": "2026-02-13T11:51:18.394"
     }
   ],
+  "source/ui/": [
+    {
+      "id": "notebook-1771735836915_9iyi2nqvn",
+      "filePath": "source/ui/",
+      "note": "职责: TUI UI 层(基于 Ink/React).提供 screens/pages/components/themes 等,负责用户交互与状态展示.\n\n不该做什么:\n- 不直接做模型请求/流式解析/重试等网络健壮性逻辑.\n- 不直接读写主代理/子代理配置文件(toml/json),通过 utils/config 与 manager 提供的接口.\n\n依赖拓扑:\n- 依赖: source/utils/ui/* 的 UI 辅助逻辑,以及 i18n/theme 等.\n- 被依赖: source/app.tsx,source/cli.tsx.\n\n避坑指南:\n- 避免在多个 screen 同时注册 useInput 导致按键冲突,用条件渲染确保同一时刻只有一个焦点层处理 Esc/Enter.\n- UI 状态与业务状态分离: UI 只持有显示所需的派生状态,会话/代理/执行状态以 utils 层为准.",
+      "createdAt": "2026-02-22T12:50:36.915",
+      "updatedAt": "2026-02-22T12:50:36.915"
+    }
+  ],
   "source/ui/components/panels/MCPInfoPanel.tsx": [
     {
       "id": "notebook-1770950000002_mcpinfopanel",
@@ -195,6 +285,15 @@
       "note": "职责: MCP 配置界面,提供全局/项目级配置编辑入口,以及 MCP 服务管理面板(MCPInfoPanel)入口.\n不该做什么:\n- 不承担 MCP 服务注册/发现/调用等执行逻辑(归 mcpToolsManager).\n- 不把 ChatScreen 的面板状态体系(usePanelState)强行复用到本 Screen,避免引入 20+ props 的 PanelsManager 耦合.\n- 不在面板打开时继续渲染并响应本页按键,避免 Ink 多 useInput 冲突与 Esc 返回链路分叉.\n接口摘要:\n- Props: { onBack: () => void; onSave: () => void }.\n- UI: 渲染配置菜单项,可跳转至全局/项目配置编辑器,可打开 MCPInfoPanel 面板.\n依赖拓扑:\n- 依赖: useTheme,useI18n,MCPInfoPanel,apiConfig(全局/项目配置读取与 editor 打开).\n- 被依赖: WelcomeScreen(作为入口 Screen).\n关键架构决策:\n- 面板状态采用本地 useState 管理(showMcpPanel),不使用 usePanelState.\n- 面板打开时通过条件渲染完全隐藏配置 UI,并屏蔽本页 useInput,确保 Esc 返回链路单一且避免 useInput 冲突.\n避坑指南:\n- 面板打开后必须优先处理 Esc 并交由 MCPInfoPanel.onClose 收口关闭逻辑.\n- 仅负责\"入口与导航\",不要在此处做服务启用/禁用的读写与缓存刷新.\n备注:\n- 与\"流式 API 空闲超时/断开后丢弃\"无关.该机制属于 api adapters + utils/core(streamGuards,retryUtils),且固定 3 分钟不可配置,不应暴露为 UI 开关.",
       "createdAt": "2026-02-13T09:40:00.000",
       "updatedAt": "2026-02-13T11:50:59.239"
+    }
+  ],
+  "source/utils/": [
+    {
+      "id": "notebook-1771735837045_ax74drms8",
+      "filePath": "source/utils/",
+      "note": "职责: 核心业务与通用能力层.包含对话执行(execution),会话(session),SSE(sse),模型调用与流控制(core),配置读写(config),命令(commands),事件(events)等.\n\n接口摘要:\n- 输入: UI/CLI 层传入的用户指令与上下文.\n- 输出: 对话结果,状态变更事件,以及对外协议输出(SSE 事件等).\n\n依赖拓扑:\n- 依赖: source/api/ 作为模型渠道适配器.\n- 被依赖: source/ui/ 与 CLI 入口.\n\n避坑指南:\n- 任何跨会话的可变状态必须显式按 sessionId/connectionId 分片,禁止隐式单例导致串扰.\n- 流式输出必须统一使用 streamGuards/idle timeout/abandoned 丢弃策略,避免 abort 后 chunk 外泄.\n- 主/子代理提示词隔离是硬约束: 角色定义提示词只来自各自 profile,自定义 system prompt 仅影响本次调用且不得跨注入.",
+      "createdAt": "2026-02-22T12:50:37.045",
+      "updatedAt": "2026-02-22T12:50:37.045"
     }
   ],
   "source/utils/config/disabledBuiltInTools.ts": [
@@ -535,11 +634,11 @@
   ],
   "CurrentTaskPlan.md": [
     {
-      "id": "notebook-1771516802144_rjjhd9mej",
+      "id": "notebook-1771735962484_dpvy47imp",
       "filePath": "CurrentTaskPlan.md",
-      "note": "CurrentTaskPlan.md 微调建议(基于已定稿的新需求).\n\n现状:\n- CurrentTaskPlan.md 已完成与 requirements/全平台网页版Snow SSE客户端需求.md 的统一.\n- 但仍建议在计划书中显式固化 3 个实现要点,避免后续开发偏离.\n\n建议增补点:\n1) M0 增补 shared/errors 固化:\n- 除 shared/contracts 外,建议在 M0 明确固化 shared/errors(errorCode 枚举 + DomainError 结构),避免各层随意抛字符串.\n\n2) M1 增补 Auth 登录态实现建议(会话级):\n- 明确推荐使用 HttpOnly session cookie 且不设置 expires/max-age(浏览器关闭即失效).\n- 强调: login/me 返回口径固定 HTTP 200,不使用 401/403.\n\n3) M5 增补 Git status 口径:\n- 明确 status 的修改区必须包含: modified-unstaged + untracked + deleted-unstaged.\n- DiffViewer breakpoint 已在计划书中固化为 1200px,无需调整.\n\n说明:\n- 当前环境限制对 .md 文件编辑权限,因此以上建议以 notebook 形式记录,供主Agent或人工合入 CurrentTaskPlan.md.",
-      "createdAt": "2026-02-20T00:00:02.144",
-      "updatedAt": "2026-02-20T01:46:07.712"
+      "note": "职责: 短线开发任务计划书.用于记录\"当前正在做的短期工作\"与可验收的执行步骤,不作为长期架构规范.\n\n使用规范:\n- 计划必须指向 requirements/* 的 SSoT 文档,自身不成为需求来源.\n- 计划项必须可验收(如 build 通过,或明确的行为检查点).\n- 当计划完成或不再相关时,应更新/清空文件内容并删除其 notebook 条目,避免将过程性信息长期留存为蓝图.\n\n避坑指南:\n- 不要在计划中固化可能漂移的实现细节(如具体变量名),优先写模块边界与验收口径.\n- 若涉及上游合并冲突,计划必须包含\"对齐点\"与\"禁止覆盖本地不可回退点\"清单.",
+      "createdAt": "2026-02-22T12:52:42.484",
+      "updatedAt": "2026-02-22T12:52:42.484"
     }
   ]
 }

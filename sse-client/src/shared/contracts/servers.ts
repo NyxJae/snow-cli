@@ -1,4 +1,9 @@
 /**
+ * 服务端来源: sse-client 自身启动的(managed) 或通过 PID 文件发现的外部服务(external).
+ */
+export type ServerSource = 'managed' | 'external';
+
+/**
  * 运行中服务端条目.
  */
 export interface ServerItem {
@@ -8,6 +13,8 @@ export interface ServerItem {
 	timeoutMs: number;
 	pid: number;
 	startedAt: string;
+	/** 服务来源, 缺省视为 'managed' 以兼容旧版. */
+	source?: ServerSource;
 }
 
 /**

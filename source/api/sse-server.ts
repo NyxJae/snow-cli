@@ -20,7 +20,8 @@ export type SSEEventType =
 	| 'agent_list'
 	| 'agent_switched'
 	| 'todo_update'
-	| 'todos';
+	| 'todos'
+	| 'sub_agent_message';
 
 /**
  * SSE 事件数据结构
@@ -56,6 +57,7 @@ export interface ClientMessage {
 	agentId?: string; // 目标主代理ID，用于 switch_agent 消息
 	rollback?: {
 		messageIndex: number;
+		snapshotIndex?: number; // UI 消息索引, 用于快照操作(与 messageIndex 属不同索引体系)
 		rollbackFiles: boolean;
 		selectedFiles?: string[];
 		crossSessionRollback?: boolean;
@@ -545,6 +547,9 @@ export class SSEServer {
 				const {hashBasedSnapshotManager} = await import(
 					'../utils/codebase/hashBasedSnapshot.js'
 				);
+				const {convertSessionMessagesToUI} = await import(
+					'../utils/session/sessionConverter.js'
+				);
 
 				const sessionIdRaw = query?.['sessionId'];
 				const sessionId =
@@ -568,6 +573,30 @@ export class SSEServer {
 					return;
 				}
 
+				// 快照系统使用 UI 消息索引(convertSessionMessagesToUI 后的长度)
+				// 而非原始 session.messages 索引, 两者不一致(UI 转换会合并/过滤 tool 等消息)
+				const uiMessages = convertSessionMessagesToUI(session.messages);
+
+				// 构建 "原始 user 消息索引 → 对应 UI 消息索引" 映射
+				// 快照在 tool 执行期间创建, messageIndex = 当时的 uiMessages.length
+				// 即: user 消息保存后, uiMessages 中该 user 位于 uiIdx, 快照记录 uiIdx + 1
+				const rawToUiIndexMap = new Map<number, number>();
+				let uiIdx = 0;
+				for (let i = 0; i < session.messages.length; i++) {
+					const msg: any = session.messages[i];
+					if (!msg || msg.role !== 'user') continue;
+					while (
+						uiIdx < uiMessages.length &&
+						uiMessages[uiIdx]!.role !== 'user'
+					) {
+						uiIdx++;
+					}
+					if (uiIdx < uiMessages.length) {
+						rawToUiIndexMap.set(i, uiIdx + 1);
+						uiIdx++;
+					}
+				}
+
 				const snapshots = await hashBasedSnapshotManager.listSnapshots(
 					sessionId,
 				);
@@ -584,9 +613,11 @@ export class SSEServer {
 
 				const points: Array<{
 					messageIndex: number;
+					snapshotIndex?: number;
 					role: 'user';
 					timestamp: number;
 					summary: string;
+					content: string;
 					hasSnapshot: boolean;
 					snapshot?: {timestamp: number; fileCount: number};
 					filesToRollbackCount: number;
@@ -603,40 +634,31 @@ export class SSEServer {
 							? normalized.slice(0, maxSummaryLen) + '…'
 							: normalized;
 
-					// Snapshot 的 messageIndex 和 session.messages 的索引并不总是一致。
-					// 实测快照通常对应“下一条消息写入前”的索引（例如首条 user 消息后快照会落在 1）。
-					const snapAtNext = snapshotByIndex.get(i + 1);
-					const snapAtCurrent = snapshotByIndex.get(i);
-					const snap = snapAtNext ?? snapAtCurrent;
-					const rollbackIndex = snapAtNext ? i + 1 : i;
+					// 使用 UI 消息索引查找快照(快照系统记录的是 UI 索引)
+					// 映射缺失时(uiIndex === -1)表示该 user 消息无 UI 对应, 跳过快照查找
+					const uiIndex = rawToUiIndexMap.get(i) ?? -1;
+					const snap = uiIndex >= 0 ? snapshotByIndex.get(uiIndex) : undefined;
 
 					let filesToRollbackCount = 0;
 					if (snap && snap.fileCount > 0) {
 						const files = await hashBasedSnapshotManager.getFilesToRollback(
 							sessionId,
-							rollbackIndex,
+							uiIndex,
 						);
 						filesToRollbackCount = Array.isArray(files) ? files.length : 0;
 					}
 
 					points.push({
 						messageIndex: i,
+						...(uiIndex >= 0 ? {snapshotIndex: uiIndex} : {}),
 						role: 'user',
 						timestamp: typeof m.timestamp === 'number' ? m.timestamp : 0,
 						summary,
+						content,
 						hasSnapshot: !!snap && snap.fileCount > 0,
 						snapshot: snap,
 						filesToRollbackCount,
 					});
-
-					// 如果快照存在但落在 i+1（常见），让前端能直接用 messageIndex 作为回滚点索引。
-					if (
-						snapAtNext &&
-						snapAtNext.fileCount > 0 &&
-						i + 1 < session.messages.length
-					) {
-						// 这里不改变 messageIndex 的语义，仅用于确保 hasSnapshot 展示正确。
-					}
 				}
 
 				res.writeHead(200, {
@@ -782,6 +804,7 @@ export class SSEServer {
 					content: string;
 					[key: string]: any;
 				}>;
+				let currentSession: any = null;
 
 				// 支持两种方式：直接传入 messages 或通过 sessionId 获取
 				if (body.messages && Array.isArray(body.messages)) {
@@ -799,6 +822,7 @@ export class SSEServer {
 						return;
 					}
 					messages = session.messages || [];
+					currentSession = session;
 				} else {
 					res.writeHead(400, {
 						'Content-Type': 'application/json',
@@ -856,11 +880,82 @@ export class SSEServer {
 					return;
 				}
 
+				// Build new session messages with compression summary
+				const newSessionMessages: Array<any> = [];
+				let finalContent = `[Context Summary from Previous Conversation]\n\n${result.summary}`;
+
+				if (result.preservedMessages && result.preservedMessages.length > 0) {
+					finalContent +=
+						'\n\n---\n\n[Last Interaction - Preserved for Continuity]\n\n';
+					for (const msg of result.preservedMessages) {
+						if (msg.role === 'user') {
+							finalContent += `**User:**\n${msg.content}\n\n`;
+						} else if (msg.role === 'assistant') {
+							finalContent += `**Assistant:**\n${msg.content}`;
+							if (msg.tool_calls && msg.tool_calls.length > 0) {
+								finalContent += '\n\n**[Tool Calls Initiated]:**\n```json\n';
+								finalContent += JSON.stringify(msg.tool_calls, null, 2);
+								finalContent += '\n```\n\n';
+							} else {
+								finalContent += '\n\n';
+							}
+						} else if (msg.role === 'tool') {
+							finalContent += `**[Tool Result - ${msg.tool_call_id}]:**\n`;
+							try {
+								const parsed = JSON.parse(msg.content);
+								finalContent +=
+									'```json\n' + JSON.stringify(parsed, null, 2) + '\n```\n\n';
+							} catch {
+								finalContent += `${msg.content}\n\n`;
+							}
+						}
+					}
+				}
+
+				newSessionMessages.push({
+					role: 'user',
+					content: finalContent,
+					timestamp: Date.now(),
+				});
+
+				// Create new compressed session
+				const compressedSession = await sessionManager.createNewSession(
+					false,
+					true,
+				);
+
+				// Set session properties
+				compressedSession.messages = newSessionMessages;
+				compressedSession.messageCount = newSessionMessages.length;
+				compressedSession.updatedAt = Date.now();
+				compressedSession.title = currentSession?.title || 'Compressed Session';
+				compressedSession.summary = currentSession?.summary || '';
+
+				// Record compression relationship
+				const sourceSessionId = body.sessionId;
+				compressedSession.compressedFrom = sourceSessionId;
+				compressedSession.compressedAt = Date.now();
+				compressedSession.originalMessageIndex =
+					result.preservedMessageStartIndex;
+
+				// Save new session to disk
+				await sessionManager.saveSession(compressedSession);
+
+				// Return full response with new session info
 				res.writeHead(200, {
 					'Content-Type': 'application/json',
 					'Access-Control-Allow-Origin': '*',
 				});
-				res.end(JSON.stringify({success: true, result}));
+				res.end(
+					JSON.stringify({
+						success: true,
+						result: {
+							...result,
+							sessionId: compressedSession.id,
+							compressedFrom: sourceSessionId,
+						},
+					}),
+				);
 			} catch (error) {
 				res.writeHead(500, {
 					'Content-Type': 'application/json',

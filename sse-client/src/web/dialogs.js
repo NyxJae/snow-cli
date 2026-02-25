@@ -115,25 +115,82 @@ export function showUserQuestionDialog(event, sendResponse) {
 	const {question, options, multiSelect} = event.data ?? {};
 	title.textContent = question ?? '问题确认';
 
-	const normalizedOptions = Array.isArray(options) ? options : [];
+	const normalizedOptions = Array.isArray(options)
+		? options.map(o => String(o ?? ''))
+		: [];
 	const inputType = multiSelect ? 'checkbox' : 'radio';
 	let html = '';
 	if (normalizedOptions.length > 0) {
 		normalizedOptions.forEach((option, index) => {
-			html += `<div class="session-row">
-				<label class="row" style="flex:1;align-items:center;gap:8px;">
-					<input type="${inputType}" name="userOption" data-option-index="${index}" />
-					<span>${escapeHtml(option)}</span>
-				</label>
-				<input type="text" class="chat-input" data-option-edit-index="${index}" value="${escapeHtml(
+			html += `<div class="uq-option" data-option-index="${index}">
+				<div class="uq-option-main">
+					<label class="uq-option-label">
+						<input type="${inputType}" name="userOption" data-option-index="${index}" />
+						<span class="uq-option-text">${escapeHtml(option)}</span>
+					</label>
+					<button type="button" class="uq-edit-btn" data-edit-toggle="${index}" title="编辑选项">✎</button>
+				</div>
+				<input type="text" class="uq-edit-input hidden" data-option-edit-index="${index}" value="${escapeHtml(
 				option,
 			)}" placeholder="编辑该选项" />
 			</div>`;
 		});
 	}
 	html +=
-		'<textarea id="customInput" class="chat-input" placeholder="或输入自定义内容"></textarea>';
+		'<textarea id="customInput" class="uq-custom-input" placeholder="或输入自定义内容"></textarea>';
 	body.innerHTML = html;
+
+	// 移除上一次绑定的 change 监听, 防止多次打开弹窗时叠加
+	if (body._uqChangeHandler) {
+		body.removeEventListener('change', body._uqChangeHandler);
+	}
+	// 选项选中时, 用 JS 切换 selected 类(避免 :has() 兼容性问题)
+	const syncSelected = () => {
+		body.querySelectorAll('.uq-option').forEach(opt => {
+			const input = opt.querySelector('input[name="userOption"]');
+			opt.classList.toggle('selected', !!input?.checked);
+		});
+	};
+	body._uqChangeHandler = syncSelected;
+	body.addEventListener('change', syncSelected);
+
+	// 整行可点击: 点击选项卡片空白区域也能触发选中
+	// label 内部点击由原生 label 行为处理, 无需代理(避免 checkbox 双重 toggle)
+	body.querySelectorAll('.uq-option').forEach(opt => {
+		opt.addEventListener('click', e => {
+			if (e.target.closest('.uq-edit-btn, .uq-edit-input, .uq-option-label'))
+				return;
+			const input = opt.querySelector('input[name="userOption"]');
+			if (input && e.target !== input) {
+				if (input.type === 'checkbox') {
+					input.checked = !input.checked;
+				} else {
+					input.checked = true;
+				}
+				input.dispatchEvent(new Event('change', {bubbles: true}));
+			}
+		});
+	});
+
+	// 初始同步选中状态(应对未来可能的默认选中/回填场景)
+	syncSelected();
+
+	// 编辑按钮: 折叠编辑框避免挤占选项布局导致弹窗溢出
+	body.querySelectorAll('.uq-edit-btn').forEach(btn => {
+		btn.addEventListener('click', () => {
+			const idx = btn.getAttribute('data-edit-toggle');
+			const editInput = body.querySelector(
+				`input[data-option-edit-index="${idx}"]`,
+			);
+			if (editInput) {
+				const isHidden = editInput.classList.toggle('hidden');
+				btn.textContent = isHidden ? '✎' : '✕';
+				if (!isHidden) {
+					editInput.focus();
+				}
+			}
+		});
+	});
 
 	footer.innerHTML = '';
 	const cancelButton = document.createElement('button');
@@ -163,11 +220,11 @@ export function showUserQuestionDialog(event, sendResponse) {
 		}
 
 		const selectedInputs = Array.from(
-			document.querySelectorAll('input[name="userOption"]:checked'),
+			body.querySelectorAll('input[name="userOption"]:checked'),
 		);
 		const selectedValues = selectedInputs.map(item => {
 			const optionIndex = item.getAttribute('data-option-index') ?? '';
-			const editedInput = document.querySelector(
+			const editedInput = body.querySelector(
 				`input[data-option-edit-index="${optionIndex}"]`,
 			);
 			const editedValue = editedInput?.value?.trim() ?? '';

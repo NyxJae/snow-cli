@@ -155,24 +155,180 @@ export function createSessionActions(options) {
 	}
 
 	/**
-	 * 将服务端历史消息转换为精简展示格式.
+	 * 生成工具调用参数摘要(前3个字段, 值截断60字符).
+	 * @param {any} tc 工具调用对象 {function:{name,arguments}}.
+	 * @returns {string} 如 "filePath: /src/..., startLine: 1"
+	 */
+	function summarizeToolCallArgs(tc) {
+		try {
+			const rawArgs = tc?.function?.arguments;
+			const args =
+				typeof rawArgs === 'string'
+					? rawArgs.length > 10000
+						? null
+						: JSON.parse(rawArgs)
+					: rawArgs;
+			if (args && typeof args === 'object') {
+				const entries = Object.entries(args);
+				let summary = entries
+					.slice(0, 3)
+					.map(([k, v]) => {
+						let val;
+						if (typeof v === 'string') {
+							val = v.length > 60 ? v.slice(0, 60) + '...' : v;
+						} else {
+							try {
+								const s = JSON.stringify(v);
+								val = s.length > 60 ? s.slice(0, 60) + '...' : s;
+							} catch {
+								val = String(v).slice(0, 60);
+							}
+						}
+						return `${k}: ${val}`;
+					})
+					.join(', ');
+				if (entries.length > 3) {
+					summary += `, ... (+${entries.length - 3})`;
+				}
+				return summary;
+			}
+		} catch {
+			return String(tc?.function?.arguments ?? '').slice(0, 80);
+		}
+		return '';
+	}
+
+	/**
+	 * 为历史工具结果生成摘要(与 sse.js tool_result 保持一致).
+	 * @param {string} toolName 工具名.
+	 * @param {string} content 工具返回内容.
+	 * @param {string} status 状态('success'|'error'|'pending').
+	 * @returns {string}
+	 */
+	function summarizeToolResult(toolName, content, status) {
+		if (status === 'error' && content) {
+			return `✗ 工具错误: ${content.slice(0, 200)}`;
+		}
+		if (!content) {
+			return '✓ Done';
+		}
+		try {
+			const data = JSON.parse(content);
+			if (toolName.startsWith('subagent-') && data.result) {
+				const txt = String(data.result);
+				const icon = data.success === false ? '✗' : '✓';
+				return txt.length > 120
+					? `${icon} ${txt.slice(0, 120)}...`
+					: `${icon} ${txt}`;
+			}
+			if (toolName === 'filesystem-read' && data.totalLines !== undefined) {
+				const readLines = data.endLine
+					? data.endLine - (data.startLine || 1) + 1
+					: data.totalLines;
+				return `✓ Read ${readLines} lines${
+					data.totalLines > readLines ? ` of ${data.totalLines} total` : ''
+				}`;
+			}
+			if (
+				(toolName === 'ace-text-search' || toolName === 'ace-text_search') &&
+				Array.isArray(data)
+			) {
+				return `✓ Found ${data.length} ${
+					data.length === 1 ? 'match' : 'matches'
+				}`;
+			}
+			if (toolName === 'terminal-execute' && data.exitCode !== undefined) {
+				return data.exitCode === 0
+					? '✓ Command succeeded'
+					: `✗ Exit code: ${data.exitCode}`;
+			}
+			if (
+				toolName === 'filesystem-edit' ||
+				toolName === 'filesystem-edit_search' ||
+				toolName === 'filesystem-create'
+			) {
+				return data.message ? `✓ ${data.message}` : '✓ File updated';
+			}
+			if (
+				toolName === 'codebase-retrieval' ||
+				toolName === 'context_engine-codebase-retrieval'
+			) {
+				return '✓ Codebase context retrieved';
+			}
+			if (typeof data === 'object') {
+				const keys = Object.keys(data).slice(0, 3);
+				if (keys.length > 0) {
+					return `✓ ${keys.join(', ')}`;
+				}
+			}
+		} catch {
+			// not JSON, use raw content
+		}
+		return content.length > 50
+			? `✓ ${content.slice(0, 50)}...`
+			: `✓ ${content}`;
+	}
+
+	/**
+	 * 将服务端历史消息转换为精简展示格式(含工具调用摘要).
 	 * @param {Array<any>} history 原始历史消息.
 	 * @returns {Array<{role:'assistant'|'user'|'error',content:string,timestamp:string}>}
 	 */
 	function convertSessionHistoryToChatMessages(history) {
 		const messages = [];
+		/** @type {Map<string,string>} tool_call_id → toolName */
+		const toolCallMap = new Map();
+
 		for (const item of history) {
 			const role = String(item?.role ?? item?.sender ?? '');
 			const timestamp = item?.timestamp ?? new Date().toISOString();
-			if (role === 'tool' || role === 'system') {
+
+			if (role === 'system') {
 				continue;
 			}
-			if (role === 'assistant' || role === 'user' || role === 'error') {
+
+			if (role === 'assistant') {
+				const text = normalizeHistoryMessageText(item);
+				if (text) {
+					messages.push({role, content: text, timestamp});
+				}
+				// 展开 tool_calls 为 🔧 摘要行
+				if (Array.isArray(item?.tool_calls)) {
+					for (const tc of item.tool_calls) {
+						const toolName = tc?.function?.name ?? 'unknown_tool';
+						if (tc?.id) {
+							toolCallMap.set(tc.id, toolName);
+						}
+						const argsSummary = summarizeToolCallArgs(tc);
+						messages.push({
+							role: 'assistant',
+							content: argsSummary
+								? `🔧 ${toolName}(${argsSummary})`
+								: `🔧 ${toolName}`,
+							timestamp,
+						});
+					}
+				}
+			} else if (role === 'tool') {
+				const toolCallId = item?.tool_call_id ?? '';
+				const toolName = toolCallMap.get(toolCallId) || '';
+				const status = item?.messageStatus ?? 'success';
+				const content = String(item?.content ?? '');
+				const summary = summarizeToolResult(toolName, content, status);
+				if (summary) {
+					messages.push({
+						role: 'assistant',
+						content: `└─ ${summary}`,
+						timestamp,
+					});
+				}
+			} else if (role === 'user' || role === 'error') {
 				const text = normalizeHistoryMessageText(item);
 				if (text) {
 					messages.push({role, content: text, timestamp});
 				}
 			}
+
 			if (
 				role === 'user' &&
 				Array.isArray(item?.images) &&
@@ -199,10 +355,14 @@ export function createSessionActions(options) {
 			return;
 		}
 		try {
+			const loadBody = {sessionId};
+			if (state.connection.connectionId) {
+				loadBody.connectionId = state.connection.connectionId;
+			}
 			const response = await fetch(`${baseUrl}/session/load`, {
 				method: 'POST',
 				headers: {'Content-Type': 'application/json'},
-				body: JSON.stringify({sessionId}),
+				body: JSON.stringify(loadBody),
 			});
 			const payload = await response.json();
 			if (!response.ok || !payload?.success || !payload?.session?.id) {
@@ -222,6 +382,10 @@ export function createSessionActions(options) {
 				tab.chat.dialogs.logDetailJson = '';
 				clearSessionAttention(payload.session.id);
 				clearTodoUnread();
+				tab.chat.ui.assistantWorking = false;
+				tab.chat.ui.flushingQueuedMessage = false;
+				tab.chat.ui.queuedUserMessages = [];
+				tab.chat.ui.queuedMessageSeq = 0;
 				const history = Array.isArray(payload.session.messages)
 					? payload.session.messages
 					: [];
@@ -274,6 +438,10 @@ export function createSessionActions(options) {
 				if (tab.chat.currentSessionId === sessionId) {
 					tab.chat.currentSessionId = '';
 					tab.chat.messages = [];
+					tab.chat.ui.assistantWorking = false;
+					tab.chat.ui.flushingQueuedMessage = false;
+					tab.chat.ui.queuedUserMessages = [];
+					tab.chat.ui.queuedMessageSeq = 0;
 				}
 				if (tab.chat.sessionPager.page > 0 && tab.chat.sessions.length <= 1) {
 					tab.chat.sessionPager.page -= 1;

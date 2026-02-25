@@ -14,7 +14,7 @@ import type {AgentInfo} from '../api/sse-server.js';
 import {
 	getAgentsPrompt,
 	createSystemContext,
-	getTaskCompletionPrompt,
+	// getTaskCompletionPrompt,
 } from './agentsPromptUtils.js';
 import {getModelSpecificPrompt} from './config/apiConfig.js';
 
@@ -363,10 +363,10 @@ export class MainAgentManager {
 		}
 
 		// 添加任务完成标识提示词
-		const taskCompletionPrompt = getTaskCompletionPrompt();
-		if (taskCompletionPrompt) {
-			prompt += '\n\n' + taskCompletionPrompt;
-		}
+		// const taskCompletionPrompt = getTaskCompletionPrompt();
+		// if (taskCompletionPrompt) {
+		// 	prompt += '\n\n' + taskCompletionPrompt;
+		// }
 
 		return prompt.trim();
 	}

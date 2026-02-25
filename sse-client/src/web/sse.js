@@ -18,14 +18,45 @@ import {
 	dismissInfoMessage as dismissInfoMessageInState,
 } from './state.js';
 import {showToolConfirmationDialog, showUserQuestionDialog} from './dialogs.js';
+import {escapeHtml} from './utils.js';
 
 /**
  * 创建SSE与聊天动作.
- * @param {{render:()=>void,refreshSessionList:(serverId?:string)=>Promise<void>}} options 依赖项.
- * @returns {{connectSelectedServer:(isReconnect?:boolean,serverId?:string)=>void,closeConnection:(reason?:'manual'|'error',serverId?:string)=>void,reconnectNow:()=>void,sendChat:()=>Promise<void>,openLogDetail:(eventId:string)=>void,closeLogDetail:()=>void}}
+ * @param {{render:()=>void,refreshSessionList:(serverId?:string)=>Promise<void>,loadSelectedSession?:(sessionId:string)=>Promise<void>}} options 依赖项.
+ * @returns {{connectSelectedServer:(isReconnect?:boolean,serverId?:string)=>void,closeConnection:(reason?:'manual'|'error',serverId?:string)=>void,reconnectNow:()=>void,sendChat:()=>Promise<void>,openLogDetail:(eventId:string)=>void,openLogTextDetail:(role:string,content:string,timestamp?:string)=>void,closeLogDetail:()=>void}}
  */
 export function createSseActions(options) {
-	const {render, refreshSessionList} = options;
+	const {render, refreshSessionList, loadSelectedSession} = options;
+
+	/**
+	 * 获取当前Tab的压缩流程状态.
+	 * @returns {{active:boolean,sourceSessionId:string,startedAt:number,waitHintShown:boolean}}
+	 */
+	function getCompressFlowState() {
+		if (!state.chat.ui.compressFlowState) {
+			state.chat.ui.compressFlowState = {
+				active: false,
+				sourceSessionId: '',
+				startedAt: 0,
+				waitHintShown: false,
+			};
+		}
+		if (typeof state.chat.ui.compressFlowState.waitHintShown !== 'boolean') {
+			state.chat.ui.compressFlowState.waitHintShown = false;
+		}
+		return state.chat.ui.compressFlowState;
+	}
+
+	/**
+	 * 重置当前Tab的压缩流程状态.
+	 */
+	function resetCompressFlowState() {
+		const flowState = getCompressFlowState();
+		flowState.active = false;
+		flowState.sourceSessionId = '';
+		flowState.startedAt = 0;
+		flowState.waitHintShown = false;
+	}
 
 	/**
 	 * 清理重连定时器.
@@ -52,7 +83,13 @@ export function createSseActions(options) {
 				state.connection.eventSource = null;
 			}
 			clearRetryTimer();
+			resetCompressFlowState();
+			state.connection.connectionId = '';
 			state.connection.status = reason === 'error' ? 'error' : 'disconnected';
+			state.chat.ui.assistantWorking = false;
+			state.chat.ui.flushingQueuedMessage = false;
+			state.chat.ui.queuedUserMessages = [];
+			state.chat.ui.queuedMessageSeq = 0;
 		});
 	}
 
@@ -74,7 +111,12 @@ export function createSseActions(options) {
 			const httpResponse = await fetch(`${baseUrl}/message`, {
 				method: 'POST',
 				headers: {'Content-Type': 'application/json'},
-				body: JSON.stringify({type, requestId, response}),
+				body: JSON.stringify({
+					type,
+					requestId,
+					response,
+					connectionId: state.connection.connectionId || undefined,
+				}),
 			});
 			if (!httpResponse.ok) {
 				throw new Error(`响应发送失败: HTTP ${httpResponse.status}`);
@@ -107,6 +149,27 @@ export function createSseActions(options) {
 		state.chat.dialogs.logDetailTitle = `日志详情 - ${event.type}`;
 		state.chat.dialogs.logDetailJson = JSON.stringify(
 			event.data ?? null,
+			null,
+			2,
+		);
+		render();
+	}
+
+	/**
+	 * 打开文本日志详情弹窗.
+	 * @param {string} role 日志角色.
+	 * @param {string} content 日志内容.
+	 * @param {string} [timestamp] 时间戳.
+	 */
+	function openLogTextDetail(role, content, timestamp = '') {
+		state.chat.dialogs.logDetailOpen = true;
+		state.chat.dialogs.logDetailTitle = `日志详情 - ${role || 'system'}`;
+		state.chat.dialogs.logDetailJson = JSON.stringify(
+			{
+				role: role || 'system',
+				timestamp: timestamp || '',
+				content: content || '',
+			},
 			null,
 			2,
 		);
@@ -198,6 +261,7 @@ export function createSseActions(options) {
 					type: 'switch_agent',
 					agentId,
 					sessionId,
+					connectionId: state.connection.connectionId || undefined,
 				}),
 			});
 			if (!response.ok) {
@@ -213,6 +277,319 @@ export function createSseActions(options) {
 				error instanceof Error ? error.message : '主代理切换失败',
 			);
 			render();
+		}
+	}
+
+	/**
+	 * 切换 YOLO 模式开关.
+	 */
+	function toggleYolo() {
+		state.chat.statusBar.yoloMode = !state.chat.statusBar.yoloMode;
+		render();
+	}
+
+	/**
+	 * 添加待发送图片文件(存入暂存区,发送时携带).
+	 * 限制: 单次最多6张,单张不超过5MB,总计不超过20MB.
+	 * 说明: 放宽阈值以适配常见截图体积,超限时在聊天区展示明确错误提示.
+	 * @param {File[]} files 图片文件列表.
+	 */
+	function addImages(files) {
+		const serverId = state.control.selectedServerId;
+		withServerTabContext(serverId, () => {
+			if (!Array.isArray(state.chat.ui.pendingImages)) {
+				state.chat.ui.pendingImages = [];
+			}
+			state.chat.error = '';
+
+			const MAX_IMAGES = 6;
+			const MAX_SINGLE_SIZE = 5 * 1024 * 1024;
+			const MAX_TOTAL_SIZE = 20 * 1024 * 1024;
+			const currentTotal = state.chat.ui.pendingImages.reduce(
+				(sum, f) => sum + (f.size ?? 0),
+				0,
+			);
+			let addedTotal = currentTotal;
+			for (const file of files) {
+				if (!file.type.startsWith('image/')) {
+					continue;
+				}
+				if (state.chat.ui.pendingImages.length >= MAX_IMAGES) {
+					state.chat.error = `最多选择${MAX_IMAGES}张图片`;
+					render();
+					break;
+				}
+				if (file.size > MAX_SINGLE_SIZE) {
+					state.chat.error = `图片 ${file.name} 超过${Math.round(
+						MAX_SINGLE_SIZE / 1024 / 1024,
+					)}MB限制, 已跳过`;
+					render();
+					continue;
+				}
+				if (addedTotal + file.size > MAX_TOTAL_SIZE) {
+					state.chat.error = `图片总大小超过${Math.round(
+						MAX_TOTAL_SIZE / 1024 / 1024,
+					)}MB限制, 已跳过后续`;
+					render();
+					break;
+				}
+				addedTotal += file.size;
+				state.chat.ui.pendingImages.push(file);
+			}
+			render();
+		});
+	}
+
+	/**
+	 * 删除待发送图片.
+	 * @param {number} imageIndex 图片索引.
+	 */
+	function removePendingImage(imageIndex) {
+		const serverId = state.control.selectedServerId;
+		withServerTabContext(serverId, () => {
+			if (!Array.isArray(state.chat.ui.pendingImages)) {
+				return;
+			}
+			if (!Number.isInteger(imageIndex) || imageIndex < 0) {
+				return;
+			}
+			if (imageIndex >= state.chat.ui.pendingImages.length) {
+				return;
+			}
+			state.chat.ui.pendingImages.splice(imageIndex, 1);
+			render();
+		});
+	}
+
+	/**
+	 * 更新输入草稿文本.
+	 * @param {string} text 草稿文本.
+	 */
+	function updatePendingDraftText(text) {
+		const serverId = state.control.selectedServerId;
+		withServerTabContext(serverId, () => {
+			state.chat.ui.pendingDraftText = String(text ?? '');
+		});
+	}
+
+	function canFlushQueuedMessage() {
+		if (state.chat.ui.assistantWorking) {
+			return false;
+		}
+		return !state.chat.ui.flushingQueuedMessage;
+	}
+
+	function setAssistantWorking(working) {
+		state.chat.ui.assistantWorking = Boolean(working);
+		if (!working) {
+			state.chat.ui.flushingQueuedMessage = false;
+		}
+	}
+
+	function removeQueuedMessage(queueId) {
+		const queue = Array.isArray(state.chat.ui.queuedUserMessages)
+			? state.chat.ui.queuedUserMessages
+			: [];
+		const index = queue.findIndex(item => item.id === queueId);
+		if (index === -1) {
+			return null;
+		}
+		const [removed] = queue.splice(index, 1);
+		return removed ?? null;
+	}
+
+	function setQueueMessageStatus(queueId, status) {
+		const target = state.chat.messages.find(item => item?.queueId === queueId);
+		if (!target) {
+			return;
+		}
+		target.queueStatus = status;
+	}
+
+	function applyQueueMessageSent(queueId) {
+		setQueueMessageStatus(queueId, 'sent');
+	}
+
+	function editQueuedMessage(queueId, content) {
+		const queue = Array.isArray(state.chat.ui.queuedUserMessages)
+			? state.chat.ui.queuedUserMessages
+			: [];
+		const target = queue.find(item => item.id === queueId);
+		if (!target || target.status !== 'queued') {
+			return false;
+		}
+		const nextContent = String(content ?? '').trim();
+		if (!nextContent) {
+			return false;
+		}
+		target.content = nextContent;
+		target.displayContent = nextContent;
+		target.updatedAt = Date.now();
+		const message = state.chat.messages.find(item => item?.queueId === queueId);
+		if (message) {
+			message.content = nextContent;
+		}
+		render();
+		return true;
+	}
+
+	function cancelQueuedMessage(queueId) {
+		const queue = Array.isArray(state.chat.ui.queuedUserMessages)
+			? state.chat.ui.queuedUserMessages
+			: [];
+		const target = queue.find(item => item.id === queueId);
+		if (!target || target.status !== 'queued') {
+			return;
+		}
+		removeQueuedMessage(queueId);
+		state.chat.messages = state.chat.messages.filter(
+			item => item?.queueId !== queueId,
+		);
+		render();
+	}
+
+	function enqueueUserMessage(payload) {
+		const nextSeq = Number(state.chat.ui.queuedMessageSeq || 0) + 1;
+		state.chat.ui.queuedMessageSeq = nextSeq;
+		const queueId = `q-${Date.now()}-${nextSeq}`;
+		const queuedItem = {
+			id: queueId,
+			content: payload.content,
+			displayContent: payload.displayContent,
+			images: payload.images,
+			targetAgentNodeId: payload.targetAgentNodeId || '',
+			status: 'queued',
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		};
+		if (!Array.isArray(state.chat.ui.queuedUserMessages)) {
+			state.chat.ui.queuedUserMessages = [];
+		}
+		state.chat.ui.queuedUserMessages.push(queuedItem);
+		state.chat.messages.push({
+			role: 'user',
+			content: payload.displayContent,
+			timestamp: new Date().toISOString(),
+			queueId,
+			queueStatus: 'queued',
+		});
+		state.chat.messages = state.chat.messages.slice(-120);
+		return queuedItem;
+	}
+
+	async function postChatToServer({
+		serverId,
+		baseUrl,
+		content,
+		images,
+		targetAgentNodeId,
+	}) {
+		let currentSessionId = state.chat.currentSessionId || undefined;
+		const initialAgentId =
+			!currentSessionId && state.chat.mainAgent.preferredAgentIdForNewSession
+				? state.chat.mainAgent.preferredAgentIdForNewSession
+				: undefined;
+		const postChatMessage = async (chatContent, options = {}) => {
+			const body = {
+				type: 'chat',
+				content: chatContent,
+				sessionId: currentSessionId,
+				yoloMode: Boolean(state.chat.statusBar?.yoloMode ?? true),
+				connectionId: state.connection.connectionId || undefined,
+			};
+			if (options.images?.length > 0) {
+				body.images = options.images;
+			}
+			if (options.targetAgentNodeId) {
+				body.targetAgentNodeId = options.targetAgentNodeId;
+			}
+			const response = await fetch(`${baseUrl}/message`, {
+				method: 'POST',
+				headers: {'Content-Type': 'application/json'},
+				body: JSON.stringify(body),
+			});
+			if (!response.ok) {
+				throw new Error(`发送失败: HTTP ${response.status}`);
+			}
+		};
+		if (!currentSessionId) {
+			const createBody = {
+				...(initialAgentId ? {initialAgentId} : {}),
+				...(state.connection.connectionId
+					? {connectionId: state.connection.connectionId}
+					: {}),
+			};
+			const createResponse = await fetch(`${baseUrl}/session/create`, {
+				method: 'POST',
+				headers: {'Content-Type': 'application/json'},
+				body: JSON.stringify(createBody),
+			});
+			const createPayload = await createResponse.json();
+			const createdSessionId = createPayload?.session?.id;
+			if (!createResponse.ok || !createdSessionId) {
+				throw new Error(
+					createPayload?.message ??
+						`创建会话失败: HTTP ${createResponse.status}`,
+				);
+			}
+			currentSessionId = createdSessionId;
+			state.chat.currentSessionId = createdSessionId;
+			state.chat.mainAgent.preferredAgentIdForNewSession = '';
+			void refreshSessionList(serverId);
+			const shouldApplyPreferredProfile =
+				!String(content).startsWith('/profile ') &&
+				Boolean(state.chat.quickSwitch.preferredProfileForNewSession);
+			if (shouldApplyPreferredProfile) {
+				await postChatMessage(
+					`/profile ${state.chat.quickSwitch.preferredProfileForNewSession}`,
+				);
+			}
+		}
+
+		setAssistantWorking(true);
+		await postChatMessage(content || '', {
+			images: Array.isArray(images) ? images : [],
+			targetAgentNodeId: targetAgentNodeId || undefined,
+		});
+	}
+
+	async function flushQueuedMessagesIfNeeded(serverId, baseUrl) {
+		if (!canFlushQueuedMessage()) {
+			return;
+		}
+		const queue = Array.isArray(state.chat.ui.queuedUserMessages)
+			? state.chat.ui.queuedUserMessages
+			: [];
+		const next = queue.find(item => item.status === 'queued');
+		if (!next) {
+			return;
+		}
+		let sent = false;
+		state.chat.ui.flushingQueuedMessage = true;
+		next.status = 'sending';
+		setQueueMessageStatus(next.id, 'sending');
+		render();
+		try {
+			await postChatToServer({
+				serverId,
+				baseUrl,
+				content: next.content || '',
+				images: next.images,
+				targetAgentNodeId: next.targetAgentNodeId || undefined,
+			});
+			removeQueuedMessage(next.id);
+			applyQueueMessageSent(next.id);
+			sent = true;
+			render();
+		} catch {
+			next.status = 'queued';
+			setQueueMessageStatus(next.id, 'queued');
+			render();
+		} finally {
+			state.chat.ui.flushingQueuedMessage = false;
+		}
+		if (sent) {
+			void flushQueuedMessagesIfNeeded(serverId, baseUrl);
 		}
 	}
 
@@ -242,10 +619,110 @@ export function createSseActions(options) {
 	}
 
 	/**
-	 * 发送渠道快捷切换指令.
+	 * 切换子代理并行弹窗卡片索引.
+	 * @param {number} offset 偏移量,可为正负.
+	 */
+	function shiftSubAgentPopup(offset) {
+		const subAgentMap = new Map(
+			(state.chat.subAgents ?? []).map(item => [
+				String(item?.nodeId ?? ''),
+				item,
+			]),
+		);
+		const rootRunningNodeIds = [];
+		const seenNodeIds = new Set();
+		for (const item of state.chat.subAgents ?? []) {
+			const nodeId = String(item?.nodeId ?? '');
+			if (!nodeId || seenNodeIds.has(nodeId)) {
+				continue;
+			}
+			const parentNodeId = String(item?.parentNodeId ?? '');
+			const nodeStatus = String(item?.status ?? 'running');
+			const isRootNode = !parentNodeId || !subAgentMap.has(parentNodeId);
+			if (!isRootNode || nodeStatus === 'done') {
+				continue;
+			}
+			seenNodeIds.add(nodeId);
+			rootRunningNodeIds.push(nodeId);
+		}
+		const total = rootRunningNodeIds.length;
+		if (total <= 1) {
+			state.chat.ui.subAgentPopupIndex = 0;
+			render();
+			return;
+		}
+		const current = Number(state.chat.ui.subAgentPopupIndex ?? 0);
+		const normalizedCurrent = Number.isFinite(current) ? current : 0;
+		state.chat.ui.subAgentPopupIndex =
+			(normalizedCurrent + Number(offset || 0) + total) % total;
+		render();
+	}
+
+	/**
+	 * 关闭指定子代理卡片.
+	 * @param {string} nodeId 子代理节点ID.
+	 */
+	function closeSubAgent(nodeId) {
+		const targetNodeId = String(nodeId ?? '');
+		if (!targetNodeId) {
+			return;
+		}
+		const nodeMap = new Map(
+			(state.chat.subAgents ?? []).map(item => [
+				String(item?.nodeId ?? ''),
+				item,
+			]),
+		);
+		if (!nodeMap.has(targetNodeId)) {
+			return;
+		}
+		const removingIds = new Set();
+		const stack = [targetNodeId];
+		while (stack.length > 0) {
+			const currentId = String(stack.pop() ?? '');
+			if (!currentId || removingIds.has(currentId)) {
+				continue;
+			}
+			removingIds.add(currentId);
+			const currentNode = nodeMap.get(currentId);
+			const children = Array.isArray(currentNode?.children)
+				? currentNode.children.map(childId => String(childId ?? ''))
+				: [];
+			for (const childId of children) {
+				if (childId && !removingIds.has(childId)) {
+					stack.push(childId);
+				}
+			}
+		}
+		state.chat.subAgents = (state.chat.subAgents ?? []).filter(
+			item => !removingIds.has(String(item?.nodeId ?? '')),
+		);
+		for (const removingId of removingIds) {
+			delete state.chat.ui.subAgentExpandedById[removingId];
+		}
+		const rootRunningCount = (state.chat.subAgents ?? []).filter(item => {
+			const parentNodeId = String(item?.parentNodeId ?? '');
+			const nodeStatus = String(item?.status ?? 'running');
+			return !parentNodeId && nodeStatus !== 'done';
+		}).length;
+		if (rootRunningCount <= 1) {
+			state.chat.ui.subAgentPopupIndex = 0;
+		} else {
+			const current = Number(state.chat.ui.subAgentPopupIndex ?? 0);
+			const normalizedCurrent = Number.isFinite(current) ? current : 0;
+			state.chat.ui.subAgentPopupIndex =
+				((normalizedCurrent % rootRunningCount) + rootRunningCount) %
+				rootRunningCount;
+		}
+		render();
+	}
+
+	/**
+	 * 切换渠道配置(纯本地, 不发消息给 AI).
+	 * 仅更新 preferredProfileForNewSession, 下次新建会话时生效.
 	 * @param {'profile'} field 字段.
 	 */
-	async function applyQuickSwitch(field) {
+	function applyQuickSwitch(field) {
 		if (field !== 'profile') {
 			return;
 		}
@@ -255,22 +732,272 @@ export function createSseActions(options) {
 			render();
 			return;
 		}
-		const previousPreferredProfile =
-			state.chat.quickSwitch.preferredProfileForNewSession;
-		const input = document.getElementById('chatInput');
-		if (input) {
-			input.value = `/profile ${value}`;
-		}
 		state.chat.quickSwitch.preferredProfileForNewSession = value;
-		await sendChat();
-		if (state.chat.error) {
-			state.chat.quickSwitch.preferredProfileForNewSession =
-				previousPreferredProfile;
-			render();
+		state.chat.statusBar.apiProfile = value;
+		pushMessage('system', `渠道已切换为 ${value}, 下次新建会话时生效`);
+		render();
+	}
+
+	/**
+	 * 新建会话: 清空当前聊天状态,下次发送消息时自动创建服务端会话.
+	 */
+	function newSession() {
+		const serverId = state.control.selectedServerId;
+		if (!serverId) {
 			return;
 		}
-		state.chat.statusBar.apiProfile = value;
-		render();
+		withServerTabContext(serverId, () => {
+			state.chat.currentSessionId = '';
+			state.chat.messages = [];
+			state.chat.events = [];
+			state.chat.currentSessionEvents = [];
+			state.chat.todos = [];
+			state.chat.subAgents = [];
+			state.chat.error = '';
+			state.chat.ui.pendingDraftText = '';
+			state.chat.ui.pendingImages = [];
+			state.chat.ui.subAgentExpandedById = {};
+			state.chat.ui.assistantWorking = false;
+			state.chat.ui.flushingQueuedMessage = false;
+			state.chat.ui.queuedUserMessages = [];
+			state.chat.ui.queuedMessageSeq = 0;
+			pushMessage('system', '已创建新会话');
+			void refreshSessionList(serverId);
+			render();
+		});
+	}
+
+	/**
+	 * 中断当前会话任务, 发送 abort 消息到 POST /message.
+	 */
+	async function abortSession() {
+		const serverId = state.control.selectedServerId;
+		return withServerTabContext(serverId, async () => {
+			const baseUrl = state.connection.baseUrl;
+			const sessionId = state.chat.currentSessionId;
+			if (!baseUrl || state.connection.status !== 'connected' || !sessionId) {
+				pushMessage('error', '没有活动的会话, 无法中断');
+				render();
+				return;
+			}
+			pushMessage('system', '正在中断当前任务...');
+			render();
+			try {
+				const response = await fetch(`${baseUrl}/message`, {
+					method: 'POST',
+					headers: {'Content-Type': 'application/json'},
+					body: JSON.stringify({
+						type: 'abort',
+						sessionId,
+						connectionId: state.connection.connectionId || undefined,
+					}),
+				});
+				const payload = await response.json();
+				if (!response.ok || payload?.success === false) {
+					const msg =
+						payload?.error ??
+						payload?.message ??
+						`中断请求失败: HTTP ${response.status}`;
+					pushMessage('error', msg);
+					render();
+					return;
+				}
+				pushMessage('system', '已发送中断请求');
+				render();
+			} catch (error) {
+				pushMessage(
+					'error',
+					error instanceof Error ? error.message : '中断请求失败',
+				);
+				render();
+			}
+		});
+	}
+
+	/**
+	 * 获取当前会话的可用回滚点列表.
+	 * @returns {Promise<Array<object>>} 回滚点数组, 每项含 messageIndex/summary/hasSnapshot/filesToRollbackCount 等.
+	 */
+	async function fetchRollbackPoints() {
+		const serverId = state.control.selectedServerId;
+		return withServerTabContext(serverId, async () => {
+			const baseUrl = state.connection.baseUrl;
+			const sessionId = state.chat.currentSessionId;
+			if (!baseUrl || state.connection.status !== 'connected' || !sessionId) {
+				return [];
+			}
+			try {
+				const params = new URLSearchParams({sessionId});
+				const response = await fetch(
+					`${baseUrl}/session/rollback-points?${params.toString()}`,
+				);
+				const data = await response.json();
+				if (!response.ok || data?.success === false) {
+					pushMessage(
+						'error',
+						data?.error ?? `获取回滚点失败: HTTP ${response.status}`,
+					);
+					render();
+					return [];
+				}
+				return Array.isArray(data.points) ? data.points : [];
+			} catch (error) {
+				pushMessage(
+					'error',
+					error instanceof Error ? error.message : '获取回滚点失败',
+				);
+				render();
+				return [];
+			}
+		});
+	}
+
+	/**
+	 * 回退当前会话到指定记录点.
+	 * @param {number} messageIndex 目标原始消息索引(0-based, 用于截断 session.messages).
+	 * @param {boolean} rollbackFiles 是否同时回滚文件快照.
+	 * @param {number} [snapshotIndex] 快照系统使用的 UI 消息索引(用于快照回滚/删除).
+	 */
+	async function rollbackSession(messageIndex, rollbackFiles, snapshotIndex) {
+		const serverId = state.control.selectedServerId;
+		return withServerTabContext(serverId, async () => {
+			const baseUrl = state.connection.baseUrl;
+			const sessionId = state.chat.currentSessionId;
+			if (!baseUrl || state.connection.status !== 'connected' || !sessionId) {
+				pushMessage('error', '没有活动的会话, 无法回退');
+				render();
+				return;
+			}
+			const modeLabel = rollbackFiles ? '对话+文件' : '仅对话';
+			pushMessage(
+				'system',
+				`正在回退到记录点 #${messageIndex} (${modeLabel})...`,
+			);
+			render();
+			try {
+				const rollbackPayload = {messageIndex, rollbackFiles};
+				if (snapshotIndex !== undefined) {
+					rollbackPayload.snapshotIndex = snapshotIndex;
+				}
+				const response = await fetch(`${baseUrl}/message`, {
+					method: 'POST',
+					headers: {'Content-Type': 'application/json'},
+					body: JSON.stringify({
+						type: 'rollback',
+						sessionId,
+						rollback: rollbackPayload,
+						connectionId: state.connection.connectionId || undefined,
+					}),
+				});
+				const payload = await response.json();
+				if (!response.ok || payload?.success === false) {
+					const msg =
+						payload?.error ??
+						payload?.message ??
+						`回退请求失败: HTTP ${response.status}`;
+					pushMessage('error', msg);
+					render();
+					return;
+				}
+				pushMessage('system', '已发送回退请求, 等待服务端完成...');
+				render();
+			} catch (error) {
+				pushMessage(
+					'error',
+					error instanceof Error ? error.message : '回退请求失败',
+				);
+				render();
+			}
+		});
+	}
+
+	/**
+	 * 压缩当前会话上下文, 调用服务端 POST /context/compress.
+	 */
+	async function compressSession() {
+		const serverId = state.control.selectedServerId;
+		return withServerTabContext(serverId, async () => {
+			const baseUrl = state.connection.baseUrl;
+			const sessionId = state.chat.currentSessionId;
+			if (!baseUrl || state.connection.status !== 'connected' || !sessionId) {
+				pushMessage('error', '请先建立会话后再压缩');
+				render();
+				return;
+			}
+			const compressFlowState = getCompressFlowState();
+			compressFlowState.active = true;
+			compressFlowState.sourceSessionId = sessionId;
+			compressFlowState.startedAt = Date.now();
+			compressFlowState.waitHintShown = false;
+			pushMessage('system', '⏳ 压缩中...');
+			render();
+			try {
+				const response = await fetch(`${baseUrl}/context/compress`, {
+					method: 'POST',
+					headers: {'Content-Type': 'application/json'},
+					body: JSON.stringify({sessionId}),
+				});
+				const payload = await response.json();
+				if (!response.ok || payload?.success === false) {
+					const msg =
+						payload?.error ??
+						payload?.message ??
+						`压缩失败: HTTP ${response.status}`;
+					pushMessage('error', msg);
+					resetCompressFlowState();
+					render();
+					return;
+				}
+				if (!getCompressFlowState().active) {
+					render();
+					return;
+				}
+				await refreshSessionList(serverId);
+				const sessions = Array.isArray(state.chat.sessions)
+					? state.chat.sessions
+					: [];
+				const compressedSession = sessions
+					.filter(item => String(item?.compressedFrom ?? '') === sessionId)
+					.sort(
+						(left, right) =>
+							Number(right?.updatedAt ?? 0) - Number(left?.updatedAt ?? 0),
+					)[0];
+				const compressedSessionId = String(compressedSession?.id ?? '').trim();
+				if (compressedSessionId && typeof loadSelectedSession === 'function') {
+					state.chat.currentSessionId = compressedSessionId;
+					state.chat.sessionPager.selectedSessionId = compressedSessionId;
+					syncCurrentSessionEvents(compressedSessionId);
+					resetCompressFlowState();
+					await loadSelectedSession(compressedSessionId);
+					pushMessage('system', '✅ 压缩完成,已切换到压缩后的新会话');
+					render();
+					return;
+				}
+				pushMessage('system', '✅ 压缩请求完成,等待切换到压缩后的新会话...');
+				render();
+			} catch (error) {
+				pushMessage(
+					'error',
+					error instanceof Error ? error.message : '压缩请求失败',
+				);
+				resetCompressFlowState();
+				render();
+			}
+		});
+	}
+
+	async function cancelCompressFlow() {
+		const serverId = state.control.selectedServerId;
+		return withServerTabContext(serverId, async () => {
+			const compressFlowState = getCompressFlowState();
+			if (!compressFlowState.active) {
+				return;
+			}
+			resetCompressFlowState();
+			pushMessage('system', '已取消压缩等待');
+			render();
+			await abortSession();
+		});
 	}
 
 	const knownEventTypes = new Set([
@@ -278,6 +1005,8 @@ export function createSseActions(options) {
 		'message',
 		'error',
 		'complete',
+		'tool_call',
+		'tool_result',
 		'tool_confirmation_request',
 		'user_question_request',
 		'todo_update',
@@ -286,11 +1015,14 @@ export function createSseActions(options) {
 		'agent_switched',
 		'usage',
 		'sub_agent_message',
+		'rollback_result',
 	]);
 	const sessionScopedEventTypes = new Set([
 		'message',
 		'error',
 		'complete',
+		'tool_call',
+		'tool_result',
 		'tool_confirmation_request',
 		'user_question_request',
 		'todo_update',
@@ -335,6 +1067,7 @@ export function createSseActions(options) {
 			case 'connected': {
 				state.connection.status = 'connected';
 				state.connection.retryCount = 0;
+				state.connection.connectionId = event.data?.connectionId ?? '';
 				pushMessage(
 					'system',
 					`SSE连接已建立: ${event.data?.connectionId ?? '-'}`,
@@ -375,16 +1108,25 @@ export function createSseActions(options) {
 				break;
 			}
 			case 'message': {
-				const text =
-					event.data?.content ??
-					event.data?.text ??
-					event.data?.message ??
-					JSON.stringify(event.data);
-				pushMessage('assistant', String(text));
+				const role = event.data?.role;
+				const content = String(
+					event.data?.content ?? event.data?.text ?? event.data?.message ?? '',
+				);
 				if (typeof event.data?.sessionId === 'string') {
 					state.chat.currentSessionId = event.data.sessionId;
 					touchSession(event.data.sessionId);
 				}
+				// 服务端会回放 system/user 等角色, 仅允许 assistant 进入聊天区
+				if (role !== 'assistant') {
+					break;
+				}
+				if (!content.trim()) {
+					break;
+				}
+				if (content.includes('Auto-compressing context')) {
+					pushMessage('system', '⏳ 自动压缩已触发,正在整理会话上下文');
+				}
+				pushMessage('assistant', content);
 				break;
 			}
 			case 'error': {
@@ -401,24 +1143,256 @@ export function createSseActions(options) {
 				}
 				break;
 			}
+			case 'tool_call': {
+				setAssistantWorking(true);
+				const fn = event.data?.function;
+				const toolName = fn?.name ?? 'unknown_tool';
+				state.chat.lastToolName = toolName;
+				if (toolName.startsWith('subagent-')) {
+					// 子代理卡片只基于 sub_agent_message 构建,避免重复卡片.
+				}
+
+				let argsSummary = '';
+				try {
+					const rawArgs = fn?.arguments;
+					const args =
+						typeof rawArgs === 'string'
+							? rawArgs.length > 10000
+								? null
+								: JSON.parse(rawArgs)
+							: rawArgs;
+					if (args && typeof args === 'object') {
+						const entries = Object.entries(args);
+						argsSummary = entries
+							.slice(0, 3)
+							.map(([k, v]) => {
+								let val;
+								if (typeof v === 'string') {
+									val = v.length > 60 ? v.slice(0, 60) + '...' : v;
+								} else {
+									try {
+										const s = JSON.stringify(v);
+										val = s.length > 60 ? s.slice(0, 60) + '...' : s;
+									} catch {
+										val = String(v).slice(0, 60);
+									}
+								}
+								return `${k}: ${val}`;
+							})
+							.join(', ');
+						if (entries.length > 3) {
+							argsSummary += `, ... (+${entries.length - 3})`;
+						}
+					}
+				} catch {
+					argsSummary = String(fn?.arguments ?? '').slice(0, 80);
+				}
+				pushMessage(
+					'assistant',
+					argsSummary ? `🔧 ${toolName}(${argsSummary})` : `🔧 ${toolName}`,
+				);
+				break;
+			}
+			case 'tool_result': {
+				const status = event.data?.status ?? '';
+				const resultContent = String(event.data?.content ?? '');
+				const toolName = event.data?.toolName || state.chat.lastToolName || '';
+				if (toolName.startsWith('subagent-')) {
+					const subAgentQueue = Array.isArray(
+						state.chat.ui.subAgentToolCallNodeIds,
+					)
+						? state.chat.ui.subAgentToolCallNodeIds
+						: [];
+					const targetNodeId = String(subAgentQueue.shift() ?? '');
+					state.chat.ui.subAgentToolCallNodeIds = subAgentQueue;
+					if (targetNodeId) {
+						const targetNode = (state.chat.subAgents ?? []).find(
+							item => String(item?.nodeId ?? '') === targetNodeId,
+						);
+						if (targetNode) {
+							targetNode.completedByHook = true;
+							targetNode.status = 'running';
+							targetNode.result = '工作中';
+							if (resultContent) {
+								targetNode.lines.push(
+									resultContent.length > 160
+										? `${resultContent.slice(0, 160)}...`
+										: resultContent,
+								);
+								targetNode.lines = targetNode.lines.slice(-60);
+							}
+						}
+					}
+				}
+
+				if (status === 'error' && resultContent) {
+					pushMessage(
+						'assistant',
+						`✗ 工具错误: ${resultContent.slice(0, 200)}`,
+					);
+				} else if (status === 'success' && resultContent) {
+					let summary = '';
+					try {
+						const data = JSON.parse(resultContent);
+						if (toolName.startsWith('subagent-') && data.result) {
+							const resultText = String(data.result);
+							const icon = data.success === false ? '✗' : '•';
+							summary =
+								resultText.length > 120
+									? `${icon} ${resultText.slice(0, 120)}...`
+									: `${icon} ${resultText}`;
+						} else if (
+							toolName === 'filesystem-read' &&
+							data.totalLines !== undefined
+						) {
+							const readLines = data.endLine
+								? data.endLine - (data.startLine || 1) + 1
+								: data.totalLines;
+							summary = `✓ Read ${readLines} lines${
+								data.totalLines > readLines
+									? ` of ${data.totalLines} total`
+									: ''
+							}`;
+						} else if (
+							(toolName === 'ace-text-search' ||
+								toolName === 'ace-text_search') &&
+							Array.isArray(data)
+						) {
+							summary = `✓ Found ${data.length} ${
+								data.length === 1 ? 'match' : 'matches'
+							}`;
+						} else if (toolName === 'ace-file_outline' && data.symbols) {
+							summary = `✓ ${data.symbols.length} symbols`;
+						} else if (
+							toolName === 'ace-semantic-search' ||
+							toolName === 'ace-semantic_search'
+						) {
+							const total =
+								(data.symbols?.length || 0) + (data.references?.length || 0);
+							summary = `✓ ${total} results`;
+						} else if (
+							toolName === 'terminal-execute' &&
+							data.exitCode !== undefined
+						) {
+							summary =
+								data.exitCode === 0
+									? '✓ Command succeeded'
+									: `✗ Exit code: ${data.exitCode}`;
+						} else if (
+							toolName === 'filesystem-edit' ||
+							toolName === 'filesystem-edit_search' ||
+							toolName === 'filesystem-create'
+						) {
+							summary = data.message ? `✓ ${data.message}` : '✓ File updated';
+						} else if (
+							toolName === 'codebase-retrieval' ||
+							toolName === 'context_engine-codebase-retrieval'
+						) {
+							summary = '✓ Codebase context retrieved';
+						} else if (typeof data === 'object') {
+							const keys = Object.keys(data).slice(0, 3);
+							if (keys.length > 0) {
+								summary = `✓ ${keys.join(', ')}`;
+							}
+						}
+					} catch {
+						summary =
+							resultContent.length > 50
+								? `✓ ${resultContent.slice(0, 50)}...`
+								: `✓ ${resultContent}`;
+					}
+
+					if (summary) {
+						pushMessage('assistant', `└─ ${summary}`);
+					}
+				}
+				setAssistantWorking(false);
+				void flushQueuedMessagesIfNeeded(serverId, state.connection.baseUrl);
+				break;
+			}
+
 			case 'complete': {
+				setAssistantWorking(false);
+				void flushQueuedMessagesIfNeeded(serverId, state.connection.baseUrl);
 				if (typeof event.data?.sessionId === 'string') {
 					const completedSessionId = event.data.sessionId;
 					touchSession(completedSessionId);
-					const isCurrentSession =
-						completedSessionId === state.chat.currentSessionId;
-					if (!isCurrentSession) {
-						markSessionAttention(completedSessionId);
+					const compressFlowState = getCompressFlowState();
+					const wasCompressFlowActive = Boolean(compressFlowState.active);
+					const compressFlowAge =
+						Date.now() - Number(compressFlowState.startedAt || 0);
+					const isCompressFlowFresh =
+						compressFlowAge >= 0 && compressFlowAge <= 120000;
+					const isCompressFlowSameSession =
+						compressFlowState.active &&
+						completedSessionId === compressFlowState.sourceSessionId &&
+						isCompressFlowFresh;
+					const isCompressedSessionOfSource = sourceSessionId =>
+						Array.isArray(state.chat.sessions) &&
+						state.chat.sessions.some(
+							item =>
+								String(item?.id ?? '') === completedSessionId &&
+								String(item?.compressedFrom ?? '') ===
+									String(sourceSessionId ?? ''),
+						);
+					const switchToCompressedSession = () => {
+						state.chat.currentSessionId = completedSessionId;
+						state.chat.sessionPager.selectedSessionId = completedSessionId;
+						syncCurrentSessionEvents(completedSessionId);
+						pushMessage('system', '✅ 压缩完成,已自动切换到压缩后的新会话');
+						resetCompressFlowState();
+						if (typeof loadSelectedSession === 'function') {
+							void loadSelectedSession(completedSessionId);
+						}
+					};
+					const shouldSwitchToCompressedSession =
+						compressFlowState.active &&
+						compressFlowState.sourceSessionId &&
+						completedSessionId !== compressFlowState.sourceSessionId &&
+						isCompressFlowFresh &&
+						isCompressedSessionOfSource(compressFlowState.sourceSessionId);
+					if (shouldSwitchToCompressedSession) {
+						switchToCompressedSession();
 					} else {
-						clearSessionAttention(completedSessionId);
+						const shouldRetrySwitchAfterRefresh =
+							compressFlowState.active &&
+							compressFlowState.sourceSessionId &&
+							completedSessionId !== compressFlowState.sourceSessionId &&
+							isCompressFlowFresh;
+						if (shouldRetrySwitchAfterRefresh) {
+							void Promise.resolve(refreshSessionList(serverId)).then(() => {
+								withServerTabContext(serverId, () => {
+									const latestFlowState = getCompressFlowState();
+									if (
+										latestFlowState.active &&
+										latestFlowState.sourceSessionId &&
+										completedSessionId !== latestFlowState.sourceSessionId &&
+										isCompressedSessionOfSource(latestFlowState.sourceSessionId)
+									) {
+										switchToCompressedSession();
+										render();
+									}
+								});
+							});
+						}
+						if (compressFlowState.active && !isCompressFlowFresh) {
+							resetCompressFlowState();
+						}
+						if (isCompressFlowSameSession && !compressFlowState.waitHintShown) {
+							pushMessage('system', '⏳ 压缩进行中,等待压缩后新会话完成...');
+							compressFlowState.waitHintShown = true;
+						}
+						if (!wasCompressFlowActive && !compressFlowState.active) {
+							pushInfoMessage('任务已完成,点击查看会话', {
+								tipType: 'complete',
+								serverId,
+								sessionId: completedSessionId,
+								allowCurrentSession: true,
+							});
+						}
 					}
-					pushInfoMessage('任务已完成,点击查看会话', {
-						tipType: 'complete',
-						serverId,
-						sessionId: completedSessionId,
-						allowCurrentSession: true,
-					});
 				}
+
 				state.chat.statusBar.tokenUsed =
 					Number(event.data?.usage?.input_tokens ?? 0) +
 					Number(event.data?.usage?.output_tokens ?? 0);
@@ -426,6 +1400,7 @@ export function createSseActions(options) {
 				void refreshSessionList(serverId);
 				break;
 			}
+
 			case 'tool_confirmation_request': {
 				if (eventSessionId) {
 					markSessionAttention(eventSessionId);
@@ -483,9 +1458,6 @@ export function createSseActions(options) {
 				state.chat.statusBar.kvCacheRead = Number(
 					event.data?.cacheReadInputTokens ?? 0,
 				);
-				state.chat.statusBar.kvCacheCreate = Number(
-					event.data?.cacheCreationInputTokens ?? 0,
-				);
 				break;
 			}
 			case 'sub_agent_message': {
@@ -494,17 +1466,105 @@ export function createSseActions(options) {
 					event.data?.agentName ?? agentId ?? 'sub-agent',
 				);
 				const payload = event.data?.message ?? {};
-				const instanceId = String(payload?.instanceId ?? '');
-				const nodeId =
-					instanceId || `${agentId}:${String(payload?.spawnDepth ?? 0)}`;
-				if (!nodeId) {
-					break;
-				}
 				const level = Number(payload?.spawnDepth ?? 0);
+				const fallbackNodeId = `${agentId}:${String(level)}`;
+				const instanceId = String(payload?.instanceId ?? '');
+				const nodeId = instanceId || fallbackNodeId;
 				const ensureNode = id => {
 					let currentNode = state.chat.subAgents.find(
 						item => item.nodeId === id,
 					);
+					const migrateFallbackNodeToInstance = fallbackNode => {
+						for (const item of state.chat.subAgents) {
+							if (String(item?.parentNodeId ?? '') === fallbackNodeId) {
+								item.parentNodeId = instanceId;
+							}
+							if (Array.isArray(item?.children)) {
+								item.children = item.children.map(childId =>
+									String(childId ?? '') === fallbackNodeId
+										? instanceId
+										: childId,
+								);
+							}
+						}
+						fallbackNode.nodeId = instanceId;
+						state.chat.ui.subAgentExpandedById[instanceId] = Boolean(
+							state.chat.ui.subAgentExpandedById[fallbackNodeId],
+						);
+						delete state.chat.ui.subAgentExpandedById[fallbackNodeId];
+						return fallbackNode;
+					};
+					if (instanceId && id === fallbackNodeId) {
+						const instanceNode = state.chat.subAgents.find(
+							item => item.nodeId === instanceId,
+						);
+						if (instanceNode) {
+							return instanceNode;
+						}
+					}
+					if (instanceId && id === instanceId) {
+						const fallbackNode = state.chat.subAgents.find(
+							item =>
+								item.nodeId === fallbackNodeId &&
+								String(item?.agentId ?? '') === agentId &&
+								Number(item?.level ?? 0) === level,
+						);
+						if (fallbackNode && fallbackNode !== currentNode) {
+							if (currentNode) {
+								for (const item of state.chat.subAgents) {
+									if (item === fallbackNode) {
+										continue;
+									}
+									if (String(item?.parentNodeId ?? '') === fallbackNodeId) {
+										item.parentNodeId = instanceId;
+									}
+									if (Array.isArray(item?.children)) {
+										item.children = item.children.map(childId =>
+											String(childId ?? '') === fallbackNodeId
+												? instanceId
+												: childId,
+										);
+									}
+								}
+								const mergedChildren = [
+									...(Array.isArray(currentNode.children)
+										? currentNode.children
+										: []),
+									...(Array.isArray(fallbackNode.children)
+										? fallbackNode.children
+										: []),
+								].map(child => String(child ?? ''));
+								currentNode.children = [...new Set(mergedChildren)].filter(
+									Boolean,
+								);
+								currentNode.lines = [
+									...(Array.isArray(fallbackNode.lines)
+										? fallbackNode.lines
+										: []),
+									...(Array.isArray(currentNode.lines)
+										? currentNode.lines
+										: []),
+								].slice(-60);
+								currentNode.hasNormalReply = Boolean(
+									currentNode.hasNormalReply || fallbackNode.hasNormalReply,
+								);
+								currentNode.completedByHook = Boolean(
+									currentNode.completedByHook || fallbackNode.completedByHook,
+								);
+								if (!currentNode.parentNodeId) {
+									currentNode.parentNodeId = String(
+										fallbackNode.parentNodeId ?? '',
+									);
+								}
+								state.chat.subAgents = state.chat.subAgents.filter(
+									item => item !== fallbackNode,
+								);
+								delete state.chat.ui.subAgentExpandedById[fallbackNodeId];
+							} else {
+								currentNode = migrateFallbackNodeToInstance(fallbackNode);
+							}
+						}
+					}
 					if (!currentNode) {
 						currentNode = {
 							nodeId: id,
@@ -518,6 +1578,10 @@ export function createSseActions(options) {
 							usageText: '',
 							hasChildren: false,
 							children: [],
+							hasNormalReply: false,
+							status: 'running',
+							completedByHook: false,
+							completedAt: 0,
 						};
 						state.chat.subAgents.unshift(currentNode);
 						state.chat.ui.subAgentExpandedById[id] = level === 0;
@@ -528,6 +1592,40 @@ export function createSseActions(options) {
 				node.agentId = agentId;
 				node.agentName = agentName;
 				node.level = Number.isFinite(level) ? level : 0;
+				const currentType = String(payload?.type ?? '');
+				const isHookEvent =
+					currentType === 'done' || currentType === 'spawned_agent_completed';
+				const isRunningActivityEvent = new Set([
+					'content',
+					'text',
+					'reasoning',
+					'thinking',
+					'tool_calls',
+					'tool_result',
+					'context_usage',
+					'agent_spawned',
+					'inter_agent_sent',
+				]).has(currentType);
+				const updateCompletionState = () => {
+					if (!isHookEvent && isRunningActivityEvent) {
+						node.completedByHook = false;
+					}
+					node.completedByHook = Boolean(node.completedByHook || isHookEvent);
+					const canComplete = Boolean(node.hasNormalReply);
+					if (canComplete) {
+						const alreadyDone = String(node.status ?? '') === 'done';
+						node.status = 'done';
+						node.result = '已完成';
+						node.hasChildren =
+							Array.isArray(node.children) && node.children.length > 0;
+						if (!alreadyDone) {
+							node.completedAt = Date.now();
+						}
+						return;
+					}
+					node.status = 'running';
+					node.result = '工作中';
+				};
 				if (payload?.type === 'context_usage') {
 					node.contextText = `${Number(payload?.percentage ?? 0)}% (${Number(
 						payload?.inputTokens ?? 0,
@@ -535,13 +1633,6 @@ export function createSseActions(options) {
 					node.usageText = `Input ${Number(
 						payload?.inputTokens ?? 0,
 					)}, Max ${Number(payload?.maxTokens ?? 0)}`;
-				} else if (payload?.type === 'done') {
-					node.result = node.result || '已完成';
-				} else if (payload?.type === 'spawned_agent_completed') {
-					node.hasChildren =
-						Array.isArray(node.children) && node.children.length > 0;
-					node.result =
-						payload?.success === false ? '子代理执行失败' : node.result;
 				} else if (payload?.type === 'agent_spawned') {
 					const childId = String(payload?.spawnedInstanceId ?? '');
 					if (childId) {
@@ -557,19 +1648,134 @@ export function createSseActions(options) {
 						node.hasChildren = node.children.length > 0;
 						state.chat.ui.subAgentExpandedById[childId] = false;
 					}
+				} else if (payload?.type === 'tool_calls') {
+					const toolCalls = Array.isArray(payload?.tool_calls)
+						? payload.tool_calls
+						: [];
+					const toolNames = toolCalls
+						.map(tc => tc?.function?.name || '?')
+						.join(', ');
+					if (toolNames) {
+						node.lines.push(`🔧 ${toolNames}`);
+						node.lines = node.lines.slice(-60);
+					}
+				} else if (payload?.type === 'tool_result') {
+					const toolName = String(payload?.tool_name ?? '');
+					const resultContent = String(payload?.content ?? '');
+					const isError = resultContent.startsWith('Error:');
+					const icon = isError ? '✗' : '•';
+					const summary =
+						resultContent.length > 80
+							? resultContent.substring(0, 80) + '...'
+							: resultContent;
+					node.lines.push(
+						`└─ ${icon} ${toolName ? toolName + ': ' : ''}${summary}`,
+					);
+					node.lines = node.lines.slice(-60);
+				} else if (
+					payload?.type === 'tool_call_delta' ||
+					payload?.type === 'content_delta' ||
+					payload?.type === 'reasoning_delta' ||
+					payload?.type === 'usage'
+				) {
+					// 增量事件静默忽略.
 				} else {
+					const isReasoningType =
+						payload?.type === 'reasoning' || payload?.type === 'thinking';
+					const isNormalTextType =
+						payload?.type === 'content' || payload?.type === 'text';
 					const line =
 						typeof payload?.content === 'string'
 							? payload.content
 							: typeof payload?.text === 'string'
 							? payload.text
-							: payload?.type
-							? `[${String(payload.type)}]`
+							: isReasoningType
+							? String(payload?.text ?? payload?.content ?? '')
 							: '';
 					if (line) {
-						node.lines.push(line);
-						node.lines = node.lines.slice(-20);
+						if (isReasoningType) {
+							const lastIndex = node.lines.length - 1;
+							const lastLine = String(node.lines[lastIndex] ?? '');
+							if (lastLine.startsWith('💭 ')) {
+								node.lines[lastIndex] = `${lastLine}${line}`;
+							} else {
+								node.lines.push(`💭 ${line}`);
+							}
+						} else if (isNormalTextType) {
+							const lastIndex = node.lines.length - 1;
+							const lastLine = String(node.lines[lastIndex] ?? '');
+							const canMergeToLast =
+								lastLine &&
+								!lastLine.startsWith('💭 ') &&
+								!lastLine.startsWith('🔧 ') &&
+								!lastLine.startsWith('└─ ');
+							if (canMergeToLast) {
+								node.lines[lastIndex] = `${lastLine}${line}`;
+							} else {
+								node.lines.push(line);
+							}
+							node.hasNormalReply = true;
+						} else {
+							node.lines.push(line);
+						}
+						node.lines = node.lines.slice(-60);
 					}
+				}
+				if (payload?.type === 'subagent_result') {
+					node.result = '已完成';
+					const finalText = String(
+						payload?.result ?? payload?.content ?? '',
+					).trim();
+					node.hasNormalReply = true;
+					if (finalText) {
+						node.lines.push(finalText);
+						node.lines = node.lines.slice(-60);
+					}
+				}
+				updateCompletionState();
+				const rootNodeCount = (state.chat.subAgents ?? []).filter(item => {
+					const parentNodeId = String(item?.parentNodeId ?? '');
+					return !parentNodeId;
+				}).length;
+				if (rootNodeCount <= 1) {
+					state.chat.ui.subAgentPopupIndex = 0;
+				}
+				break;
+			}
+			case 'rollback_result': {
+				const rd = event.data ?? {};
+				if (rd.success) {
+					const filesInfo =
+						rd.filesRolledBack > 0
+							? `, 回滚了 ${rd.filesRolledBack} 个文件`
+							: '';
+					pushMessage(
+						'system',
+						`回退成功 (消息索引 #${rd.messageIndex ?? '?'}${filesInfo})`,
+					);
+					void refreshSessionList(serverId);
+					// 重新加载当前会话以刷新聊天记录, 完成后将回退点消息原文恢复到草稿状态
+					const sid = state.chat.currentSessionId;
+					const pendingContent = state.chat.ui.pendingRollbackContent || '';
+					state.chat.ui.pendingRollbackContent = '';
+					if (sid && loadSelectedSession) {
+						loadSelectedSession(sid).then(() => {
+							if (!pendingContent) {
+								return;
+							}
+							withServerTabContext(serverId, () => {
+								if (state.chat.currentSessionId !== sid) {
+									return;
+								}
+								state.chat.ui.pendingDraftText = pendingContent;
+								if (state.control.selectedServerId === serverId) {
+									render();
+								}
+							});
+						});
+					}
+				} else {
+					pushMessage('error', rd.error ?? '回退失败');
 				}
 				break;
 			}
@@ -690,72 +1896,76 @@ export function createSseActions(options) {
 				return;
 			}
 			const input = document.getElementById('chatInput');
-			const content = input?.value?.trim() ?? '';
-			if (!content) {
+			const draftText =
+				typeof state.chat.ui.pendingDraftText === 'string'
+					? state.chat.ui.pendingDraftText
+					: '';
+			const content = draftText.trim();
+			const pendingImages = Array.isArray(state.chat.ui.pendingImages)
+				? [...state.chat.ui.pendingImages]
+				: [];
+			const hasContent = Boolean(content) || pendingImages.length > 0;
+			if (!hasContent) {
 				return;
 			}
+			const interjectSelect = document.getElementById('interjectTargetSelect');
+			const interjectTarget = interjectSelect?.value ?? '';
 			state.chat.error = '';
 			state.chat.ui.chatAutoScrollEnabled = true;
-			pushMessage('user', content);
+			const displayContent =
+				pendingImages.length > 0
+					? `${content || ''}${content ? ' ' : ''}[${
+							pendingImages.length
+					  }张图片]`
+					: content;
+			state.chat.ui.pendingDraftText = '';
 			if (input) {
 				input.value = '';
 			}
-			render();
+			state.chat.ui.pendingImages = [];
 			try {
-				let currentSessionId = state.chat.currentSessionId || undefined;
-				const initialAgentId =
-					!currentSessionId &&
-					state.chat.mainAgent.preferredAgentIdForNewSession
-						? state.chat.mainAgent.preferredAgentIdForNewSession
-						: undefined;
-				const postChatMessage = async chatContent => {
-					const response = await fetch(`${baseUrl}/message`, {
-						method: 'POST',
-						headers: {'Content-Type': 'application/json'},
-						body: JSON.stringify({
-							type: 'chat',
-							content: chatContent,
-							sessionId: currentSessionId,
-							yoloMode: Boolean(state.chat.statusBar?.yoloMode ?? true),
-						}),
-					});
-					if (!response.ok) {
-						throw new Error(`发送失败: HTTP ${response.status}`);
-					}
-				};
-				if (!currentSessionId) {
-					const createBody = initialAgentId ? {initialAgentId} : {};
-					const createResponse = await fetch(`${baseUrl}/session/create`, {
-						method: 'POST',
-						headers: {'Content-Type': 'application/json'},
-						body: JSON.stringify(createBody),
-					});
-					const createPayload = await createResponse.json();
-					const createdSessionId = createPayload?.session?.id;
-					if (!createResponse.ok || !createdSessionId) {
-						throw new Error(
-							createPayload?.message ??
-								`创建会话失败: HTTP ${createResponse.status}`,
-						);
-					}
-					currentSessionId = createdSessionId;
-					state.chat.currentSessionId = createdSessionId;
-					state.chat.mainAgent.preferredAgentIdForNewSession = '';
-					void refreshSessionList(serverId);
-					const shouldApplyPreferredProfile =
-						!String(content).startsWith('/profile ') &&
-						Boolean(state.chat.quickSwitch.preferredProfileForNewSession);
-					if (shouldApplyPreferredProfile) {
-						await postChatMessage(
-							`/profile ${state.chat.quickSwitch.preferredProfileForNewSession}`,
-						);
-					}
+				let imageDataList = [];
+				if (pendingImages.length > 0) {
+					imageDataList = await Promise.all(
+						pendingImages.map(
+							file =>
+								new Promise((resolve, reject) => {
+									const reader = new FileReader();
+									reader.onload = () => {
+										const base64 =
+											String(reader.result ?? '').split(',')[1] ?? '';
+										resolve({
+											type: file.type,
+											data: base64,
+										});
+									};
+									reader.onerror = () => reject(new Error('读取图片失败'));
+									reader.readAsDataURL(file);
+								}),
+						),
+					);
 				}
-
-				await postChatMessage(content);
+				const queuedItem = enqueueUserMessage({
+					content: content || '',
+					displayContent,
+					images: imageDataList,
+					targetAgentNodeId: interjectTarget || undefined,
+				});
+				render();
+				if (!state.chat.ui.assistantWorking) {
+					void flushQueuedMessagesIfNeeded(serverId, baseUrl);
+				}
+				return queuedItem;
 			} catch (error) {
 				state.chat.error = error instanceof Error ? error.message : '发送失败';
 				pushMessage('error', state.chat.error);
+				state.chat.ui.pendingDraftText = draftText;
+				if (input) {
+					input.value = draftText;
+				}
+				if (pendingImages.length > 0) {
+					state.chat.ui.pendingImages = pendingImages;
+				}
 				render();
 			}
 		});
@@ -767,6 +1977,7 @@ export function createSseActions(options) {
 		reconnectNow,
 		sendChat,
 		openLogDetail,
+		openLogTextDetail,
 		closeLogDetail,
 		toggleLogPanel,
 		dismissInfoMessage,
@@ -775,6 +1986,20 @@ export function createSseActions(options) {
 		switchMainAgent,
 		updateQuickSwitchField,
 		applyQuickSwitch,
+		newSession,
+		abortSession,
+		fetchRollbackPoints,
+		rollbackSession,
+		compressSession,
+		cancelCompressFlow,
 		toggleSubAgentNode,
+		shiftSubAgentPopup,
+		closeSubAgent,
+		toggleYolo,
+		addImages,
+		removePendingImage,
+		updatePendingDraftText,
+		cancelQueuedMessage,
+		editQueuedMessage,
 	};
 }

@@ -8,6 +8,12 @@
  * 这些通常是耗时较长的工具，用户需要看到执行进度
  */
 const TWO_STEP_TOOLS = new Set([
+	// 文件读取工具 - 用户需要看到读取操作
+	'filesystem-read',
+	'ace-file_outline',
+	'ace-text_search',
+	'context_engine-codebase-retrieval', // 上下文引擎工具
+
 	// 文件编辑工具 - 耗时较长，需要显示进度
 	'filesystem-edit',
 	'filesystem-edit_search',

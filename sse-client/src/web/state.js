@@ -45,10 +45,24 @@ function createChatState() {
 			logUnreadCount: 0,
 			todoUnreadCount: 0,
 			chatAutoScrollEnabled: true,
+			chatManualScrollTop: 0,
 			infoMessages: [],
 			tipMuteUntilByType: {},
 			sessionAttention: {},
 			subAgentExpandedById: {},
+			subAgentPopupIndex: 0,
+			pendingDraftText: '',
+			pendingImages: [],
+			pendingRollbackContent: '',
+			assistantWorking: false,
+			queuedUserMessages: [],
+			queuedMessageSeq: 0,
+			flushingQueuedMessage: false,
+			compressFlowState: {
+				active: false,
+				sourceSessionId: '',
+				startedAt: 0,
+			},
 		},
 		sessionTouchedAt: {},
 		sessionPager: {
@@ -71,6 +85,7 @@ function createConnectionState() {
 	return {
 		baseUrl: '',
 		status: 'disconnected',
+		connectionId: '',
 		eventSource: null,
 		retryTimer: null,
 		retryCount: 0,
@@ -509,12 +524,14 @@ export function resumeInfoMessageCountdown(infoId) {
  * 统一追加聊天消息并截断长度.
  * @param {'system'|'assistant'|'user'|'error'} role 消息角色.
  * @param {string} content 消息文本.
+ * @param {Record<string, any>} [extra] 扩展字段.
  */
-export function pushMessage(role, content) {
+export function pushMessage(role, content, extra = {}) {
 	state.chat.messages.push({
 		role,
 		content,
 		timestamp: new Date().toISOString(),
+		...extra,
 	});
 	state.chat.messages = state.chat.messages.slice(-120);
 }

@@ -21,6 +21,23 @@ function renderCountBadge(count) {
 	return `<span class="badge-count">${count}</span>`;
 }
 
+const LOG_PREVIEW_MAX = 180;
+
+/**
+ * 生成日志预览文本.
+ * @param {string} text 完整日志文本.
+ * @returns {string}
+ */
+function toLogPreview(text) {
+	const normalized = String(text ?? '')
+		.replace(/\s+/g, ' ')
+		.trim();
+	if (normalized.length <= LOG_PREVIEW_MAX) {
+		return normalized;
+	}
+	return `${normalized.slice(0, LOG_PREVIEW_MAX)}...`;
+}
+
 /**
  * 计算服务端 Tab 的提醒数量.
  * @param {string} serverId 服务端ID.
@@ -88,40 +105,84 @@ function renderSessionArea() {
 }
 
 /**
- * 解析 unified diff 为左右列.
+ * 将单行 diff 文本包裹为带语法着色的 HTML span.
+ * @param {string} line 原始行文本.
+ * @returns {string} 带 class 的 HTML 字符串.
+ */
+function colorDiffLine(line) {
+	const escaped = escapeHtml(line);
+	if (line.startsWith('@@')) {
+		return `<span class="diff-hunk">${escaped}</span>`;
+	}
+	if (line.startsWith('diff --') || line.startsWith('index ')) {
+		return `<span class="diff-meta">${escaped}</span>`;
+	}
+	if (line.startsWith('---') || line.startsWith('+++')) {
+		return `<span class="diff-header">${escaped}</span>`;
+	}
+	if (line.startsWith('-')) {
+		return `<span class="diff-del">${escaped}</span>`;
+	}
+	if (line.startsWith('+')) {
+		return `<span class="diff-add">${escaped}</span>`;
+	}
+	return `<span>${escaped}</span>`;
+}
+
+/**
+ * 将 unified diff 文本渲染为着色 HTML(单列模式).
  * @param {string} diffText 原始 diff 文本.
- * @returns {{left:string,right:string}}
+ * @returns {string} 着色后的 HTML 字符串.
+ */
+function renderDiffHtml(diffText) {
+	return String(diffText || '')
+		.split(/\r?\n/)
+		.map(line => colorDiffLine(line))
+		.join('');
+}
+
+/**
+ * 将 unified diff 拆分为左(删除侧)右(新增侧)两列着色 HTML.
+ * @param {string} diffText 原始 diff 文本.
+ * @returns {{left: string, right: string}}
  */
 function buildDiffColumns(diffText) {
 	const leftLines = [];
 	const rightLines = [];
 	for (const rawLine of String(diffText || '').split(/\r?\n/)) {
-		if (rawLine.startsWith('@@') || rawLine.startsWith('diff --')) {
-			leftLines.push(rawLine);
-			rightLines.push(rawLine);
+		if (
+			rawLine.startsWith('@@') ||
+			rawLine.startsWith('diff --') ||
+			rawLine.startsWith('index ')
+		) {
+			const colored = colorDiffLine(rawLine);
+			leftLines.push(colored);
+			rightLines.push(colored);
 			continue;
 		}
 		if (rawLine.startsWith('---') || rawLine.startsWith('+++')) {
-			leftLines.push(rawLine);
-			rightLines.push(rawLine);
+			const colored = colorDiffLine(rawLine);
+			leftLines.push(colored);
+			rightLines.push(colored);
 			continue;
 		}
 		if (rawLine.startsWith('-')) {
-			leftLines.push(rawLine);
+			leftLines.push(colorDiffLine(rawLine));
 			rightLines.push('');
 			continue;
 		}
 		if (rawLine.startsWith('+')) {
 			leftLines.push('');
-			rightLines.push(rawLine);
+			rightLines.push(colorDiffLine(rawLine));
 			continue;
 		}
-		leftLines.push(rawLine);
-		rightLines.push(rawLine);
+		const colored = colorDiffLine(rawLine);
+		leftLines.push(colored);
+		rightLines.push(colored);
 	}
 	return {
-		left: leftLines.join('\n'),
-		right: rightLines.join('\n'),
+		left: leftLines.join(''),
+		right: rightLines.join(''),
 	};
 }
 
@@ -177,15 +238,19 @@ export function renderApp(actions) {
 	if (!app) {
 		return;
 	}
+	const previousChatMessageList = byId('chatMessageList');
+	const previousScrollTop = previousChatMessageList
+		? Number(previousChatMessageList.scrollTop || 0)
+		: Number(state.chat.ui.chatManualScrollTop || 0);
 
 	if (!state.auth.isLoggedIn) {
 		app.innerHTML = `
-			<section class="card">
-				<h1>Snow SSE Client</h1>
-				<p class="hint">请先登录控制面.</p>
+			<section class="card login-card">
+				<h1>❄ Snow SSE</h1>
+				<p class="hint">请先登录控制面</p>
 				<div class="row">
 					<input id="passwordInput" type="password" placeholder="输入密码" />
-					<button id="loginBtn" type="button">登录</button>
+					<button id="loginBtn" type="button" class="btn-primary">登录</button>
 				</div>
 				<p class="error">${escapeHtml(state.auth.error)}</p>
 			</section>
@@ -201,21 +266,79 @@ export function renderApp(actions) {
 		.map(item => {
 			const activeClass =
 				item.serverId === state.control.selectedServerId ? 'active' : '';
+			const folderName =
+				String(item.workDir ?? '')
+					.replace(/[\\/]+$/, '')
+					.split(/[\\/]/)
+					.pop() || item.workDir;
+			const hasDuplicate =
+				state.control.servers.filter(s => {
+					const n = String(s.workDir ?? '')
+						.replace(/[\\/]+$/, '')
+						.split(/[\\/]/)
+						.pop();
+					return n === folderName;
+				}).length > 1;
+			const tabLabel = hasDuplicate ? `${folderName}:${item.port}` : folderName;
+			const externalBadge =
+				item.source === 'external'
+					? '<span class="external-badge" title="外部服务(非本客户端启动)">ext</span>'
+					: '';
 			return `<button type="button" class="tab-btn ${activeClass}" data-action="select-server-tab" data-server-id="${escapeHtml(
 				item.serverId,
-			)}">${escapeHtml(item.workDir)}:${item.port}${renderCountBadge(
-				getServerAttentionCount(item.serverId),
-			)}</button>`;
+			)}">${externalBadge}${escapeHtml(tabLabel)}${
+				getServerAttentionCount(item.serverId) > 0 ? renderBadge() : ''
+			}</button>`;
 		})
 		.join('');
+	const chatRoles = new Set(['user', 'assistant']);
 	const messageRows = state.chat.messages
-		.filter(item => item?.role !== 'system')
-		.map(
-			item =>
-				`<div class="log-item"><strong>${escapeHtml(
-					item.role,
-				)}</strong>: ${escapeHtml(item.content)}</div>`,
-		)
+		.filter(item => chatRoles.has(item?.role))
+		.map(item => {
+			const isUser = item.role === 'user';
+			const side = isUser ? 'right' : 'left';
+			const content = String(item.content ?? '');
+			const queueId = String(item?.queueId ?? '');
+			const queueStatus = String(item?.queueStatus ?? '');
+			const isQueuedUser = isUser && queueId && queueStatus === 'queued';
+			const isToolCall = !isUser && content.startsWith('🔧');
+			const isToolResult = !isUser && content.startsWith('└─');
+			const toolExtraClass = isToolCall
+				? ' chat-bubble-tool-call'
+				: isToolResult
+				? ' chat-bubble-tool-result'
+				: '';
+			const bubbleClass = isUser ? 'chat-bubble-user' : 'chat-bubble-assistant';
+			const avatar = isUser
+				? '👤'
+				: isToolCall
+				? '🔧'
+				: isToolResult
+				? '📋'
+				: '🤖';
+			const queueActions = isQueuedUser
+				? `<div class="row" style="margin-top:6px;gap:6px;justify-content:flex-end;">
+					<span class="hint">queued</span>
+					<button type="button" data-action="queue-edit" data-queue-id="${escapeHtml(
+						queueId,
+					)}">编辑</button>
+					<button type="button" data-action="queue-cancel" data-queue-id="${escapeHtml(
+						queueId,
+					)}">撤回</button>
+				</div>`
+				: '';
+			return `<div class="chat-bubble-wrap chat-bubble-wrap-${side}${
+				toolExtraClass ? ' chat-bubble-wrap-tool' : ''
+			}">
+				<span class="chat-avatar">${avatar}</span>
+				<div>
+					<div class="chat-bubble ${bubbleClass}${toolExtraClass}">${escapeHtml(
+				content,
+			)}</div>
+					${queueActions}
+				</div>
+			</div>`;
+		})
 		.join('');
 	const subAgentMap = new Map(
 		(state.chat.subAgents ?? []).map(item => [
@@ -258,66 +381,194 @@ export function renderApp(actions) {
 					String(node.contextText),
 			  )}</div>`
 			: '';
-		const resultText = node?.result
-			? `<div class="sub-agent-result">${escapeHtml(String(node.result))}</div>`
-			: '';
 		const childrenHtml =
 			hasChildren && isExpanded
 				? children.map(childId => renderSubAgentNode(String(childId))).join('')
 				: '';
-		return `<section class="card sub-agent-card" style="margin-left:${
-			Math.max(0, level) * 12
-		}px;">
-			<div class="row">
+		const status = String(node?.status ?? 'running');
+		const isDone = status === 'done';
+		const closeBtn = `<button type="button" class="sub-agent-close-btn" data-action="close-sub-agent" data-node-id="${escapeHtml(
+			safeNodeId,
+		)}">✕</button>`;
+		const statusBadge = isDone
+			? '<span class="sub-agent-status-badge sub-agent-status-done">已完成</span>'
+			: '<span class="sub-agent-status-badge sub-agent-status-running">工作中</span>';
+		return `<section class="card sub-agent-card${
+			isDone ? ' sub-agent-card-done' : ''
+		}" style="margin-left:${Math.max(0, level) * 14}px;">
+			<div class="row sub-agent-header">
 				${
 					hasChildren
-						? `<button type="button" data-action="toggle-sub-agent" data-node-id="${escapeHtml(
+						? `<button type="button" class="sub-agent-toggle-btn" data-action="toggle-sub-agent" data-node-id="${escapeHtml(
 								safeNodeId,
-						  )}">${isExpanded ? '收起' : '展开'}</button>`
-						: '<span class="hint">无子层</span>'
+						  )}">${isExpanded ? '▼' : '▶'}</button>`
+						: ''
 				}
-				<strong>${escapeHtml(
+				<span class="sub-agent-name">${escapeHtml(
 					String(node?.agentName ?? node?.agentId ?? 'sub-agent'),
-				)}</strong>
+				)}</span>
+				${statusBadge}
+				${closeBtn}
 			</div>
 			<div class="sub-agent-log-list">${
 				lineRows || '<div class="hint">暂无过程日志</div>'
 			}</div>
 			${contextText}
 			${usageText}
-			${resultText}
 			${childrenHtml}
 		</section>`;
 	}
-	const subAgentRows = (state.chat.subAgents ?? [])
-		.filter(item => {
-			const parentNodeId = String(item?.parentNodeId ?? '');
-			if (!parentNodeId) {
-				return true;
+	const rootSubAgentNodes = (state.chat.subAgents ?? []).filter(item => {
+		const parentNodeId = String(item?.parentNodeId ?? '');
+		if (!parentNodeId) {
+			return true;
+		}
+		return !subAgentMap.has(parentNodeId);
+	});
+	const rootRunningSubAgentNodes = rootSubAgentNodes.filter(
+		item => String(item?.status ?? 'running') !== 'done',
+	);
+	const popupNodeIds = [];
+	const popupNodeIdSeen = new Set();
+	for (const item of rootRunningSubAgentNodes) {
+		const nodeId = String(item?.nodeId ?? '');
+		if (!nodeId || popupNodeIdSeen.has(nodeId)) {
+			continue;
+		}
+		popupNodeIdSeen.add(nodeId);
+		popupNodeIds.push(nodeId);
+	}
+	const popupTotal = popupNodeIds.length;
+	const popupIndexRaw = Number(state.chat.ui.subAgentPopupIndex ?? 0);
+	const popupIndexNormalized = Number.isFinite(popupIndexRaw)
+		? popupIndexRaw
+		: 0;
+	const popupIndex =
+		popupTotal > 0
+			? ((popupIndexNormalized % popupTotal) + popupTotal) % popupTotal
+			: 0;
+	const popupTrackHtml = popupNodeIds
+		.map(nodeId => {
+			const cardHtml = renderSubAgentNode(nodeId);
+			if (!cardHtml) {
+				return '';
 			}
-			return !subAgentMap.has(parentNodeId);
+			return `<div class="sub-agent-popup-slide">${cardHtml}</div>`;
 		})
-		.map(item => renderSubAgentNode(String(item?.nodeId ?? '')))
 		.filter(Boolean)
 		.join('');
-	const todoRows = state.chat.todos
-		.map(item => {
-			const status = item?.status ?? 'pending';
-			const content = item?.content ?? '';
-			return `<div class="log-item"><strong>[${escapeHtml(
-				status,
-			)}]</strong> ${escapeHtml(content)}</div>`;
-		})
-		.join('');
+	const subAgentPanelHtml = popupTrackHtml
+		? `<section class="card sub-agent-popup-card">
+			<div class="row sub-agent-popup-header">
+				<span class="hint">子代理并行视图 ${
+					popupTotal > 1 ? `${popupIndex + 1}/${popupTotal}` : ''
+				}</span>
+				<div class="row" style="gap:6px;">
+					<button type="button" data-action="shift-sub-agent-popup" data-offset="-1" ${
+						popupTotal > 1 ? '' : 'disabled'
+					}>←</button>
+					<button type="button" data-action="shift-sub-agent-popup" data-offset="1" ${
+						popupTotal > 1 ? '' : 'disabled'
+					}>→</button>
+				</div>
+			</div>
+			<div class="sub-agent-popup-viewport">
+				<div class="sub-agent-popup-track" style="transform: translateX(-${
+					popupIndex * 100
+				}%);">
+					${popupTrackHtml}
+				</div>
+			</div>
+		</section>`
+		: '';
+	/**
+	 * 渲染 TODO 树状结构.
+	 * @param {Array} todos TODO 列表.
+	 * @param {string} parentId 父 ID(空字符串为根).
+	 * @returns {string} HTML 字符串.
+	 */
+	function renderTodoTree(
+		todos,
+		parentId = '',
+		visited = new Set(),
+		depth = 0,
+	) {
+		if (depth > 20) {
+			return '';
+		}
+		const children = todos.filter(item => {
+			const pid = String(item?.parentId ?? '');
+			return pid === parentId;
+		});
+		if (children.length === 0) {
+			return '';
+		}
+		const rows = children
+			.map(item => {
+				const todoId = String(item?.todoId ?? item?.id ?? '');
+				if (visited.has(todoId)) {
+					return '';
+				}
+				visited.add(todoId);
+				const status = item?.status ?? 'pending';
+				const content = item?.content ?? '';
+				const statusClass = `todo-${
+					status === 'inProgress'
+						? 'inProgress'
+						: status === 'completed'
+						? 'completed'
+						: 'pending'
+				}`;
+				const icon =
+					status === 'completed' ? '✓' : status === 'inProgress' ? '◉' : '○';
+				const childrenHtml = todoId
+					? renderTodoTree(todos, todoId, visited, depth + 1)
+					: '';
+				return `<div class="todo-item ${statusClass}">
+					<span class="todo-icon">${icon}</span>
+					<span class="todo-content">${escapeHtml(content)}</span>
+				</div>${
+					childrenHtml ? `<div class="todo-children">${childrenHtml}</div>` : ''
+				}`;
+			})
+			.join('');
+		return rows;
+	}
+	const hasParentIds = state.chat.todos.some(item => item?.parentId);
+	const todoRows = hasParentIds
+		? renderTodoTree(state.chat.todos, '')
+		: state.chat.todos
+				.map(item => {
+					const status = item?.status ?? 'pending';
+					const content = item?.content ?? '';
+					const statusClass = `todo-${
+						status === 'inProgress'
+							? 'inProgress'
+							: status === 'completed'
+							? 'completed'
+							: 'pending'
+					}`;
+					const icon =
+						status === 'completed' ? '✓' : status === 'inProgress' ? '◉' : '○';
+					return `<div class="todo-item ${statusClass}">
+						<span class="todo-icon">${icon}</span>
+						<span class="todo-content">${escapeHtml(content)}</span>
+					</div>`;
+				})
+				.join('');
 	const eventRows = state.chat.currentSessionEvents
-		.map(
-			item =>
-				`<div class="log-item">[${escapeHtml(item.type)}] ${escapeHtml(
-					JSON.stringify(item.data),
-				)} <button type="button" data-action="open-log-detail" data-event-id="${escapeHtml(
-					item.id ?? '',
-				)}">详情</button></div>`,
-		)
+		.map(item => {
+			const detailText = JSON.stringify(item.data ?? null);
+			const previewText = toLogPreview(detailText);
+			const detailButton = `<button type="button" data-action="open-log-detail" data-event-id="${escapeHtml(
+				item.id ?? '',
+			)}">详情</button>`;
+			return `<div class="log-item"><div class="log-item-row"><span class="log-item-text">[${escapeHtml(
+				item.type,
+			)}] ${escapeHtml(
+				previewText,
+			)}</span><span class="log-item-actions">${detailButton}</span></div></div>`;
+		})
 		.join('');
 	const infoRows = getAllInfoMessages()
 		.filter(item => Number(item.expiresAt ?? 0) > Date.now())
@@ -366,23 +617,32 @@ export function renderApp(actions) {
 		String(state.git.commitMessage ?? '').trim().length > 0;
 	const statusBarHtml =
 		state.git.view === 'chat'
-			? `<section class="card status-bar"><div class="status-grid"><span>API: ${escapeHtml(
+			? `<section class="card status-bar"><div class="status-grid">
+				<span class="status-item"><span class="status-label">API</span> <span class="status-value">${escapeHtml(
 					String(statusBar.apiProfile ?? '-'),
-			  )}</span><span>上下文: ${escapeHtml(
+				)}</span></span>
+				<span class="status-item"><span class="status-label">上下文</span> <span class="status-value">${escapeHtml(
 					`${Number(statusBar.contextPercent ?? 0)}%`,
-			  )}</span><span>Token: ${escapeHtml(
-					`${Number(statusBar.tokenUsed ?? 0)} / ${Number(
+				)}</span></span>
+				<span class="status-item"><span class="status-label">Token</span> <span class="status-value">${escapeHtml(
+					`${Number(statusBar.tokenUsed ?? 0)}/${Number(
 						statusBar.tokenTotal ?? 0,
 					)}`,
-			  )}</span><span>KV: ${escapeHtml(
-					`Read ${Number(statusBar.kvCacheRead ?? 0)} / Create ${Number(
+				)}</span></span>
+				<span class="status-item"><span class="status-label">KV</span> <span class="status-value">${escapeHtml(
+					`R${Number(statusBar.kvCacheRead ?? 0)} C${Number(
 						statusBar.kvCacheCreate ?? 0,
 					)}`,
-			  )}</span><span>连接: ${escapeHtml(
+				)}</span></span>
+				<span class="status-item"><span class="status-label">连接</span> <span class="status-value">${escapeHtml(
 					state.connection.status || '-',
-			  )}</span><span>YOLO: ${escapeHtml(
+				)}</span></span>
+				<button id="toggleYoloBtn" type="button" class="yolo-toggle ${
+					Boolean(statusBar.yoloMode) ? 'yolo-on' : 'yolo-off'
+				}">YOLO: ${escapeHtml(
 					Boolean(statusBar.yoloMode) ? 'ON' : 'OFF',
-			  )}</span></div></section>`
+			  )}</button>
+			</div></section>`
 			: '';
 
 	const gitGroupsHtml = [
@@ -405,18 +665,16 @@ export function renderApp(actions) {
 				</div>
 				<p class="hint">文件: ${escapeHtml(state.git.selectedPath || '-')}</p>
 				<div class="${isWideDiff ? 'diff-wide' : 'diff-single'}">
-					${
-						isWideDiff
-							? `<pre class="log-item">${escapeHtml(
-									diffColumns.left || '',
-							  )}</pre><pre class="log-item">${escapeHtml(
-									diffColumns.right || '',
-							  )}</pre>`
-							: `<pre class="log-item">${escapeHtml(
-									state.git.diffText || '',
-							  )}</pre>`
-					}
-				</div>
+				${
+					isWideDiff
+						? `<pre class="diff-content">${
+								diffColumns.left || ''
+						  }</pre><pre class="diff-content">${diffColumns.right || ''}</pre>`
+						: `<pre class="diff-content">${renderDiffHtml(
+								state.git.diffText,
+						  )}</pre>`
+				}
+			</div>
 				<div class="row">
 					<textarea id="gitCommitInput" class="chat-input" placeholder="输入提交信息">${escapeHtml(
 						state.git.commitMessage,
@@ -433,48 +691,141 @@ export function renderApp(actions) {
 				state.git.initLoading ? 'disabled' : ''
 		  }>初始化 Git</button></div>`;
 
+	const logMessageRows = state.chat.messages
+		.filter(item => !chatRoles.has(item?.role))
+		.slice(-30)
+		.map(item => {
+			const previewText = toLogPreview(item.content ?? '');
+			const timestamp = item.timestamp
+				? `<span class="hint">${escapeHtml(item.timestamp)}</span>`
+				: '';
+			const detailButton = `<button type="button" data-action="open-log-text-detail" data-log-role="${escapeHtml(
+				item.role ?? 'system',
+			)}" data-log-content="${escapeHtml(
+				item.content ?? '',
+			)}" data-log-time="${escapeHtml(item.timestamp ?? '')}">详情</button>`;
+			return `<div class="log-item ${
+				item.role === 'error' ? 'log-error' : 'log-system'
+			}"><div class="log-item-row"><span class="log-item-text">[${escapeHtml(
+				item.role,
+			)}] ${escapeHtml(
+				previewText,
+			)}</span><span class="log-item-actions">${timestamp}${detailButton}</span></div></div>`;
+		})
+		.join('');
 	const logPanelHtml = state.chat.ui.logPanelCollapsed
 		? ''
 		: `<section class="card">
-			<h4>SSE事件(最近20条)</h4>
-			<div class="log-list">${eventRows || '<div class="hint">暂无事件</div>'}</div>
+			<h4>系统日志</h4>
+			<div class="log-list">${
+				logMessageRows || eventRows
+					? (logMessageRows || '') + (eventRows || '')
+					: '<div class="hint">暂无日志</div>'
+			}</div>
 		</section>`;
 
+	const runningSubAgents = (state.chat.subAgents ?? []).filter(
+		item =>
+			String(item?.status ?? 'running') !== 'done' &&
+			String(item?.nodeId ?? ''),
+	);
+	const interjectOptions =
+		runningSubAgents.length > 0
+			? `<select id="interjectTargetSelect">
+				<option value="">发送给主代理</option>
+				${runningSubAgents
+					.map(
+						item =>
+							`<option value="${escapeHtml(
+								String(item?.nodeId ?? ''),
+							)}">${escapeHtml(
+								String(item?.agentName ?? item?.agentId ?? 'sub-agent'),
+							)}</option>`,
+					)
+					.join('')}
+			</select>`
+			: '';
+
+	const pendingImageRows = (state.chat.ui.pendingImages ?? [])
+		.map(
+			(file, index) =>
+				`<span class="image-preview-item" data-image-index="${index}">${escapeHtml(
+					String(file?.name ?? `图片${index + 1}`),
+				)}<button type="button" data-action="remove-image" data-image-index="${index}">×</button></span>`,
+		)
+		.join('');
+	const isCompressing = Boolean(state.chat.ui.compressFlowState?.active);
+
+	const shouldShowScrollBottomBtn = !state.chat.ui.chatAutoScrollEnabled;
 	const mainViewHtml =
 		state.git.view === 'git'
 			? gitMainHtml
-			: `<div id="chatMessageList" class="log-list">${
-					messageRows || '<div class="hint">暂无消息</div>'
-			  }</div>
-				${
-					subAgentRows
-						? `<section class="card"><h4>子代理面板</h4>${subAgentRows}</section>`
-						: ''
-				}
-				<textarea id="chatInput" class="chat-input" placeholder="输入消息并发送"></textarea>
-				<div class="row">
-					<button id="sendBtn" type="button">发送</button>
-					<button id="refreshSessionsBtn" type="button">刷新会话</button>
+			: `<div class="chat-main-col">
+					<div class="chat-message-list-wrap">
+						<div id="chatMessageList" class="chat-message-list">${
+							messageRows || '<div class="hint">暂无消息</div>'
+						}</div>
+						<button
+							id="chatScrollToBottomBtn"
+							type="button"
+							class="chat-scroll-bottom-btn${shouldShowScrollBottomBtn ? ' is-visible' : ''}"
+							title="回到底部"
+							aria-label="回到底部"
+						>
+							↓ 最新
+						</button>
+					</div>
+					${subAgentPanelHtml}
+
+					<textarea id="chatInput" class="chat-input" placeholder="输入消息并发送...">${escapeHtml(
+						state.chat.ui.pendingDraftText || '',
+					)}</textarea>
+					${
+						isCompressing
+							? `<div class="compress-inline-actions" aria-live="polite">
+								<div class="compress-inline-label">压缩中</div>
+								<button id="cancelCompressBtn" type="button" class="btn-danger compress-cancel-btn">取消压缩</button>
+							</div>`
+							: `<div class="row chat-actions-primary">
+								<input id="imageFileInput" type="file" accept="image/*" multiple style="display:none">
+								<button id="imageBtn" type="button">图片</button>
+								<button id="sendBtn" type="button" class="btn-primary btn-send-lg">发送</button>
+							</div>
+							<div class="row chat-actions-secondary">
+								${interjectOptions}
+								<button id="abortBtn" type="button" class="btn-danger">中断</button>
+								<button id="compressSessionBtn" type="button">压缩</button>
+								<button id="rollbackBtn" type="button">回退</button>
+							</div>`
+					}
+					${
+						state.chat.error
+							? `<p class="error">${escapeHtml(state.chat.error)}</p>`
+							: ''
+					}
+					<div id="rollbackPanel" class="rollback-panel" style="display:none"></div>
+					<div id="imagePreviewArea" class="row image-preview-area">${
+						pendingImageRows || ''
+					}</div>
+
+
+				<div class="todo-side-col">
+					<h4>📝 TODO</h4>
+					<div class="todo-list">${todoRows || '<div class="hint">暂无 TODO</div>'}</div>
 				</div>
-				<p class="error">${escapeHtml(state.chat.error)}</p>
-				<h4>TODO ${renderCountBadge(state.chat.ui.todoUnreadCount)}</h4>
-				<div class="log-list todo-list">${
-					todoRows || '<div class="hint">暂无TODO</div>'
-				}</div>
+			</div>
 				${logPanelHtml}
-				<div class="row chat-footer-actions"><button id="toggleLogPanelBtn" type="button">日志${renderCountBadge(
-					state.chat.ui.logUnreadCount,
-				)}</button></div>`;
+				<div class="row chat-footer-actions"><button id="toggleLogPanelBtn" type="button">日志</button></div>`;
 
 	app.innerHTML = `
 		<section class="card">
-			<div class="row">
-				<h1>Snow SSE Client M5</h1>
+			<div class="app-header">
+				<h1>❄ Snow SSE</h1>
 				<button id="logoutBtn" type="button">登出</button>
 			</div>
 			<div class="row server-form-row">
 				<button id="refreshServersBtn" type="button">刷新服务</button>
-				<input id="serverWorkDirInput" type="text" list="workDirPresetList" placeholder="workDir" value="${escapeHtml(
+				<input id="serverWorkDirInput" type="text" list="workDirPresetList" autocomplete="off" placeholder="workDir" value="${escapeHtml(
 					state.control.serverForm.workDir,
 				)}" />
 				<datalist id="workDirPresetList">${state.control.workDirPresets
@@ -501,18 +852,31 @@ export function renderApp(actions) {
 			<div class="row server-tabs">${
 				serverTabButtons || '<span class="hint">暂无服务端</span>'
 			}</div>
-			<div class="row">
+			<div class="row">${(() => {
+				const selectedServer = state.control.servers.find(
+					s => s.serverId === state.control.selectedServerId,
+				);
+				const closeBtnDisabled = state.control.actionLoading || !selectedServer;
+				return `
 				<button id="reconnectBtn" type="button" ${
 					state.control.actionLoading || !state.control.selectedServerId
 						? 'disabled'
 						: ''
 				}>重连</button>
 				<button id="closeServerBtn" type="button" ${
-					state.control.actionLoading || !state.control.selectedServerId
-						? 'disabled'
-						: ''
-				}>关闭</button>
-				<span class="hint">连接状态: ${escapeHtml(state.connection.status)}</span>
+					closeBtnDisabled ? 'disabled' : ''
+				} title="关闭当前服务端">关闭</button>
+				<span class="conn-status">
+					<span class="conn-dot conn-dot-${escapeHtml(
+						state.connection.status === 'connected'
+							? 'connected'
+							: state.connection.status === 'connecting'
+							? 'connecting'
+							: 'disconnected',
+					)}"></span>
+					${escapeHtml(state.connection.status || 'disconnected')}
+				</span>`;
+			})()}
 			</div>
 			<p class="error">${escapeHtml(state.control.error)}</p>
 		</section>
@@ -542,8 +906,6 @@ export function renderApp(actions) {
 						<option value="">主代理</option>
 						${mainAgentOptions}
 					</select>
-				</div>
-				<div class="row quick-switch-row">
 					<select id="quickProfileSelect" ${
 						state.control.profileOptions.length === 0 ? 'disabled' : ''
 					}>
@@ -557,7 +919,7 @@ export function renderApp(actions) {
 							)
 							.join('')}
 					</select>
-					<button id="applyProfileBtn" type="button">切换渠道</button>
+					<button id="newSessionBtn" type="button">新建会话</button>
 				</div>
 				${mainViewHtml}
 				<p class="error">${escapeHtml(state.git.error)}</p>
@@ -572,7 +934,7 @@ export function renderApp(actions) {
 					<h2>${escapeHtml(logDetailTitle)}</h2>
 					<button id="closeLogDetailBtn" type="button">关闭</button>
 				</div>
-				<pre class="log-item">${escapeHtml(logDetailJson)}</pre>
+				<pre class="log-detail-content">${escapeHtml(logDetailJson)}</pre>
 			</div>
 		</div>
 	`;
@@ -644,21 +1006,81 @@ export function renderApp(actions) {
 	});
 	const quickProfileSelect = byId('quickProfileSelect');
 	if (quickProfileSelect) {
-		quickProfileSelect.value = state.chat.quickSwitch?.profile ?? '';
+		quickProfileSelect.value =
+			state.chat.quickSwitch?.profile || state.control.activeProfile || '';
 	}
 	byId('quickProfileSelect')?.addEventListener('change', event => {
 		const target = /** @type {HTMLSelectElement|null} */ (event.currentTarget);
-		actions.updateQuickSwitchField('profile', target?.value ?? '');
+		const value = target?.value ?? '';
+		actions.updateQuickSwitchField('profile', value);
+		if (value) {
+			void actions.applyQuickSwitch('profile');
+		}
 	});
-	byId('applyProfileBtn')?.addEventListener('click', () => {
-		void actions.applyQuickSwitch('profile');
+	byId('newSessionBtn')?.addEventListener('click', () => {
+		void actions.newSession();
+	});
+	byId('chatInput')?.addEventListener('input', event => {
+		const target = /** @type {HTMLTextAreaElement|null} */ (
+			event.currentTarget
+		);
+		actions.updatePendingDraftText(target?.value ?? '');
 	});
 	byId('sendBtn')?.addEventListener('click', () => {
 		state.chat.ui.chatAutoScrollEnabled = true;
 		void actions.sendChat();
 	});
-	byId('refreshSessionsBtn')?.addEventListener('click', () => {
-		void actions.refreshSessionList();
+	byId('imageBtn')?.addEventListener('click', () => {
+		if (state.chat.ui.compressFlowState?.active) {
+			return;
+		}
+		byId('imageFileInput')?.click();
+	});
+	byId('imageFileInput')?.addEventListener('change', event => {
+		if (state.chat.ui.compressFlowState?.active) {
+			return;
+		}
+		const input = /** @type {HTMLInputElement|null} */ (event.currentTarget);
+		if (!input?.files?.length) {
+			return;
+		}
+		actions.addImages(Array.from(input.files));
+		input.value = '';
+	});
+	for (const item of document.querySelectorAll(
+		'[data-action="remove-image"]',
+	)) {
+		item.addEventListener('click', event => {
+			const target = event.currentTarget;
+			const imageIndex = Number(target?.getAttribute('data-image-index') ?? -1);
+			if (imageIndex >= 0) {
+				actions.removePendingImage(imageIndex);
+			}
+		});
+	}
+	byId('toggleYoloBtn')?.addEventListener('click', () => {
+		actions.toggleYolo();
+	});
+	byId('compressSessionBtn')?.addEventListener('click', () => {
+		if (state.chat.ui.compressFlowState?.active) {
+			return;
+		}
+		void actions.compressSession();
+	});
+	byId('abortBtn')?.addEventListener('click', () => {
+		if (state.chat.ui.compressFlowState?.active) {
+			return;
+		}
+		void actions.abortSession();
+	});
+	byId('rollbackBtn')?.addEventListener('click', () => {
+		if (state.chat.ui.compressFlowState?.active) {
+			return;
+		}
+		void handleRollbackClick();
+	});
+	byId('cancelCompressBtn')?.addEventListener('click', () => {
+		void actions.cancelCompressFlow();
 	});
 	byId('openSessionModalBtn')?.addEventListener('click', () => {
 		actions.openSessionModal();
@@ -698,14 +1120,31 @@ export function renderApp(actions) {
 	});
 
 	const chatMessageList = byId('chatMessageList');
+	const chatScrollToBottomBtn = byId('chatScrollToBottomBtn');
 	if (chatMessageList) {
 		chatMessageList.addEventListener('scroll', () => {
-			state.chat.ui.chatAutoScrollEnabled =
-				isChatListNearBottom(chatMessageList);
+			const nearBottom = isChatListNearBottom(chatMessageList);
+			state.chat.ui.chatAutoScrollEnabled = nearBottom;
+			if (!nearBottom) {
+				state.chat.ui.chatManualScrollTop = chatMessageList.scrollTop;
+			}
+			if (chatScrollToBottomBtn) {
+				chatScrollToBottomBtn.classList.toggle('is-visible', !nearBottom);
+			}
 		});
 		if (state.chat.ui.chatAutoScrollEnabled) {
 			chatMessageList.scrollTop = chatMessageList.scrollHeight;
+		} else {
+			chatMessageList.scrollTop = Math.max(0, previousScrollTop);
 		}
+	}
+	if (chatMessageList && chatScrollToBottomBtn) {
+		chatScrollToBottomBtn.addEventListener('click', () => {
+			chatMessageList.scrollTop = chatMessageList.scrollHeight;
+			state.chat.ui.chatAutoScrollEnabled = true;
+			state.chat.ui.chatManualScrollTop = 0;
+			chatScrollToBottomBtn.classList.remove('is-visible');
+		});
 	}
 
 	for (const item of document.querySelectorAll('[data-action="switch-view"]')) {
@@ -798,6 +1237,27 @@ export function renderApp(actions) {
 	}
 
 	for (const item of document.querySelectorAll(
+		'[data-action="shift-sub-agent-popup"]',
+	)) {
+		item.addEventListener('click', event => {
+			const target = event.currentTarget;
+			const offset = Number(target?.getAttribute('data-offset') ?? 0);
+			actions.shiftSubAgentPopup(offset);
+		});
+	}
+
+	// 子代理面板关闭按钮
+	for (const item of document.querySelectorAll(
+		'[data-action="close-sub-agent"]',
+	)) {
+		item.addEventListener('click', event => {
+			const target = event.currentTarget;
+			const nodeId = target?.getAttribute('data-node-id') ?? '';
+			actions.closeSubAgent(nodeId);
+		});
+	}
+
+	for (const item of document.querySelectorAll(
 		'[data-session-id][data-action]',
 	)) {
 		item.addEventListener('click', event => {
@@ -825,6 +1285,18 @@ export function renderApp(actions) {
 	}
 
 	for (const item of document.querySelectorAll(
+		'[data-action="open-log-text-detail"]',
+	)) {
+		item.addEventListener('click', event => {
+			const target = event.currentTarget;
+			const role = target?.getAttribute('data-log-role') ?? 'system';
+			const content = target?.getAttribute('data-log-content') ?? '';
+			const timestamp = target?.getAttribute('data-log-time') ?? '';
+			actions.openLogTextDetail(role, content, timestamp);
+		});
+	}
+
+	for (const item of document.querySelectorAll(
 		'.session-list [data-session-id]',
 	)) {
 		item.addEventListener('click', event => {
@@ -834,6 +1306,39 @@ export function renderApp(actions) {
 				return;
 			}
 			void actions.loadSelectedSession(sessionId);
+		});
+	}
+
+	for (const item of document.querySelectorAll(
+		'[data-action="queue-cancel"]',
+	)) {
+		item.addEventListener('click', event => {
+			const target = event.currentTarget;
+			const queueId = target?.getAttribute('data-queue-id') ?? '';
+			if (!queueId) {
+				return;
+			}
+			actions.cancelQueuedMessage(queueId);
+		});
+	}
+
+	for (const item of document.querySelectorAll('[data-action="queue-edit"]')) {
+		item.addEventListener('click', event => {
+			const target = event.currentTarget;
+			const queueId = target?.getAttribute('data-queue-id') ?? '';
+			if (!queueId) {
+				return;
+			}
+			const queuedItem = Array.isArray(state.chat.ui.queuedUserMessages)
+				? state.chat.ui.queuedUserMessages.find(entry => entry.id === queueId)
+				: null;
+			const initialDraft =
+				queuedItem?.displayContent ?? queuedItem?.content ?? '';
+			const draft = window.prompt('编辑排队消息', initialDraft);
+			if (draft == null) {
+				return;
+			}
+			actions.editQueuedMessage(queueId, draft);
 		});
 	}
 
@@ -862,5 +1367,95 @@ export function renderApp(actions) {
 			const path = target?.getAttribute('data-path') ?? '';
 			void actions.unstageGitFile(path);
 		});
+	}
+
+	/**
+	 * 点击"回退"按钮: 拉取回滚点列表并渲染选择面板.
+	 */
+	async function handleRollbackClick() {
+		const panel = byId('rollbackPanel');
+		if (!panel) {
+			return;
+		}
+		// 若面板已显示则收起
+		if (panel.style.display !== 'none') {
+			panel.style.display = 'none';
+			return;
+		}
+		panel.style.display = '';
+		panel.innerHTML = '<div class="hint">正在获取回滚点...</div>';
+		const points = await actions.fetchRollbackPoints();
+		if (!points || points.length === 0) {
+			panel.innerHTML = '<div class="hint">没有可用的回滚点</div>';
+			return;
+		}
+		const rows = points
+			.map(pt => {
+				const time = pt.timestamp
+					? new Date(pt.timestamp).toLocaleString()
+					: '';
+				const snap = pt.hasSnapshot
+					? `<span class="badge">${pt.filesToRollbackCount} 文件可回滚</span>`
+					: '<span class="hint">无快照</span>';
+				const snapAttr =
+					pt.snapshotIndex != null
+						? ` data-snapshot-index="${pt.snapshotIndex}"`
+						: '';
+				return `<div class="rollback-item" data-index="${
+					pt.messageIndex
+				}"${snapAttr}>
+				<div class="rollback-summary">#${pt.messageIndex} ${escapeHtml(
+					pt.summary,
+				)}</div>
+				<div class="rollback-meta">${time} ${snap}</div>
+				<div class="rollback-actions">
+					<button class="rb-dialog-only" data-index="${
+						pt.messageIndex
+					}"${snapAttr} type="button">仅回退对话</button>
+					<button class="rb-dialog-files" data-index="${
+						pt.messageIndex
+					}"${snapAttr} type="button" ${
+					pt.hasSnapshot ? '' : 'disabled'
+				}>对话+文件</button>
+				</div>
+			</div>`;
+			})
+			.join('');
+		panel.innerHTML = `<div class="rollback-header"><strong>选择回退点</strong>
+			<button id="closeRollbackPanel" type="button">✕</button></div>${rows}`;
+		// 绑定关闭
+		byId('closeRollbackPanel')?.addEventListener('click', () => {
+			panel.style.display = 'none';
+		});
+		// 绑定"仅回退对话"
+		for (const btn of panel.querySelectorAll('.rb-dialog-only')) {
+			btn.addEventListener('click', event => {
+				const idx = Number(event.currentTarget?.getAttribute('data-index'));
+				const snapRaw = event.currentTarget?.getAttribute(
+					'data-snapshot-index',
+				);
+				const snapIdx = snapRaw != null ? Number(snapRaw) : undefined;
+				const point = points.find(p => p.messageIndex === idx);
+				state.chat.ui.pendingRollbackContent =
+					point?.content || point?.summary || '';
+				panel.style.display = 'none';
+				void actions.rollbackSession(idx, false, snapIdx);
+			});
+		}
+		// 绑定"对话+文件"
+		for (const btn of panel.querySelectorAll('.rb-dialog-files')) {
+			btn.addEventListener('click', event => {
+				const idx = Number(event.currentTarget?.getAttribute('data-index'));
+				const snapRaw = event.currentTarget?.getAttribute(
+					'data-snapshot-index',
+				);
+				const snapIdx = snapRaw != null ? Number(snapRaw) : undefined;
+				const point = points.find(p => p.messageIndex === idx);
+				state.chat.ui.pendingRollbackContent =
+					point?.content || point?.summary || '';
+				panel.style.display = 'none';
+				void actions.rollbackSession(idx, true, snapIdx);
+			});
+		}
 	}
 }

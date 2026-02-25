@@ -54,6 +54,8 @@ const sseActions = createSseActions({
 	render,
 	refreshSessionList: serverId =>
 		sessionActions.refreshSessionList(undefined, serverId),
+	loadSelectedSession: sessionId =>
+		sessionActions.loadSelectedSession(sessionId),
 });
 
 /**
