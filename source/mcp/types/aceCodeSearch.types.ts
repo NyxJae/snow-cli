@@ -83,6 +83,7 @@ export interface TextSearchResult {
 	line: number;
 	column: number;
 	content: string;
+	searchResultId?: string;
 }
 
 /**

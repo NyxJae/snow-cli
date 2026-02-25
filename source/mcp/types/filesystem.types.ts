@@ -154,8 +154,9 @@ export interface MultipleFilesReadResult {
  */
 export interface EditBySearchConfig {
 	path: string;
-	searchContent: string;
+	searchContent?: string;
 	replaceContent: string;
+	searchResultId?: string;
 	occurrence?: number;
 }
 

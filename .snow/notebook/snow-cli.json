@@ -170,7 +170,41 @@
       "updatedAt": "2026-02-22T12:51:00.039"
     }
   ],
+  "source/mcp/types/aceCodeSearch.types.ts": [
+    {
+      "id": "notebook-1771999700862_umge919mv",
+      "filePath": "source/mcp/types/aceCodeSearch.types.ts",
+      "note": "职责: ace code search 工具类型契约定义,约束 text_search 结果结构与联动字段.\n\n接口摘要:\n- text_search 结果项需可携带 searchResultId 供后续 edit_search 引用.\n- 输入参数保持 pattern,fileGlob,isRegex,maxResults 语义清晰.\n\n依赖拓扑:\n- 被 source/mcp/aceCodeSearch.ts 结果构造与 schema 描述消费.\n- 被 source/mcp/filesystem.ts 联动模式间接依赖.\n\n避坑指南:\n- 对外字段收敛后,禁止在类型层保留 searchResultHash 残留定义.\n- 类型定义与工具返回示例要一致,避免调用方按旧字段读取导致联动失效.",
+      "createdAt": "2026-02-25T14:08:20.862",
+      "updatedAt": "2026-02-25T14:08:20.862"
+    }
+  ],
+  "source/mcp/types/filesystem.types.ts": [
+    {
+      "id": "notebook-1771999700664_2i16r0tft",
+      "filePath": "source/mcp/types/filesystem.types.ts",
+      "note": "职责: filesystem MCP 工具类型契约定义,约束 edit_search 入参与返回结构.\n\n接口摘要:\n- 核心字段: filePath,searchContent,replaceContent,occurrence,contextLines,searchResultId.\n- 协议约束: 对外仅保留 searchResultId 联动字段.\n\n依赖拓扑:\n- 被 source/mcp/filesystem.ts schema 与实现消费.\n- 被 source/utils/execution/mcpToolsManager.ts 参数校验与透传依赖.\n\n避坑指南:\n- 协议收敛后删除 hash 相关字段时,必须同步更新类型,schema,校验文案,调用方参数.\n- 类型字段可选性必须与单文件/批量分支真实规则一致,避免类型放宽导致运行期报错漂移.",
+      "createdAt": "2026-02-25T14:08:20.664",
+      "updatedAt": "2026-02-25T14:08:20.664"
+    }
+  ],
+  "source/mcp/utils/aceCodeSearch/search.utils.ts": [
+    {
+      "id": "notebook-1771996532767_mqtzr0qtq",
+      "filePath": "source/mcp/utils/aceCodeSearch/search.utils.ts",
+      "note": "职责: 解析 grep/git grep 输出为 TextSearchResult,并保证结果 content 可被 filesystem-edit_search.searchContent 直接复用.该层只做格式归一化,不做引用存储与替换决策.\n\n接口摘要:\n- 输入: parseGrepOutput(output,basePath),其中 output 为 grep 原始 stdout.\n- 输出: TextSearchResult[] {filePath,line,column,content}.\n- 关键契约: 按 /\\r?\\n/ 分割输出,content 必须保留 lineContent 原文,禁止 trim/二次清洗.\n\n依赖拓扑:\n- 被 source/mcp/aceCodeSearch.ts 的 git/system grep 路径调用.\n- 输出被 aceCodeSearch.attachSearchReferences 进一步附加 searchResultId.\n- 间接服务 source/mcp/filesystem.ts 联动替换精确定位.\n\n避坑指南:\n- 禁止使用平台相关 EOL 常量拆分 grep 输出,否则跨平台会出现行拆分错误.\n- 禁止对 lineContent 做 trim,否则 searchContent 复用会因空白字符丢失而失败.\n- grep 路径只保证单行命中解析,多行 pattern 必须由上层切到 jsTextSearch.\n\n回归重点:\n- Windows/Unix 换行混合文件下 parseGrepOutput 结果稳定.\n- 包含前后空格,tab,冒号的行内容在 content 中原样保留.\n- parse 结果喂给 filesystem-edit_search(searchContent)时可命中原文.",
+      "createdAt": "2026-02-25T13:15:32.767",
+      "updatedAt": "2026-02-25T15:50:44.225"
+    }
+  ],
   "source/mcp/utils/filesystem/batch-operations.utils.ts": [
+    {
+      "id": "notebook-1771996324843_ikiijl0dw",
+      "filePath": "source/mcp/utils/filesystem/batch-operations.utils.ts",
+      "note": "职责: 文件批量执行公共执行器,负责 parse->逐项执行->结果聚合,不承载检索引用协议解析.\n\n接口摘要:\n- 输入: parseParams,executeSingle,mapResult.\n- 输出: results,totalFiles,successCount,failureCount 与汇总信息.\n\n依赖拓扑:\n- 被 source/mcp/filesystem.ts 的 editFile/editFileBySearch 复用.\n- 间接受 source/utils/execution/mcpToolsManager.ts 参数组织方式影响.\n\n避坑指南:\n- 本层保持工具无关中立,不要耦合 ace-text_search 引用结构.\n- 批量失败语义保持逐项隔离,不可因单项失败中断全批次.\n- 架构债务记录: 依赖 Object.values(params) 的参数顺序存在隐性风险,后续应迁移为显式字段映射传参,避免对象键顺序变动引发错位.",
+      "createdAt": "2026-02-25T13:12:04.843",
+      "updatedAt": "2026-02-25T14:08:20.039"
+    },
     {
       "id": "notebook-1770864631005_batch",
       "filePath": "source/mcp/utils/filesystem/batch-operations.utils.ts",
@@ -179,13 +213,31 @@
       "updatedAt": "2026-02-13T10:30:20.438"
     }
   ],
+  "source/mcp/utils/searchResultReferenceStore.ts": [
+    {
+      "id": "notebook-1771999700459_0s53bq6vd",
+      "filePath": "source/mcp/utils/searchResultReferenceStore.ts",
+      "note": "职责: 检索结果引用存储层,负责创建与查询 searchResultId 引用,不承担外部协议扩展.\n\n接口摘要:\n- 输入: createSearchResultReference(文件位置信息与搜索上下文),getSearchResultReference({searchResultId}).\n- 输出: SearchResultReference 或 undefined.\n\n依赖拓扑:\n- 上游写入: source/mcp/aceCodeSearch.ts 产出搜索命中时写入引用.\n- 下游读取: source/mcp/filesystem.ts 联动替换前按 searchResultId 查询.\n\n避坑指南:\n- 仅支持 searchResultId 查询分支,禁止新增 hash 兼容入口.\n- 存储层保持轻量与短生命周期语义,过期/未命中由上游沿用既有失败语义处理.\n- 引用结构字段变更需同步类型定义与消费方校验.",
+      "createdAt": "2026-02-25T14:08:20.459",
+      "updatedAt": "2026-02-25T14:08:20.459"
+    }
+  ],
+  "source/mcp/aceCodeSearch.ts": [
+    {
+      "id": "notebook-1771996324726_vs2l8pyge",
+      "filePath": "source/mcp/aceCodeSearch.ts",
+      "note": "职责: ACE 检索服务与 ace-text_search MCP 工具实现.负责在不同搜索策略间路由,并输出可直接联动 filesystem-edit_search 的命中结果与 searchResultId.\n\n接口摘要:\n- 输入: pattern,fileGlob,isRegex,maxResults.\n- 输出: TextSearchResult[] {filePath,line,column,content,searchResultId}.\n- 关键契约:\n  1) pattern 含换行(\\n/\\r)时,textSearch 必须强制走 jsTextSearch.\n  2) jsTextSearch 多行分支基于全文 regex.exec 循环,content 返回 match[0] 原文片段.\n  3) jsTextSearch 单行分支也统一返回 match[0],保持 column 与 content 指向同一匹配片段.\n\n依赖拓扑:\n- 调用 source/mcp/utils/aceCodeSearch/search.utils.ts 解析 grep 输出.\n- 调用 source/mcp/utils/searchResultReferenceStore.ts 为每个命中生成 searchResultId.\n- 下游 source/mcp/filesystem.ts 按 searchResultId + content/line/column 执行精确替换.\n\n避坑指南:\n- 多行 pattern 不得落入 grep/git grep 路径,否则无法稳定返回可联动 content.\n- 正则含全局标记时要防空匹配死循环,match[0] 为空需推进 lastIndex.\n- 单行与多行分支返回协议必须一致(match[0]),避免联动分支出现列偏移与内容不一致.\n\n回归重点:\n- 多行正则命中返回的 content 可直接作为 searchContent 替换成功.\n- 单行正则分组场景下 content 返回整体匹配而非整行文本.\n- textSearch 在 pattern 含换行时稳定走 jsTextSearch,并仍附加 searchResultId.",
+      "createdAt": "2026-02-25T13:12:04.726",
+      "updatedAt": "2026-02-25T15:50:44.413"
+    }
+  ],
   "source/mcp/filesystem.ts": [
     {
       "id": "notebook-1770864631004_fsmcp",
       "filePath": "source/mcp/filesystem.ts",
-      "note": "职责: 文件编辑真实执行层,承载 editableFileSuffixes 拦截规则的统一落点.\n接口摘要: editFile/editFileBySearch 支持单文件与批量,输出 diff,diagnostics 与统计结果.\n依赖拓扑: 上游由 mcpToolsManager.ts 调用,批量聚合依赖 batch-operations.utils.ts.\n避坑指南:\n- 本层保持纯执行语义,不参与任何 UI 导航(showMcpPanel,mcpPanelSource,source)决策.\n- 拒绝项在批量中落成 success:false + 固定文案,保留部分成功.\n- 工具执行前应同时受\"MCP 服务开关(全局总闸)\"与\"代理工具权限(代理分闸)\"影响.\n- 服务级禁用应在 mcpToolsManager/disabledBuiltInTools 形成不可路由的最终集合,本层只对已授权且已启用的工具执行,不负责读取/写入全局禁用文件.\n- 与本需求相关: 流式 API idle timeout/断开丢弃属于网络请求层与 utils/core 的职责,不得在工具执行层实现任何与 HTTP/stream 相关的超时或重试,避免跨域耦合.",
+      "note": "职责: filesystem-edit_search 编辑执行层.在联动模式中消费 ace-text_search 的 searchResultId,基于引用定位做 offset 级精确替换;在兼容模式保留 searchContent 路径.\n\n接口摘要:\n- 输入: filePath + replaceContent,以及 searchResultId(联动)或 searchContent(兼容).\n- 输出: 编辑结果(diff/统计),失败时维持既有语义.\n- 联动关键契约:\n  1) 读取 reference(filePath,line,column,content).\n  2) 归一化文件内容与 reference.content 的换行为 \\n.\n  3) 按 line/column 计算 startOffset,校验切片与 reference.content 全量一致(支持多行).\n  4) 通过 startOffset + reference.content.length 执行一次精确替换.\n\n依赖拓扑:\n- 上游参数透传: source/utils/execution/mcpToolsManager.ts.\n- 引用来源: source/mcp/aceCodeSearch.ts + source/mcp/utils/searchResultReferenceStore.ts.\n- 批量执行: source/mcp/utils/filesystem/batch-operations.utils.ts.\n\n避坑指南:\n- 联动模式 MUST NOT 回退 fuzzy 匹配,避免误替换.\n- reference.content 多行时必须按全文切片校验,不能仅校验首行.\n- 未命中,越界,切片不一致均统一抛出 Search content not found in file,保持外部语义稳定.\n\n回归重点:\n- 多行 reference.content 在 CRLF/LF 文件中均可正确替换.\n- line/column 对应位置内容已变化时,应稳定报 Search content not found in file.\n- 批量联动编辑中单文件失败不影响其他文件结果聚合语义.",
       "createdAt": "2026-02-12T10:50:31.000",
-      "updatedAt": "2026-02-13T10:33:36.781"
+      "updatedAt": "2026-02-25T15:50:44.619"
     }
   ],
   "source/prompt/": [
@@ -343,9 +395,9 @@
     {
       "id": "notebook-1770950000005_mcptoolsmanager",
       "filePath": "source/utils/execution/mcpToolsManager.ts",
-      "note": "职责: MCP 工具管理核心,管理内置服务与外部 MCP 服务的注册,发现,调用与状态聚合,向执行层提供统一的工具视图.\n不该做什么:\n- 不引入 UI 导航状态(showMcpPanel,mcpPanelSource,source)或 screen/panel 概念.\n- 不在此处实现配置 UI,仅提供可被 UI 消费的状态与操作 API.\n接口摘要:\n- 输入: MCP 服务配置(mcp.json/内置 hardcoded 列表),以及工具调用请求(tool name + args + context).\n- 输出: 可用工具列表,服务状态(连接/错误),工具执行结果.\n依赖拓扑:\n- 依赖: disabledBuiltInTools(内置服务启用状态),mcpConfig(外部服务配置).\n- 被依赖: MCPInfoPanel(服务状态/重连/开关),toolExecutor(执行转发),各 Agent(工具发现与执行).\n关键架构决策:\n- 内置服务列表 hardcoded: 新增/调整内置服务必须修改本文件并同步 disabledBuiltInTools 的服务名约束.\n- 统一维护\"服务 <-> 工具\"映射关系,并在此处裁剪被禁用服务对应的工具集合.\n避坑指南:\n- 服务禁用状态需同时检查 disabledBuiltInTools,避免只隐藏 UI 但执行仍可调用.\n- 切换服务启用/禁用后应刷新/重建工具缓存,确保运行态与 UI 一致.\n- 外部服务与内置服务禁用逻辑不同,不要混用配置文件.\n备注:\n- 与\"流式 API 空闲超时/断开后丢弃\"无关.该机制属于 api adapters + utils/core(streamGuards,retryUtils),并且固定 3 分钟不可配置.本文件只需透传 abortSignal 与执行请求,避免把网络健壮性与工具编排耦合.",
+      "note": "职责: MCP 工具管理核心,负责工具注册,参数校验,执行路由与结果透传,确保执行入口与 schema/实现一致.\n\n接口摘要:\n- 输入: 工具调用请求(tool name + args + context).\n- 输出: 校验后执行结果或明确错误.\n- 本次约束: filesystem-edit_search 单文件模式要求 replaceContent + (searchContent 或 searchResultId).\n\n依赖拓扑:\n- 下游执行: source/mcp/filesystem.ts.\n- 类型契约: source/mcp/types/filesystem.types.ts,source/mcp/types/aceCodeSearch.types.ts.\n- 描述协同: source/mcp/filesystem.ts 与 source/mcp/aceCodeSearch.ts 的 schema 文案.\n\n避坑指南:\n- 协议收敛后仅透传 searchResultId,禁止残留 searchResultHash 校验或提示.\n- 入口校验文案,schema required 规则,实际透传字段必须同步更新,避免文案/校验/透传三者漂移.\n- 错误语义保持稳定,避免因提示优化改变既有失败判定.",
       "createdAt": "2026-02-13T09:40:00.000",
-      "updatedAt": "2026-02-13T11:53:45.362"
+      "updatedAt": "2026-02-25T14:08:20.238"
     }
   ],
   "source/utils/execution/subAgentExecutor.ts": [

@@ -17,6 +17,7 @@ import type {
 	CodeReference,
 	SemanticSearchResult,
 	SymbolType,
+	TextSearchResult,
 } from './types/aceCodeSearch.types.js';
 // Utility functions
 import {detectLanguage} from './utils/aceCodeSearch/language.utils.js';
@@ -39,6 +40,7 @@ import {
 	INDEX_CACHE_DURATION,
 	BATCH_SIZE,
 } from './utils/aceCodeSearch/constants.utils.js';
+import {createSearchResultReference} from './utils/searchResultReferenceStore.js';
 
 export class ACECodeSearchService {
 	private basePath: string;
@@ -737,9 +739,7 @@ export class ACECodeSearchService {
 		fileGlob?: string,
 		maxResults: number = 100,
 		isRegex: boolean = true,
-	): Promise<
-		Array<{filePath: string; line: number; column: number; content: string}>
-	> {
+	): Promise<TextSearchResult[]> {
 		return new Promise((resolve, reject) => {
 			const args = ['grep', '--untracked', '-n', '--ignore-case'];
 
@@ -806,9 +806,7 @@ export class ACECodeSearchService {
 		fileGlob?: string,
 		maxResults: number = 100,
 		grepCommand: 'rg' | 'grep' = 'rg',
-	): Promise<
-		Array<{filePath: string; line: number; column: number; content: string}>
-	> {
+	): Promise<TextSearchResult[]> {
 		const isRipgrep = grepCommand === 'rg';
 		const timeoutMs = 15000;
 
@@ -958,15 +956,8 @@ export class ACECodeSearchService {
 		fileGlob?: string,
 		isRegex: boolean = true,
 		maxResults: number = 100,
-	): Promise<
-		Array<{filePath: string; line: number; column: number; content: string}>
-	> {
-		const results: Array<{
-			filePath: string;
-			line: number;
-			column: number;
-			content: string;
-		}> = [];
+	): Promise<TextSearchResult[]> {
+		const results: TextSearchResult[] = [];
 
 		// Load exclusion patterns
 		await this.loadExclusionPatterns();
@@ -1069,26 +1060,54 @@ export class ACECodeSearchService {
 
 						try {
 							const content = await fs.readFile(fullPath, 'utf-8');
-							const lines = content.split('\n');
+							const relativePath = path.relative(this.basePath, fullPath);
+							const hasMultiLinePattern =
+								pattern.includes('\n') || pattern.includes('\r');
 
+							if (hasMultiLinePattern) {
+								searchRegex.lastIndex = 0;
+								let match: RegExpExecArray | null;
+
+								while ((match = searchRegex.exec(content)) !== null) {
+									if (results.length >= maxResults) break;
+									if (!match[0]) {
+										searchRegex.lastIndex += 1;
+										continue;
+									}
+
+									const beforeMatch = content.slice(0, match.index);
+									const beforeLines = beforeMatch.split(/\r?\n/);
+									const startLine = beforeLines.length;
+									const startColumn =
+										beforeLines[beforeLines.length - 1]!.length + 1;
+
+									results.push({
+										filePath: relativePath,
+										line: startLine,
+										column: startColumn,
+										content: match[0],
+									});
+								}
+								continue;
+							}
+
+							const lines = content.split('\n');
 							for (let i = 0; i < lines.length; i++) {
 								if (results.length >= maxResults) break;
 
 								const line = lines[i];
 								if (!line) continue;
 
-								// Reset regex for each line
 								searchRegex.lastIndex = 0;
 								const match = searchRegex.exec(line);
+								if (!match) continue;
 
-								if (match) {
-									results.push({
-										filePath: path.relative(this.basePath, fullPath),
-										line: i + 1,
-										column: match.index + 1,
-										content: line.trim(),
-									});
-								}
+								results.push({
+									filePath: relativePath,
+									line: i + 1,
+									column: match.index + 1,
+									content: match[0],
+								});
 							}
 						} catch (error) {
 							// Skip files that cannot be read (binary, permissions, etc.)
@@ -1116,9 +1135,21 @@ export class ACECodeSearchService {
 		fileGlob?: string,
 		isRegex: boolean = true,
 		maxResults: number = 100,
-	): Promise<
-		Array<{filePath: string; line: number; column: number; content: string}>
-	> {
+	): Promise<TextSearchResult[]> {
+		const hasMultiLinePattern =
+			pattern.includes('\n') || pattern.includes('\r');
+
+		if (hasMultiLinePattern) {
+			const results = await this.jsTextSearch(
+				pattern,
+				fileGlob,
+				isRegex,
+				maxResults,
+			);
+			const sorted = await this.sortResultsByRecency(results);
+			return this.attachSearchReferences(sorted, pattern, fileGlob, isRegex);
+		}
+
 		// Check command availability once (cached)
 		const [isGitRepo, gitAvailable, rgAvailable, grepAvailable] =
 			await Promise.all([
@@ -1138,7 +1169,13 @@ export class ACECodeSearchService {
 					isRegex,
 				);
 				if (results.length > 0) {
-					return await this.sortResultsByRecency(results);
+					const sorted = await this.sortResultsByRecency(results);
+					return this.attachSearchReferences(
+						sorted,
+						pattern,
+						fileGlob,
+						isRegex,
+					);
 				}
 			} catch (error) {
 				// Fall through to next strategy
@@ -1154,7 +1191,8 @@ export class ACECodeSearchService {
 					maxResults,
 					rgAvailable ? 'rg' : 'grep',
 				);
-				return await this.sortResultsByRecency(results);
+				const sorted = await this.sortResultsByRecency(results);
+				return this.attachSearchReferences(sorted, pattern, fileGlob, isRegex);
 			} catch (error) {
 				// Fall through to JavaScript fallback
 			}
@@ -1167,7 +1205,32 @@ export class ACECodeSearchService {
 			isRegex,
 			maxResults,
 		);
-		return await this.sortResultsByRecency(results);
+		const sorted = await this.sortResultsByRecency(results);
+		return this.attachSearchReferences(sorted, pattern, fileGlob, isRegex);
+	}
+
+	private attachSearchReferences(
+		results: TextSearchResult[],
+		pattern: string,
+		fileGlob?: string,
+		isRegex: boolean = true,
+	): TextSearchResult[] {
+		return results.map(item => {
+			const ref = createSearchResultReference({
+				filePath: item.filePath,
+				line: item.line,
+				column: item.column,
+				content: item.content,
+				pattern,
+				fileGlob,
+				isRegex,
+			});
+
+			return {
+				...item,
+				searchResultId: ref.id,
+			};
+		});
 	}
 
 	/**
@@ -1176,15 +1239,8 @@ export class ACECodeSearchService {
 	 * Uses cached stat calls for better performance
 	 */
 	private async sortResultsByRecency(
-		results: Array<{
-			filePath: string;
-			line: number;
-			column: number;
-			content: string;
-		}>,
-	): Promise<
-		Array<{filePath: string; line: number; column: number; content: string}>
-	> {
+		results: TextSearchResult[],
+	): Promise<TextSearchResult[]> {
 		if (results.length === 0) return results;
 
 		const now = Date.now();
@@ -1550,7 +1606,7 @@ export const mcpTools = [
 	{
 		name: 'ace-text_search',
 		description:
-			'ACE Code Search: Literal text/regex pattern matching (grep-style search). Best for finding exact strings: TODOs, comments, log messages, error strings, string constants. NOT recommended for code understanding or exploring functionality - use semantic search tools for that. Use when you know the exact text pattern you are looking for.',
+			'ACE Code Search: Literal text/regex pattern matching (grep-style search). Returns each hit with searchResultId so you can immediately pass it to filesystem-edit_search. Recommended workflow for edits: run ace-text_search, confirm hit, then call filesystem-edit_search with searchResultId + replaceContent right away.',
 		inputSchema: {
 			type: 'object',
 			properties: {

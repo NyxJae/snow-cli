@@ -1383,17 +1383,29 @@ export async function executeMCPTool(
 					}
 					if (
 						!Array.isArray(args.filePath) &&
-						(args.searchContent === undefined ||
-							args.replaceContent === undefined)
+						args.replaceContent === undefined
 					) {
 						throw new Error(
 							`Missing required parameters for filesystem-edit_search tool.
 ` +
-								`For single file mode, 'searchContent' and 'replaceContent' are required.
+								`For single file mode, 'replaceContent' is required, and you must provide either ('searchContent') or ('searchResultId').
 ` +
 								`Received args: ${JSON.stringify(args, null, 2)}
 ` +
-								`AI Tip: Provide searchContent (string) and replaceContent (string).`,
+								`AI Tip: Prefer linkage workflow: run ace-text_search first, then pass searchResultId + replaceContent.`,
+						);
+					}
+					if (
+						!Array.isArray(args.filePath) &&
+						args.searchContent === undefined &&
+						args.searchResultId === undefined
+					) {
+						throw new Error(
+							`Missing required search target for filesystem-edit_search tool.
+` +
+								`For single file mode, provide one of: searchContent or searchResultId.
+` +
+								`Received args: ${JSON.stringify(args, null, 2)}.`,
 						);
 					}
 					result = await filesystemService.editFileBySearch(
@@ -1403,6 +1415,7 @@ export async function executeMCPTool(
 						args.occurrence,
 						args.contextLines,
 						executionContext?.editableFileSuffixes,
+						args.searchResultId,
 					);
 					break;
 				case 'undo':

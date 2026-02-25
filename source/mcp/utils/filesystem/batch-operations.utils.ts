@@ -41,20 +41,20 @@ export function parseEditBySearchParams(
 	globalOccurrence?: number,
 ): {
 	path: string;
-	searchContent: string;
+	searchContent?: string;
 	replaceContent: string;
+	searchResultId?: string;
 	occurrence: number;
 } {
 	if (typeof fileItem === 'string') {
-		if (!globalSearchContent || !globalReplaceContent) {
-			throw new Error(
-				'searchContent and replaceContent are required for string array format',
-			);
+		if (!globalReplaceContent) {
+			throw new Error('replaceContent is required for string array format');
 		}
 		return {
 			path: fileItem,
 			searchContent: globalSearchContent,
 			replaceContent: globalReplaceContent,
+			searchResultId: undefined,
 			occurrence: globalOccurrence ?? 1,
 		};
 	}
@@ -63,6 +63,7 @@ export function parseEditBySearchParams(
 		path: fileItem.path,
 		searchContent: fileItem.searchContent,
 		replaceContent: fileItem.replaceContent,
+		searchResultId: fileItem.searchResultId,
 		occurrence: fileItem.occurrence ?? globalOccurrence ?? 1,
 	};
 }
