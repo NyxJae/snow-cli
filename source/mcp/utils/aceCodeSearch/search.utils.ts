@@ -3,6 +3,7 @@
  */
 
 import {spawn} from 'child_process';
+import {EOL} from 'os';
 import * as path from 'path';
 import type {TextSearchResult} from '../../types/aceCodeSearch.types.js';
 
@@ -50,7 +51,7 @@ export function parseGrepOutput(
 	const results: TextSearchResult[] = [];
 	if (!output) return results;
 
-	const lines = output.split(/\r?\n/);
+	const lines = output.split(EOL);
 
 	for (const line of lines) {
 		if (!line.trim()) continue;
@@ -77,7 +78,7 @@ export function parseGrepOutput(
 			filePath: relativeFilePath || path.basename(absoluteFilePath),
 			line: lineNumber,
 			column: 1, // grep doesn't provide column info, default to 1
-			content: lineContent,
+			content: lineContent.trim(),
 		});
 	}
 

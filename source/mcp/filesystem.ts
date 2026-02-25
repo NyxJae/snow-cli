@@ -39,7 +39,6 @@ import {
 	calculateSimilarityAsync,
 	normalizeForDisplay,
 } from './utils/filesystem/similarity.utils.js';
-import {getSearchResultReference} from './utils/searchResultReferenceStore.js';
 import {
 	analyzeCodeStructure,
 	findSmartContextBoundaries,
@@ -1066,7 +1065,6 @@ export class FilesystemMCPService {
 		occurrence: number = 1,
 		contextLines: number = 8,
 		editableFileSuffixes?: string[],
-		searchResultId?: string,
 	): Promise<EditBySearchResult> {
 		// Handle array of files
 		if (Array.isArray(filePath)) {
@@ -1103,7 +1101,7 @@ export class FilesystemMCPService {
 						replaceContent,
 						occurrence,
 					),
-				(path, search, replace, searchResultIdFromItem, occ) =>
+				(path, search, replace, occ) =>
 					this.editFileBySearchSingle(
 						path,
 						search,
@@ -1111,7 +1109,6 @@ export class FilesystemMCPService {
 						occ,
 						contextLines,
 						editableFileSuffixes,
-						searchResultIdFromItem,
 					),
 				(path, result) => {
 					return {path, ...result};
@@ -1152,15 +1149,14 @@ export class FilesystemMCPService {
 		}
 
 		// Single file mode
-		if (replaceContent === undefined || replaceContent === null) {
-			throw new Error('replaceContent is required for single file mode');
-		}
 		if (
-			(searchResultId === undefined || searchResultId === null) &&
-			(searchContent === undefined || searchContent === null)
+			searchContent === undefined ||
+			searchContent === null ||
+			replaceContent === undefined ||
+			replaceContent === null
 		) {
 			throw new Error(
-				'searchContent is required when searchResultId is not provided',
+				'searchContent and replaceContent are required for single file mode',
 			);
 		}
 
@@ -1171,7 +1167,6 @@ export class FilesystemMCPService {
 			occurrence,
 			contextLines,
 			editableFileSuffixes,
-			searchResultId,
 		);
 	}
 
@@ -1181,12 +1176,11 @@ export class FilesystemMCPService {
 	 */
 	private async editFileBySearchSingle(
 		filePath: string,
-		searchContent: string | undefined,
+		searchContent: string,
 		replaceContent: string,
 		occurrence: number,
 		contextLines: number,
 		editableFileSuffixes?: string[],
-		searchResultId?: string,
 	): Promise<EditBySearchSingleResult> {
 		try {
 			if (
@@ -1247,85 +1241,10 @@ export class FilesystemMCPService {
 			}
 
 			// Normalize line endings
-			const normalizedContent = content
+			let normalizedSearch = searchContent
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
-
-			// 联动模式: 使用搜索结果引用定位,不走 fuzzy 匹配
-			if (searchResultId) {
-				const reference = getSearchResultReference({
-					searchResultId,
-				});
-				if (!reference) {
-					throw new Error('Search content not found in file');
-				}
-				const normalizedRefPath = reference.filePath.replace(/\\/g, '/');
-				const normalizedTargetPath = (
-					path.isAbsolute(filePath)
-						? path.relative(this.basePath, filePath)
-						: filePath
-				).replace(/\\/g, '/');
-				if (normalizedRefPath !== normalizedTargetPath) {
-					throw new Error('Search content not found in file');
-				}
-
-				const contentLines = normalizedContent.split('\n');
-				const normalizedReferenceContent = reference.content
-					.replace(/\r\n/g, '\n')
-					.replace(/\r/g, '\n');
-				const targetLine = contentLines[reference.line - 1];
-				if (!targetLine) {
-					throw new Error('Search content not found in file');
-				}
-
-				const startColumn = Math.max(reference.column - 1, 0);
-				if (startColumn > targetLine.length) {
-					throw new Error('Search content not found in file');
-				}
-
-				let startOffset = 0;
-				for (let i = 0; i < reference.line - 1; i++) {
-					startOffset += contentLines[i]!.length + 1;
-				}
-				startOffset += startColumn;
-
-				if (
-					normalizedContent.slice(
-						startOffset,
-						startOffset + normalizedReferenceContent.length,
-					) !== normalizedReferenceContent
-				) {
-					throw new Error('Search content not found in file');
-				}
-
-				const updatedContent =
-					normalizedContent.slice(0, startOffset) +
-					replaceContent +
-					normalizedContent.slice(
-						startOffset + normalizedReferenceContent.length,
-					);
-
-				const lineEditResult = await this.editFileSingle(
-					filePath,
-					1,
-					contentLines.length,
-					updatedContent,
-					contextLines,
-					editableFileSuffixes,
-				);
-
-				const referenceLines = normalizedReferenceContent.split('\n').length;
-				return {
-					...lineEditResult,
-					replacedContent: reference.content,
-					matchLocation: {
-						startLine: reference.line,
-						endLine: reference.line + referenceLines - 1,
-					},
-				};
-			}
-
-			let normalizedSearch = (searchContent ?? '')
+			const normalizedContent = content
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
 
@@ -1475,7 +1394,7 @@ export class FilesystemMCPService {
 
 					let errorMessage = `❌ Search content not found in file: ${filePath}\n\n`;
 					errorMessage += `🔍 Using smart fuzzy matching (threshold: ${threshold})\n`;
-					if (isOverEscaped(normalizedSearch)) {
+					if (isOverEscaped(searchContent)) {
 						errorMessage += `⚠️  Detected over-escaped content, automatic fix attempted but failed\n`;
 					}
 
@@ -2456,7 +2375,7 @@ export const mcpTools = [
 	{
 		name: 'filesystem-edit_search',
 		description:
-			'MUST使用此搜索替换工具编辑文件. **联动模式**(推荐): 从新的 ace-text_search 结果中传递 searchResultId 并配合 replaceContent. 手动模式: 使用 searchContent + replaceContent 进行模糊安全匹配. 推荐工作流: 运行 ace-text_search, 确认命中要编辑的部分, 随后立即调用 filesystem-edit_search 并传入 path + searchResultId + replaceContent. **远程SSH支持**: 通过SSH URL格式 (ssh://user@host:port/path) 完全支持远程文件. **关键路径要求**: (1) filePath参数是必需的 - 必须是有效的非空字符串或数组, 永远不要使用undefined/null/空字符串, (2) 使用来自搜索结果或用户输入的精确文件路径 - 永远不要使用像"path/to/file"这样的占位符, (3) 如果不确定路径, 请先使用搜索工具找到正确的文件. **支持批量编辑**: 传递 (1) 带有搜索/替换单个文件, (2) 带有统一搜索/替换的文件路径数组, 或 (3) 用于每个文件编辑的{path, searchResultId(或searchContent), replaceContent, occurrence?}数组.MUSTNOT使用其他方式修改文件!',
+			'RECOMMENDED for most edits: Search-and-replace with SMART FUZZY MATCHING. **REMOTE SSH SUPPORT**: Fully supports remote files via SSH URL format (ssh://user@host:port/path). **CRITICAL PATH REQUIREMENTS**: (1) filePath parameter is REQUIRED - MUST be a valid non-empty string or array, never use undefined/null/empty string, (2) Use EXACT file paths from search results or user input - never use placeholders like "path/to/file", (3) If uncertain about path, use search tools first to find the correct file. **SUPPORTS BATCH EDITING**: Pass (1) single file with search/replace, (2) array of file paths with unified search/replace, or (3) array of {path, searchContent, replaceContent, occurrence?} for per-file edits. **CRITICAL WORKFLOW FOR CODE SAFETY - COMPLETE BOUNDARIES REQUIRED**: (1) Use search tools (codebase-search or ACE tools) to locate code, (2) MUST use filesystem-read to identify COMPLETE code boundaries with ALL closing pairs: entire function from declaration to final closing brace `}`, complete HTML/XML/JSX tags from opening `<tag>` to closing `</tag>`, full code blocks with ALL matching brackets/braces/parentheses, (3) Copy the COMPLETE code block (without line numbers) - verify you have captured ALL opening and closing symbols, (4) MANDATORY verification: Count and match ALL pairs - every `{` must have `}`, every `(` must have `)`, every `[` must have `]`, every `<tag>` must have `</tag>`, (5) Use THIS tool only after verification passes. **ABSOLUTE PROHIBITIONS**: NEVER edit partial functions (missing closing brace), NEVER edit incomplete markup (missing closing tag), NEVER edit partial code blocks (unmatched brackets), NEVER copy line numbers from filesystem-read output. **WHY USE THIS**: No line tracking needed, auto-handles spacing/tabs differences, finds best fuzzy match even with whitespace changes, safer than line-based editing. **SMART MATCHING**: Uses similarity algorithm to find code even if indentation/spacing differs from your search string. Automatically corrects over-escaped content. If multiple matches found, selects best match first (highest similarity score). **INCLUDE CONTEXT FOR BETTER MATCHING**: When providing searchContent and replaceContent, include 8-10 lines of surrounding context (before and after the actual edit target) to help the fuzzy matcher locate the exact position. This context acts as "anchors" for precise matching. **CRITICAL: KEEP CONTEXT IDENTICAL**: The surrounding context lines in searchContent and replaceContent MUST be EXACTLY the same - only modify the target line(s). **EXAMPLE**: To change line 50 from `const x = 1;` to `const x = 2;`, your searchContent should be: ```\nfunction foo() {\n  const y = 0;\n  const x = 1;\n  const z = 3;\n  return x + y;\n}\n``` and replaceContent should be: ```\nfunction foo() {\n  const y = 0;\n  const x = 2;\n  const z = 3;\n  return x + y;\n}\n``` Notice: Only line 3 changed (`const x = 1;` → `const x = 2;`), all other context lines remain IDENTICAL. **COMMON FATAL ERRORS TO AVOID**: Using invalid/empty file paths, modifying only part of a function (missing closing brace `}`), incomplete markup tags (HTML/Vue/JSX missing `</tag>`), partial code blocks (unmatched `{`, `}`, `(`, `)`, `[`, `]`), copying line numbers from filesystem-read output, providing insufficient context for matching, accidentally modifying context lines. You MUST include complete syntactic units with ALL opening/closing pairs verified and matched. **BATCH EXAMPLE**: filePath=[{path:"a.ts", searchContent:"old1", replaceContent:"new1"}, {path:"b.ts", searchContent:"old2", replaceContent:"new2"}].',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -2508,23 +2427,17 @@ export const mcpTools = [
 				searchContent: {
 					type: 'string',
 					description:
-						'Search text for compatibility mode (single/unified). In linkage mode, use searchResultId instead.',
+						'Content to find and replace (for single file or unified mode). Copy from filesystem-read WITHOUT line numbers. **IMPORTANT**: Include 8-10 lines of surrounding context (before and after your actual edit target) to help the fuzzy matcher precisely locate the code. The context acts as "anchors" for accurate matching. **CRITICAL**: Keep context lines IDENTICAL between searchContent and replaceContent - only modify the target line(s). Example: To change `const x = 1;` to `const x = 2;`, searchContent: `function foo() {\\n  const y = 0;\\n  const x = 1;\\n  const z = 3;\\n}` and replaceContent: `function foo() {\\n  const y = 0;\\n  const x = 2;\\n  const z = 3;\\n}` (only line 3 changed, all context identical).',
 				},
 				replaceContent: {
 					type: 'string',
 					description:
-						'Replacement content for both linkage mode and compatibility mode.',
-				},
-
-				searchResultId: {
-					type: 'string',
-					description:
-						'Reference id returned by ace-text_search for linkage mode.',
+						'New content to replace with (for single file or unified mode). **IMPORTANT**: Include the SAME surrounding context as searchContent, only modify the actual target lines. The surrounding context MUST be EXACTLY identical to searchContent - do NOT accidentally modify context lines. Only the target line(s) should differ. Example: If searchContent has 8 lines with line 3 as target, replaceContent should also have the same 8 lines with only line 3 modified.',
 				},
 				occurrence: {
 					type: 'number',
 					description:
-						'Which match to replace if multiple found (1-indexed). Default: 1.',
+						'Which match to replace if multiple found (1-indexed). Default: 1 (best match first). Use -1 for all (not yet supported).',
 					default: 1,
 				},
 				contextLines: {
