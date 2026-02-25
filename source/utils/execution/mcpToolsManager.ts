@@ -1294,7 +1294,17 @@ export async function executeMCPTool(
 						const folderNotebookContext =
 							formatFolderNotebookContext(foldersToShow);
 						if (folderNotebookContext) {
-							result = result + '\n\n' + folderNotebookContext;
+							if (typeof result === 'string') {
+								result = result + '\n\n' + folderNotebookContext;
+							} else if (
+								result &&
+								typeof result === 'object' &&
+								'content' in result &&
+								typeof (result as {content?: unknown}).content === 'string'
+							) {
+								(result as {content: string}).content +=
+									'\n\n' + folderNotebookContext;
+							}
 						}
 					}
 					break;

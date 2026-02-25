@@ -334,6 +334,13 @@
   ],
   "source/utils/execution/mcpToolsManager.ts": [
     {
+      "id": "notebook-1771993976867_1m6jwnx2a",
+      "filePath": "source/utils/execution/mcpToolsManager.ts",
+      "note": "职责补充(输出拼接安全): 在 filesystem-read 分支拼接 folder notebook context 时,仅允许对 string 内容做显式拼接,禁止对未知结构做隐式字符串化.\n接口约束:\n- result 为 string: 允许 result + \"\\n\\n\" + context.\n- result 为 object 且 result.content 为 string: 仅拼接到 result.content.\n- result.content 为非 string(如多模态数组): 不拼接,保持原结构.\n依赖拓扑影响: formatFolderNotebookContext 的输出仅作为附加文本,不得改变 MCP 工具原始返回的数据类型契约.\n避坑指南:\n- 禁止使用模板字符串/\"+\"直接拼接 object,会产生 \"[object Object]\" 污染.\n- 新增工具后若返回结构扩展,先做类型守卫再处理附加上下文.\n- 若后续需要统一处理,抽离 helper 并复用同一套类型守卫规则.",
+      "createdAt": "2026-02-25T12:32:56.867",
+      "updatedAt": "2026-02-25T12:32:56.867"
+    },
+    {
       "id": "notebook-1770950000005_mcptoolsmanager",
       "filePath": "source/utils/execution/mcpToolsManager.ts",
       "note": "职责: MCP 工具管理核心,管理内置服务与外部 MCP 服务的注册,发现,调用与状态聚合,向执行层提供统一的工具视图.\n不该做什么:\n- 不引入 UI 导航状态(showMcpPanel,mcpPanelSource,source)或 screen/panel 概念.\n- 不在此处实现配置 UI,仅提供可被 UI 消费的状态与操作 API.\n接口摘要:\n- 输入: MCP 服务配置(mcp.json/内置 hardcoded 列表),以及工具调用请求(tool name + args + context).\n- 输出: 可用工具列表,服务状态(连接/错误),工具执行结果.\n依赖拓扑:\n- 依赖: disabledBuiltInTools(内置服务启用状态),mcpConfig(外部服务配置).\n- 被依赖: MCPInfoPanel(服务状态/重连/开关),toolExecutor(执行转发),各 Agent(工具发现与执行).\n关键架构决策:\n- 内置服务列表 hardcoded: 新增/调整内置服务必须修改本文件并同步 disabledBuiltInTools 的服务名约束.\n- 统一维护\"服务 <-> 工具\"映射关系,并在此处裁剪被禁用服务对应的工具集合.\n避坑指南:\n- 服务禁用状态需同时检查 disabledBuiltInTools,避免只隐藏 UI 但执行仍可调用.\n- 切换服务启用/禁用后应刷新/重建工具缓存,确保运行态与 UI 一致.\n- 外部服务与内置服务禁用逻辑不同,不要混用配置文件.\n备注:\n- 与\"流式 API 空闲超时/断开后丢弃\"无关.该机制属于 api adapters + utils/core(streamGuards,retryUtils),并且固定 3 分钟不可配置.本文件只需透传 abortSignal 与执行请求,避免把网络健壮性与工具编排耦合.",
