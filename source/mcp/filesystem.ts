@@ -1248,6 +1248,14 @@ export class FilesystemMCPService {
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
 
+			const trailingSearchNewlines =
+				normalizedSearch.match(/\n+$/)?.[0].length ?? 0;
+
+			// Trim accidental trailing empty lines in search content.
+			// This prevents matching window from expanding by one extra line,
+			// which can swallow the next line and cause unintended deletion.
+			normalizedSearch = normalizedSearch.replace(/\n+$/g, '');
+
 			// Split into lines for matching
 			let searchLines = normalizedSearch.split('\n');
 			const contentLines = normalizedContent.split('\n');
@@ -1472,9 +1480,19 @@ export class FilesystemMCPService {
 			const {startLine, endLine} = selectedMatch;
 
 			// Perform the replacement by replacing the matched lines
-			const normalizedReplace = replaceContent
+			let normalizedReplace = replaceContent
 				.replace(/\r\n/g, '\n')
 				.replace(/\r/g, '\n');
+
+			// Symmetric handling: trim replace trailing newlines up to the amount
+			// trimmed from search content, so context alignment stays consistent.
+			if (trailingSearchNewlines > 0) {
+				normalizedReplace = normalizedReplace.replace(
+					new RegExp(`\\n{1,${trailingSearchNewlines}}$`),
+					'',
+				);
+			}
+
 			const beforeLines = lines.slice(0, startLine - 1);
 			const afterLines = lines.slice(endLine);
 			let replaceLines = normalizedReplace.split('\n');
