@@ -422,7 +422,7 @@ export default function StatusLine({
 									{editorContext?.activeFile &&
 										t.chatScreen.ideActiveFile.replace(
 											'{file}',
-											smartTruncatePath(editorContext.activeFile),
+											smartTruncatePath(editorContext.activeFile, 40, false),
 										)}
 									{editorContext?.selectedText &&
 										t.chatScreen.ideSelectedText.replace(
