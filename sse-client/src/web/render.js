@@ -22,6 +22,7 @@ function renderCountBadge(count) {
 }
 
 const LOG_PREVIEW_MAX = 180;
+let cachedChatRowHtmlList = [];
 
 /**
  * 生成日志预览文本.
@@ -36,6 +37,200 @@ function toLogPreview(text) {
 		return normalized;
 	}
 	return `${normalized.slice(0, LOG_PREVIEW_MAX)}...`;
+}
+
+/**
+ * 将工具参数或返回值格式化为可读详情文本.
+ * @param {any} value 原始值.
+ * @returns {string}
+ */
+function toToolDetailText(value) {
+	if (value === null || value === undefined) {
+		return '';
+	}
+	if (typeof value === 'string') {
+		const text = value.trim();
+		if (!text) {
+			return '';
+		}
+		try {
+			const parsed = JSON.parse(text);
+			if (typeof parsed === 'object' && parsed !== null) {
+				return JSON.stringify(parsed, null, 2);
+			}
+		} catch {
+			// keep raw text when not JSON.
+		}
+		return text;
+	}
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
+}
+
+/**
+ * 解析工具消息文本,用于卡片化渲染.
+ * @param {string} rawContent 原始消息内容.
+ * @param {{kind?:'call'|'result',title?:string,summary?:string,detail?:any,status?:'running'|'success'|'error'}|null} toolMeta 工具元信息.
+ * @returns {{kind:'call'|'result',title:string,summary:string,detail:string,status:'running'|'success'|'error'}|null}
+ */
+function parseToolMessage(rawContent, toolMeta = null) {
+	if (toolMeta?.kind === 'call') {
+		const detail = toToolDetailText(toolMeta.detail);
+		return {
+			kind: 'call',
+			title: String(toolMeta.title || 'tool_call'),
+			summary: String(
+				toolMeta.summary || (detail ? '参数已展开' : '等待执行结果'),
+			),
+			detail,
+			status: 'running',
+		};
+	}
+	if (toolMeta?.kind === 'result') {
+		const status = toolMeta.status === 'error' ? 'error' : 'success';
+		const detail = toToolDetailText(toolMeta.detail);
+		const subAgentReply = toToolDetailText(toolMeta.subAgentReply);
+		return {
+			kind: 'result',
+			title: String(
+				toolMeta.title ||
+					(status === 'error' ? '工具结果(失败)' : '工具结果(成功)'),
+			),
+			summary: String(toolMeta.summary || detail || '无返回内容'),
+			detail: detail || '无返回内容',
+			subAgentReply,
+			status,
+		};
+	}
+
+	const content = String(rawContent ?? '').trim();
+	if (!content) {
+		return null;
+	}
+	const callPrefix = content.match(/^(?:🔧|🛠|⚇⚡|⚇)\s*(.+)$/);
+	if (callPrefix) {
+		const stripped = String(callPrefix[1] ?? '').trim();
+		const separatorIndex = stripped.search(/[(:]/);
+		const toolName =
+			separatorIndex > 0
+				? stripped.slice(0, separatorIndex).trim()
+				: stripped.trim();
+		const rawArgs =
+			separatorIndex > 0 ? stripped.slice(separatorIndex + 1).trim() : '';
+		const argsText = rawArgs.replace(/\)+\s*$/, '').trim();
+		return {
+			kind: 'call',
+			title: toolName || 'tool_call',
+			summary: argsText ? `参数: ${argsText}` : '等待执行结果',
+			detail: argsText,
+			status: 'running',
+		};
+	}
+	if (
+		content.startsWith('└─') ||
+		content.startsWith('✓') ||
+		content.startsWith('✗')
+	) {
+		const stripped = content.replace(/^└─\s*/, '');
+		const status = stripped.startsWith('✗') ? 'error' : 'success';
+		const normalized = stripped.replace(/^[✓✗]\s*/, '').trim();
+		return {
+			kind: 'result',
+			title: status === 'error' ? '工具结果(失败)' : '工具结果(成功)',
+			summary: normalized || '无返回内容',
+			detail: normalized || '无返回内容',
+			status,
+		};
+	}
+	return null;
+}
+
+/**
+ * 渲染工具消息卡片.
+ * @param {{title:string,status:'running'|'success'|'error',inputSummary:string,inputDetail:string,outputSummary:string,outputDetail:string}} toolCard 工具卡片数据.
+ * @returns {string}
+ */
+function renderToolCard(toolCard) {
+	const statusClass =
+		toolCard.status === 'error'
+			? 'tool-card-error'
+			: toolCard.status === 'success'
+			? 'tool-card-success'
+			: 'tool-card-running';
+	const statusText =
+		toolCard.status === 'error'
+			? '失败'
+			: toolCard.status === 'success'
+			? '成功'
+			: '执行中';
+	const title = String(toolCard.title ?? 'tool_call');
+	const normalizedTitle = title.toLowerCase();
+	const isSubAgentCard =
+		normalizedTitle.startsWith('sub-agent:') ||
+		normalizedTitle.startsWith('subagent-');
+	const summaryText =
+		toolCard.status === 'running'
+			? toolCard.inputSummary || '等待执行结果'
+			: toolCard.outputSummary || '无返回内容';
+	const compactSummary =
+		summaryText.length <= 120 ? summaryText : `${summaryText.slice(0, 120)}...`;
+	const subAgentSummary =
+		toolCard.status === 'running'
+			? '子代理工作中,请展开下方区块查看.'
+			: '子代理已完成,请展开下方区块查看.';
+	const detailBlocks = [];
+	if (toolCard.inputDetail) {
+		detailBlocks.push(`输入参数:\n${toolCard.inputDetail}`);
+	}
+	if (toolCard.outputDetail) {
+		detailBlocks.push(`返回结果:\n${toolCard.outputDetail}`);
+	}
+	const detailText = detailBlocks.join('\n\n');
+	const needDetails = Boolean(detailText) || summaryText.length > 120;
+	const subAgentTaskText = String(toolCard.inputDetail ?? '').trim();
+	const subAgentProcessText = String(toolCard.subAgentProcess ?? '').trim();
+	const subAgentReplyText = String(toolCard.subAgentReply ?? '').trim();
+	const subAgentSections = isSubAgentCard
+		? `${
+				subAgentTaskText
+					? `<details class="tool-card-details"><summary>任务要求</summary><pre>${escapeHtml(
+							subAgentTaskText,
+					  )}</pre></details>`
+					: ''
+		  }${
+				subAgentProcessText
+					? `<details class="tool-card-details" open><summary>工作过程</summary><pre>${escapeHtml(
+							subAgentProcessText,
+					  )}</pre></details>`
+					: ''
+		  }${
+				subAgentReplyText
+					? `<details class="tool-card-details" open><summary>子代理回复</summary><pre>${escapeHtml(
+							subAgentReplyText,
+					  )}</pre></details>`
+					: ''
+		  }`
+		: '';
+	return `<div class="tool-card ${statusClass}">
+		<div class="tool-card-header">
+			<span class="tool-card-title">${escapeHtml(title)}</span>
+			<span class="tool-card-status">${statusText}</span>
+		</div>
+		<div class="tool-card-summary">${escapeHtml(
+			isSubAgentCard ? subAgentSummary : compactSummary,
+		)}</div>
+		${subAgentSections}
+		${
+			!isSubAgentCard && needDetails
+				? `<details class="tool-card-details"><summary>查看详情</summary><pre>${escapeHtml(
+						detailText || summaryText,
+				  )}</pre></details>`
+				: ''
+		}
+	</div>`;
 }
 
 /**
@@ -231,6 +426,280 @@ function isChatListNearBottom(container) {
 }
 
 /**
+ * 构建聊天区渲染记录.
+ * @returns {Array<{type:'tool',card:any}|{type:'normal',item:any}>}
+ */
+function buildMergedRenderRecords() {
+	const chatRoles = new Set(['user', 'assistant']);
+	const sourceChatMessages = state.chat.messages.filter(item =>
+		chatRoles.has(item?.role),
+	);
+	const mergedChatMessages = [];
+	const pendingToolCards = [];
+	const normalizeToolTitle = title =>
+		String(title ?? '')
+			.trim()
+			.toLowerCase();
+	for (let index = 0; index < sourceChatMessages.length; index += 1) {
+		const item = sourceChatMessages[index];
+		const isUser = item?.role === 'user';
+		if (isUser) {
+			mergedChatMessages.push({type: 'normal', item});
+			continue;
+		}
+		const parsed = parseToolMessage(
+			item?.content ?? '',
+			item?.toolMeta ?? null,
+		);
+		if (parsed?.kind === 'call') {
+			const card = {
+				title: parsed.title,
+				status: 'running',
+				inputSummary: parsed.summary,
+				inputDetail: parsed.detail,
+				outputSummary: '',
+				outputDetail: '',
+			};
+			mergedChatMessages.push({type: 'tool', card});
+			pendingToolCards.push(card);
+			continue;
+		}
+		if (parsed?.kind === 'result') {
+			const parsedTitle = normalizeToolTitle(parsed.title);
+			let fallbackCard = null;
+			let targetCard = null;
+			for (
+				let pendingIndex = pendingToolCards.length - 1;
+				pendingIndex >= 0;
+				pendingIndex -= 1
+			) {
+				const candidate = pendingToolCards[pendingIndex];
+				if (candidate.status !== 'running') {
+					continue;
+				}
+				if (!fallbackCard) {
+					fallbackCard = candidate;
+				}
+				if (
+					parsedTitle &&
+					parsedTitle !== 'tool_call' &&
+					normalizeToolTitle(candidate.title) === parsedTitle
+				) {
+					targetCard = candidate;
+					break;
+				}
+			}
+			const resolvedCard = targetCard || fallbackCard;
+			if (resolvedCard) {
+				resolvedCard.status = parsed.status;
+				resolvedCard.outputSummary = parsed.summary;
+				resolvedCard.outputDetail = parsed.detail;
+				if (
+					normalizeToolTitle(resolvedCard.title).startsWith('subagent-') &&
+					parsed.subAgentReply
+				) {
+					resolvedCard.subAgentReply = parsed.subAgentReply;
+				}
+			} else {
+				mergedChatMessages.push({
+					type: 'tool',
+					card: {
+						title: parsed.title || 'tool_call',
+						status: parsed.status,
+						inputSummary: '未捕获工具调用参数',
+						inputDetail: '',
+						outputSummary: parsed.summary,
+						outputDetail: parsed.detail,
+						subAgentReply: parsed.subAgentReply || '',
+					},
+				});
+			}
+			continue;
+		}
+		mergedChatMessages.push({type: 'normal', item});
+	}
+	const subAgentToolCards = (state.chat.subAgents ?? [])
+		.filter(item => String(item?.nodeId ?? ''))
+		.map(item => {
+			const lines = Array.isArray(item?.lines)
+				? item.lines.map(line => String(line ?? '').trim()).filter(Boolean)
+				: [];
+			const processLines = lines.filter(
+				line =>
+					line.startsWith('💭 ') ||
+					line.startsWith('🔧 ') ||
+					line.startsWith('└─ '),
+			);
+			const replyLines = lines.filter(
+				line =>
+					!line.startsWith('💭 ') &&
+					!line.startsWith('🔧 ') &&
+					!line.startsWith('└─ '),
+			);
+			const processSummary =
+				processLines.length > 0
+					? processLines[processLines.length - 1]
+					: '暂无工作过程';
+			const replySummary =
+				replyLines.length > 0 ? replyLines[replyLines.length - 1] : '';
+			const nodeStatus = String(item?.status ?? 'running');
+			const status = nodeStatus === 'done' ? 'success' : 'running';
+			const agentTitle = String(
+				item?.agentName ?? item?.agentId ?? item?.nodeId ?? 'sub-agent',
+			);
+			return {
+				title: `sub-agent:${agentTitle}`,
+				status,
+				inputSummary: processSummary,
+				inputDetail: processLines.join('\n'),
+				outputSummary: replySummary,
+				outputDetail: replyLines.join('\n'),
+				subAgentProcess: processLines.join('\n'),
+				subAgentReply: replyLines.join('\n'),
+				subAgentAgentId: String(item?.agentId ?? '').trim(),
+			};
+		});
+	const mergedRenderRecords = [...mergedChatMessages];
+	for (const subAgentCard of subAgentToolCards) {
+		const agentId = normalizeToolTitle(subAgentCard.subAgentAgentId);
+		let matchedToolCard = null;
+		if (agentId) {
+			for (
+				let recordIndex = mergedRenderRecords.length - 1;
+				recordIndex >= 0;
+				recordIndex -= 1
+			) {
+				const record = mergedRenderRecords[recordIndex];
+				if (record?.type !== 'tool') {
+					continue;
+				}
+				const cardTitle = normalizeToolTitle(record?.card?.title ?? '');
+				if (cardTitle === `subagent-${agentId}`) {
+					matchedToolCard = record.card;
+					break;
+				}
+			}
+		}
+		if (matchedToolCard) {
+			matchedToolCard.status = subAgentCard.status;
+			matchedToolCard.outputSummary =
+				subAgentCard.outputSummary || matchedToolCard.outputSummary;
+			matchedToolCard.outputDetail =
+				subAgentCard.outputDetail || matchedToolCard.outputDetail;
+			matchedToolCard.subAgentProcess = subAgentCard.subAgentProcess;
+			matchedToolCard.subAgentReply = subAgentCard.subAgentReply;
+			continue;
+		}
+		mergedRenderRecords.push({type: 'tool', card: subAgentCard});
+	}
+	return mergedRenderRecords;
+}
+
+/**
+ * 构建聊天行HTML数组.
+ * @returns {string[]}
+ */
+function buildMessageRowHtmlList() {
+	const mergedRenderRecords = buildMergedRenderRecords();
+	return mergedRenderRecords.map(record => {
+		if (record.type === 'tool') {
+			return `<div class="chat-bubble-wrap chat-bubble-wrap-left chat-bubble-wrap-tool">
+				<span class="chat-avatar">🛠</span>
+				<div>${renderToolCard(record.card)}</div>
+			</div>`;
+		}
+		const item = record.item;
+		const isUser = item.role === 'user';
+		const side = isUser ? 'right' : 'left';
+		const content = String(item.content ?? '');
+		const queueId = String(item?.queueId ?? '');
+		const queueStatus = String(item?.queueStatus ?? '');
+		const isQueuedUser = isUser && queueId && queueStatus === 'queued';
+		const bubbleClass = isUser ? 'chat-bubble-user' : 'chat-bubble-assistant';
+		const avatar = isUser ? '👤' : '🤖';
+		const queueActions = isQueuedUser
+			? `<div class="row" style="margin-top:6px;gap:6px;justify-content:flex-end;">
+				<span class="hint">queued</span>
+				<button type="button" data-action="queue-edit" data-queue-id="${escapeHtml(
+					queueId,
+				)}">编辑</button>
+				<button type="button" data-action="queue-cancel" data-queue-id="${escapeHtml(
+					queueId,
+				)}">撤回</button>
+			</div>`
+			: '';
+		return `<div class="chat-bubble-wrap chat-bubble-wrap-${side}">
+			<span class="chat-avatar">${avatar}</span>
+			<div>
+				<div class="chat-bubble ${bubbleClass}">${escapeHtml(content)}</div>
+				${queueActions}
+			</div>
+		</div>`;
+	});
+}
+
+/**
+ * 仅增量刷新聊天消息列表,避免整页重绘.
+ * @returns {boolean}
+ */
+export function patchChatMessageList() {
+	const chatMessageList = byId('chatMessageList');
+	const chatScrollToBottomBtn = byId('chatScrollToBottomBtn');
+	if (!chatMessageList) {
+		cachedChatRowHtmlList = [];
+		return false;
+	}
+	const previousRows = Array.isArray(cachedChatRowHtmlList)
+		? cachedChatRowHtmlList
+		: [];
+	const nextRows = buildMessageRowHtmlList();
+	let firstDiffIndex = -1;
+	const compareLength = Math.min(previousRows.length, nextRows.length);
+	for (let index = 0; index < compareLength; index += 1) {
+		if (previousRows[index] !== nextRows[index]) {
+			firstDiffIndex = index;
+			break;
+		}
+	}
+	if (firstDiffIndex === -1) {
+		if (previousRows.length === nextRows.length) {
+			return true;
+		}
+		firstDiffIndex = compareLength;
+	}
+	const wrappers = Array.from(chatMessageList.children);
+	if (firstDiffIndex < wrappers.length) {
+		for (
+			let removeIndex = wrappers.length - 1;
+			removeIndex >= firstDiffIndex;
+			removeIndex -= 1
+		) {
+			wrappers[removeIndex]?.remove();
+		}
+	}
+	for (let index = firstDiffIndex; index < nextRows.length; index += 1) {
+		const template = document.createElement('template');
+		template.innerHTML = nextRows[index] || '';
+		if (template.content.firstElementChild) {
+			chatMessageList.appendChild(template.content.firstElementChild);
+		}
+	}
+	cachedChatRowHtmlList = nextRows;
+	if (state.chat.ui.chatAutoScrollEnabled) {
+		chatMessageList.scrollTop = chatMessageList.scrollHeight;
+	} else {
+		state.chat.ui.chatManualScrollTop = chatMessageList.scrollTop;
+	}
+	if (chatScrollToBottomBtn) {
+		chatScrollToBottomBtn.classList.toggle(
+			'is-visible',
+			!isChatListNearBottom(chatMessageList),
+		);
+	}
+	return true;
+}
+
+/**
  * 主渲染函数.
  */
 export function renderApp(actions) {
@@ -291,196 +760,9 @@ export function renderApp(actions) {
 			}</button>`;
 		})
 		.join('');
-	const chatRoles = new Set(['user', 'assistant']);
-	const messageRows = state.chat.messages
-		.filter(item => chatRoles.has(item?.role))
-		.map(item => {
-			const isUser = item.role === 'user';
-			const side = isUser ? 'right' : 'left';
-			const content = String(item.content ?? '');
-			const queueId = String(item?.queueId ?? '');
-			const queueStatus = String(item?.queueStatus ?? '');
-			const isQueuedUser = isUser && queueId && queueStatus === 'queued';
-			const isToolCall = !isUser && content.startsWith('🔧');
-			const isToolResult = !isUser && content.startsWith('└─');
-			const toolExtraClass = isToolCall
-				? ' chat-bubble-tool-call'
-				: isToolResult
-				? ' chat-bubble-tool-result'
-				: '';
-			const bubbleClass = isUser ? 'chat-bubble-user' : 'chat-bubble-assistant';
-			const avatar = isUser
-				? '👤'
-				: isToolCall
-				? '🔧'
-				: isToolResult
-				? '📋'
-				: '🤖';
-			const queueActions = isQueuedUser
-				? `<div class="row" style="margin-top:6px;gap:6px;justify-content:flex-end;">
-					<span class="hint">queued</span>
-					<button type="button" data-action="queue-edit" data-queue-id="${escapeHtml(
-						queueId,
-					)}">编辑</button>
-					<button type="button" data-action="queue-cancel" data-queue-id="${escapeHtml(
-						queueId,
-					)}">撤回</button>
-				</div>`
-				: '';
-			return `<div class="chat-bubble-wrap chat-bubble-wrap-${side}${
-				toolExtraClass ? ' chat-bubble-wrap-tool' : ''
-			}">
-				<span class="chat-avatar">${avatar}</span>
-				<div>
-					<div class="chat-bubble ${bubbleClass}${toolExtraClass}">${escapeHtml(
-				content,
-			)}</div>
-					${queueActions}
-				</div>
-			</div>`;
-		})
-		.join('');
-	const subAgentMap = new Map(
-		(state.chat.subAgents ?? []).map(item => [
-			String(item?.nodeId ?? ''),
-			item,
-		]),
-	);
-	function renderSubAgentNode(nodeId) {
-		const node = subAgentMap.get(String(nodeId));
-		if (!node) {
-			return '';
-		}
-		const safeNodeId = String(node?.nodeId ?? '');
-		if (!safeNodeId) {
-			return '';
-		}
-		const level = Number(node?.level ?? 0);
-		const isExpanded = Boolean(
-			state.chat.ui.subAgentExpandedById?.[safeNodeId],
-		);
-		const children = Array.isArray(node?.children)
-			? node.children.filter(childId =>
-					Boolean(subAgentMap.get(String(childId))),
-			  )
-			: [];
-		const hasChildren = children.length > 0;
-		const lineRows = Array.isArray(node?.lines)
-			? node.lines
-					.map(
-						line =>
-							`<div class="sub-agent-line">${escapeHtml(String(line))}</div>`,
-					)
-					.join('')
-			: '';
-		const usageText = node?.usageText
-			? `<div class="hint">Usage: ${escapeHtml(String(node.usageText))}</div>`
-			: '';
-		const contextText = node?.contextText
-			? `<div class="hint">上下文: ${escapeHtml(
-					String(node.contextText),
-			  )}</div>`
-			: '';
-		const childrenHtml =
-			hasChildren && isExpanded
-				? children.map(childId => renderSubAgentNode(String(childId))).join('')
-				: '';
-		const status = String(node?.status ?? 'running');
-		const isDone = status === 'done';
-		const closeBtn = `<button type="button" class="sub-agent-close-btn" data-action="close-sub-agent" data-node-id="${escapeHtml(
-			safeNodeId,
-		)}">✕</button>`;
-		const statusBadge = isDone
-			? '<span class="sub-agent-status-badge sub-agent-status-done">已完成</span>'
-			: '<span class="sub-agent-status-badge sub-agent-status-running">工作中</span>';
-		return `<section class="card sub-agent-card${
-			isDone ? ' sub-agent-card-done' : ''
-		}" style="margin-left:${Math.max(0, level) * 14}px;">
-			<div class="row sub-agent-header">
-				${
-					hasChildren
-						? `<button type="button" class="sub-agent-toggle-btn" data-action="toggle-sub-agent" data-node-id="${escapeHtml(
-								safeNodeId,
-						  )}">${isExpanded ? '▼' : '▶'}</button>`
-						: ''
-				}
-				<span class="sub-agent-name">${escapeHtml(
-					String(node?.agentName ?? node?.agentId ?? 'sub-agent'),
-				)}</span>
-				${statusBadge}
-				${closeBtn}
-			</div>
-			<div class="sub-agent-log-list">${
-				lineRows || '<div class="hint">暂无过程日志</div>'
-			}</div>
-			${contextText}
-			${usageText}
-			${childrenHtml}
-		</section>`;
-	}
-	const rootSubAgentNodes = (state.chat.subAgents ?? []).filter(item => {
-		const parentNodeId = String(item?.parentNodeId ?? '');
-		if (!parentNodeId) {
-			return true;
-		}
-		return !subAgentMap.has(parentNodeId);
-	});
-	const rootRunningSubAgentNodes = rootSubAgentNodes.filter(
-		item => String(item?.status ?? 'running') !== 'done',
-	);
-	const popupNodeIds = [];
-	const popupNodeIdSeen = new Set();
-	for (const item of rootRunningSubAgentNodes) {
-		const nodeId = String(item?.nodeId ?? '');
-		if (!nodeId || popupNodeIdSeen.has(nodeId)) {
-			continue;
-		}
-		popupNodeIdSeen.add(nodeId);
-		popupNodeIds.push(nodeId);
-	}
-	const popupTotal = popupNodeIds.length;
-	const popupIndexRaw = Number(state.chat.ui.subAgentPopupIndex ?? 0);
-	const popupIndexNormalized = Number.isFinite(popupIndexRaw)
-		? popupIndexRaw
-		: 0;
-	const popupIndex =
-		popupTotal > 0
-			? ((popupIndexNormalized % popupTotal) + popupTotal) % popupTotal
-			: 0;
-	const popupTrackHtml = popupNodeIds
-		.map(nodeId => {
-			const cardHtml = renderSubAgentNode(nodeId);
-			if (!cardHtml) {
-				return '';
-			}
-			return `<div class="sub-agent-popup-slide">${cardHtml}</div>`;
-		})
-		.filter(Boolean)
-		.join('');
-	const subAgentPanelHtml = popupTrackHtml
-		? `<section class="card sub-agent-popup-card">
-			<div class="row sub-agent-popup-header">
-				<span class="hint">子代理并行视图 ${
-					popupTotal > 1 ? `${popupIndex + 1}/${popupTotal}` : ''
-				}</span>
-				<div class="row" style="gap:6px;">
-					<button type="button" data-action="shift-sub-agent-popup" data-offset="-1" ${
-						popupTotal > 1 ? '' : 'disabled'
-					}>←</button>
-					<button type="button" data-action="shift-sub-agent-popup" data-offset="1" ${
-						popupTotal > 1 ? '' : 'disabled'
-					}>→</button>
-				</div>
-			</div>
-			<div class="sub-agent-popup-viewport">
-				<div class="sub-agent-popup-track" style="transform: translateX(-${
-					popupIndex * 100
-				}%);">
-					${popupTrackHtml}
-				</div>
-			</div>
-		</section>`
-		: '';
+	const messageRowHtmlList = buildMessageRowHtmlList();
+	const messageRows = messageRowHtmlList.join('');
+	cachedChatRowHtmlList = messageRowHtmlList;
 	/**
 	 * 渲染 TODO 树状结构.
 	 * @param {Array} todos TODO 列表.
@@ -691,6 +973,7 @@ export function renderApp(actions) {
 				state.git.initLoading ? 'disabled' : ''
 		  }>初始化 Git</button></div>`;
 
+	const chatRoles = new Set(['user', 'assistant']);
 	const logMessageRows = state.chat.messages
 		.filter(item => !chatRoles.has(item?.role))
 		.slice(-30)
@@ -775,7 +1058,6 @@ export function renderApp(actions) {
 							↓ 最新
 						</button>
 					</div>
-					${subAgentPanelHtml}
 
 					<textarea id="chatInput" class="chat-input" placeholder="输入消息并发送...">${escapeHtml(
 						state.chat.ui.pendingDraftText || '',
@@ -847,7 +1129,7 @@ export function renderApp(actions) {
 				}>停止全部</button>
 				<button id="saveWorkDirBtn" type="button" ${
 					state.control.actionLoading ? 'disabled' : ''
-				}>保存路径</button>
+				}>保存为常用路径</button>
 			</div>
 			<div class="row server-tabs">${
 				serverTabButtons || '<span class="hint">暂无服务端</span>'
@@ -1223,37 +1505,6 @@ export function renderApp(actions) {
 			const target = event.currentTarget;
 			const infoId = target?.getAttribute('data-info-id') ?? '';
 			actions.resumeInfoCountdown(infoId);
-		});
-	}
-
-	for (const item of document.querySelectorAll(
-		'[data-action="toggle-sub-agent"]',
-	)) {
-		item.addEventListener('click', event => {
-			const target = event.currentTarget;
-			const nodeId = target?.getAttribute('data-node-id') ?? '';
-			actions.toggleSubAgentNode(nodeId);
-		});
-	}
-
-	for (const item of document.querySelectorAll(
-		'[data-action="shift-sub-agent-popup"]',
-	)) {
-		item.addEventListener('click', event => {
-			const target = event.currentTarget;
-			const offset = Number(target?.getAttribute('data-offset') ?? 0);
-			actions.shiftSubAgentPopup(offset);
-		});
-	}
-
-	// 子代理面板关闭按钮
-	for (const item of document.querySelectorAll(
-		'[data-action="close-sub-agent"]',
-	)) {
-		item.addEventListener('click', event => {
-			const target = event.currentTarget;
-			const nodeId = target?.getAttribute('data-node-id') ?? '';
-			actions.closeSubAgent(nodeId);
 		});
 	}
 

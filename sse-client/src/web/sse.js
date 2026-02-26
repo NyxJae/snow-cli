@@ -22,11 +22,16 @@ import {escapeHtml} from './utils.js';
 
 /**
  * 创建SSE与聊天动作.
- * @param {{render:()=>void,refreshSessionList:(serverId?:string)=>Promise<void>,loadSelectedSession?:(sessionId:string)=>Promise<void>}} options 依赖项.
+ * @param {{render:()=>void,renderChatOnly?:()=>void,refreshSessionList:(serverId?:string)=>Promise<void>,loadSelectedSession?:(sessionId:string)=>Promise<void>}} options 依赖项.
  * @returns {{connectSelectedServer:(isReconnect?:boolean,serverId?:string)=>void,closeConnection:(reason?:'manual'|'error',serverId?:string)=>void,reconnectNow:()=>void,sendChat:()=>Promise<void>,openLogDetail:(eventId:string)=>void,openLogTextDetail:(role:string,content:string,timestamp?:string)=>void,closeLogDetail:()=>void}}
  */
 export function createSseActions(options) {
-	const {render, refreshSessionList, loadSelectedSession} = options;
+	const {
+		render,
+		renderChatOnly = render,
+		refreshSessionList,
+		loadSelectedSession,
+	} = options;
 
 	/**
 	 * 获取当前Tab的压缩流程状态.
@@ -1028,6 +1033,12 @@ export function createSseActions(options) {
 		'todo_update',
 		'todos',
 	]);
+	const chatOnlyRenderEventTypes = new Set([
+		'message',
+		'tool_call',
+		'tool_result',
+		'sub_agent_message',
+	]);
 
 	/**
 	 * 处理SSE事件,未知事件静默忽略.
@@ -1190,6 +1201,15 @@ export function createSseActions(options) {
 				pushMessage(
 					'assistant',
 					argsSummary ? `🔧 ${toolName}(${argsSummary})` : `🔧 ${toolName}`,
+					{
+						toolMeta: {
+							kind: 'call',
+							title: toolName,
+							summary: argsSummary ? `参数: ${argsSummary}` : '等待执行结果',
+							detail: fn?.arguments ?? '',
+							status: 'running',
+						},
+					},
 				);
 				break;
 			}
@@ -1214,11 +1234,7 @@ export function createSseActions(options) {
 							targetNode.status = 'running';
 							targetNode.result = '工作中';
 							if (resultContent) {
-								targetNode.lines.push(
-									resultContent.length > 160
-										? `${resultContent.slice(0, 160)}...`
-										: resultContent,
-								);
+								targetNode.lines.push(resultContent);
 								targetNode.lines = targetNode.lines.slice(-60);
 							}
 						}
@@ -1229,6 +1245,15 @@ export function createSseActions(options) {
 					pushMessage(
 						'assistant',
 						`✗ 工具错误: ${resultContent.slice(0, 200)}`,
+						{
+							toolMeta: {
+								kind: 'result',
+								title: toolName || 'tool_call',
+								summary: `工具错误: ${resultContent.slice(0, 200)}`,
+								detail: resultContent,
+								status: 'error',
+							},
+						},
 					);
 				} else if (status === 'success' && resultContent) {
 					let summary = '';
@@ -1303,7 +1328,15 @@ export function createSseActions(options) {
 					}
 
 					if (summary) {
-						pushMessage('assistant', `└─ ${summary}`);
+						pushMessage('assistant', `└─ ${summary}`, {
+							toolMeta: {
+								kind: 'result',
+								title: toolName || 'tool_call',
+								summary,
+								detail: resultContent,
+								status: 'success',
+							},
+						});
 					}
 				}
 				setAssistantWorking(false);
@@ -1664,12 +1697,8 @@ export function createSseActions(options) {
 					const resultContent = String(payload?.content ?? '');
 					const isError = resultContent.startsWith('Error:');
 					const icon = isError ? '✗' : '•';
-					const summary =
-						resultContent.length > 80
-							? resultContent.substring(0, 80) + '...'
-							: resultContent;
 					node.lines.push(
-						`└─ ${icon} ${toolName ? toolName + ': ' : ''}${summary}`,
+						`└─ ${icon} ${toolName ? toolName + ': ' : ''}${resultContent}`,
 					);
 					node.lines = node.lines.slice(-60);
 				} else if (
@@ -1843,15 +1872,22 @@ export function createSseActions(options) {
 
 			eventSource.onmessage = raw => {
 				let handled = false;
+				let eventType = '';
 				withServerTabContext(serverId, () => {
 					try {
-						handled = handleSseEvent(JSON.parse(raw.data), serverId);
+						const parsedEvent = JSON.parse(raw.data);
+						eventType = String(parsedEvent?.type ?? '');
+						handled = handleSseEvent(parsedEvent, serverId);
 					} catch {
 						// 非法事件体忽略.
 					}
 				});
 				if (handled) {
-					render();
+					if (chatOnlyRenderEventTypes.has(eventType)) {
+						renderChatOnly();
+					} else {
+						render();
+					}
 				}
 			};
 

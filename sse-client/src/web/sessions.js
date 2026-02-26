@@ -217,9 +217,7 @@ export function createSessionActions(options) {
 			if (toolName.startsWith('subagent-') && data.result) {
 				const txt = String(data.result);
 				const icon = data.success === false ? '✗' : '✓';
-				return txt.length > 120
-					? `${icon} ${txt.slice(0, 120)}...`
-					: `${icon} ${txt}`;
+				return `${icon} ${txt}`;
 			}
 			if (toolName === 'filesystem-read' && data.totalLines !== undefined) {
 				const readLines = data.endLine
@@ -278,6 +276,8 @@ export function createSessionActions(options) {
 		const messages = [];
 		/** @type {Map<string,string>} tool_call_id → toolName */
 		const toolCallMap = new Map();
+		const isToolCallLikeText = text =>
+			/^(?:🔧|🛠|⚇⚡|⚇)\s*/.test(String(text ?? '').trim());
 
 		for (const item of history) {
 			const role = String(item?.role ?? item?.sender ?? '');
@@ -289,11 +289,15 @@ export function createSessionActions(options) {
 
 			if (role === 'assistant') {
 				const text = normalizeHistoryMessageText(item);
-				if (text) {
+				const hasToolCalls =
+					Array.isArray(item?.tool_calls) && item.tool_calls.length > 0;
+				const shouldKeepAssistantText =
+					text && !(hasToolCalls && isToolCallLikeText(text));
+				if (shouldKeepAssistantText) {
 					messages.push({role, content: text, timestamp});
 				}
 				// 展开 tool_calls 为 🔧 摘要行
-				if (Array.isArray(item?.tool_calls)) {
+				if (hasToolCalls) {
 					for (const tc of item.tool_calls) {
 						const toolName = tc?.function?.name ?? 'unknown_tool';
 						if (tc?.id) {
@@ -306,20 +310,49 @@ export function createSessionActions(options) {
 								? `🔧 ${toolName}(${argsSummary})`
 								: `🔧 ${toolName}`,
 							timestamp,
+							toolMeta: {
+								kind: 'call',
+								title: toolName,
+								summary: argsSummary ? `参数: ${argsSummary}` : '等待执行结果',
+								detail: tc?.function?.arguments ?? '',
+								status: 'running',
+							},
 						});
 					}
 				}
 			} else if (role === 'tool') {
 				const toolCallId = item?.tool_call_id ?? '';
-				const toolName = toolCallMap.get(toolCallId) || '';
+				const fallbackToolName = String(
+					item?.name ?? item?.toolName ?? item?.tool_name ?? item?.tool ?? '',
+				);
+				const toolName = toolCallMap.get(toolCallId) || fallbackToolName;
 				const status = item?.messageStatus ?? 'success';
 				const content = String(item?.content ?? '');
 				const summary = summarizeToolResult(toolName, content, status);
+				let subAgentReply = '';
+				if (toolName.startsWith('subagent-') && content) {
+					try {
+						const resultData = JSON.parse(content);
+						subAgentReply = String(
+							resultData?.result ?? resultData?.content ?? '',
+						).trim();
+					} catch {
+						subAgentReply = '';
+					}
+				}
 				if (summary) {
 					messages.push({
 						role: 'assistant',
 						content: `└─ ${summary}`,
 						timestamp,
+						toolMeta: {
+							kind: 'result',
+							title: toolName || 'tool_call',
+							summary,
+							detail: content,
+							subAgentReply,
+							status: status === 'error' ? 'error' : 'success',
+						},
 					});
 				}
 			} else if (role === 'user' || role === 'error') {
@@ -386,6 +419,10 @@ export function createSessionActions(options) {
 				tab.chat.ui.flushingQueuedMessage = false;
 				tab.chat.ui.queuedUserMessages = [];
 				tab.chat.ui.queuedMessageSeq = 0;
+				tab.chat.subAgents = [];
+				tab.chat.ui.subAgentExpandedById = {};
+				tab.chat.ui.subAgentPopupIndex = 0;
+				tab.chat.ui.subAgentToolCallNodeIds = [];
 				const history = Array.isArray(payload.session.messages)
 					? payload.session.messages
 					: [];

@@ -946,6 +946,45 @@ class SSEManager {
 			toolNames.forEach(name => approvedToolsSet.add(name));
 		};
 
+		const subAgentContextUsageEmitAt = new Map<string, number>();
+		const SUB_AGENT_CONTEXT_USAGE_INTERVAL_MS = 1200;
+		const subAgentForwardableTypes = new Set([
+			'tool_calls',
+			'tool_result',
+			'subagent_result',
+			'agent_spawned',
+			'spawned_agent_completed',
+			'done',
+			'context_usage',
+		]);
+		const shouldForwardSubAgentMessage = (subAgentMessage: any): boolean => {
+			const payload = subAgentMessage?.message ?? {};
+			const payloadType = String(payload?.type ?? '');
+			if (!payloadType || !subAgentForwardableTypes.has(payloadType)) {
+				return false;
+			}
+			if (payloadType !== 'context_usage') {
+				return true;
+			}
+			const contextKey = String(
+				subAgentMessage?.instanceId ?? subAgentMessage?.agentId ?? '',
+			);
+			if (!contextKey) {
+				return false;
+			}
+			const now = Date.now();
+			const lastEmitAt = subAgentContextUsageEmitAt.get(contextKey) ?? 0;
+			const percentage = Number(payload?.percentage ?? 0);
+			if (
+				now - lastEmitAt < SUB_AGENT_CONTEXT_USAGE_INTERVAL_MS &&
+				percentage < 100
+			) {
+				return false;
+			}
+			subAgentContextUsageEmitAt.set(contextKey, now);
+			return true;
+		};
+
 		// 调用对话处理逻辑
 		try {
 			const result = await handleConversationWithTools({
@@ -962,8 +1001,11 @@ class SSEManager {
 				addMultipleToAlwaysApproved,
 				yoloModeRef: {current: message.yoloMode || false}, // 支持客户端传递 YOLO 模式
 				setContextUsage,
-				// 透传原始子代理消息, 让客户端能渲染子代理面板和插嘴下拉框
+				// 子代理事件只转发关键单元,避免 token 级流式导致前端高频重绘.
 				onRawSubAgentMessage: subAgentMessage => {
+					if (!shouldForwardSubAgentMessage(subAgentMessage)) {
+						return;
+					}
 					sendEvent({
 						type: 'sub_agent_message',
 						data: subAgentMessage,

@@ -48,9 +48,9 @@
     {
       "id": "notebook-1771515649312_x6aph0c29",
       "filePath": "requirements/全平台网页版Snow SSE客户端需求.md",
-      "note": "职责: 正式 Web SSE 客户端(sse-client/)的唯一需求基线(SSoT).定义信息架构,UI 布局规则,本地控制 API 契约,以及验收标准.\n\n接口摘要:\n- 输入: 用户目标与现有 SSE 服务端能力边界.\n- 输出:\n  - Web 客户端必须实现的页面结构(聊天视图 vs Git 视图平级切换),弹窗交互(审批/提问),以及 Git 基础能力.\n  - 本地控制 API 的最小端点集合(/api/servers...).\n\n验收口径更新(必须遵守,以 2.5 为准):\n- 服务端选择下拉框(serverSelect)已移除,服务切换仅通过顶部服务端 Tab.\n- 连接控制区移除\"连接 SSE\"按钮(connectBtn),统一为单一\"重连\"按钮(reconnectBtn).\n- 每个服务端 Tab 下连接控制固定为两个按钮:\"重连\"+\"关闭\"(closeServerBtn 关闭当前服务端).\n- \"停止全部\"属于服务管理区,不属于每个 Tab 的连接控制区(避免验收歧义).\n\n依赖拓扑:\n- 被依赖: sse-client/ 子项目的 UI/状态/控制 API 设计与实现.\n- 参考: docs/usage/zh/20.SSE服务模式.md(服务端协议),requirements/SSE客户端适配主代理.md(主代理事件/错误码).\n\n避坑指南:\n- 本文档为最终口径,与任何旧描述冲突时以本文档为准.\n- Git 视图隐藏范围,日志弹窗仅事件流,TODO 常驻等规则必须在实现中严格对齐.\n- 认证口径为 Web 入口门禁,不是要求改造 Snow SSE 各业务端点逐请求鉴权.",
+      "note": "职责: 正式 Web SSE 客户端的唯一需求基线(SSoT).仅描述目标需求,模块边界,验收口径,不记录开发过程.\n\n当前短线优先级口径(已切换):\n- 本轮优先实现子代理并入工具卡片体系,以 2.9 与验收 875-876 为执行主线.\n- 子代理必须满足: 单卡片生命周期(执行中->完成),输入摘要常显,输入详情默认折叠,工作过程/最终回复区块按数据存在性条件显示.\n- 子代理不再使用独立专门展示区域,统一纳入聊天主区工具卡片流.\n- 输入框焦点保持(2.7 相关与验收 874)明确后置到下一轮独立任务,不纳入本轮 DoD.\n\n依赖拓扑:\n- 被依赖: CurrentTaskPlan.md 的短线拆解,sse-client/src/web/{sse.js,render.js,sessions.js,styles.css} 的实现与验收.\n- 参考: docs/usage/zh/20.SSE服务模式.md,requirements/SSE客户端适配主代理.md.\n\n避坑指南:\n- 子代理并发事件必须有稳定关联键,避免结果串卡.\n- 历史重建必须复用实时归并规则,避免拆卡或重复卡.\n- 验收条目必须保持结果导向,禁止过程描述.",
       "createdAt": "2026-02-19T23:40:49.312",
-      "updatedAt": "2026-02-21T20:17:37.305"
+      "updatedAt": "2026-02-26T15:14:20.921"
     }
   ],
   "requirements/合并到0.6.32冲突解决需求文档.md": [
@@ -512,9 +512,9 @@
     {
       "id": "notebook-1771516241433_9nd0jazox",
       "filePath": "sse-client/src/web/",
-      "note": "职责补充(架构约束):\n- 采用\"渲染函数 + 小组件\"的模式,避免引入虚拟 DOM 框架.\n- 对复杂交互(会话管理弹窗,提问弹窗,Git diff)优先采用 view-model(纯数据)驱动渲染,减少直接 DOM 操作的分支.\n\n避坑指南补充:\n- 事件日志与 TODO: 只消费已收到的 SSE 事件,不新增后端日志查询 API(需求排除项).\n- unknown event.type: 必须在统一分发层忽略,不要在各视图重复写 switch.\n\n扩展点:\n- 未来若要引入微型模板/组件库,必须先证明其可被 tree-shake 且不引入运行时大依赖.",
+      "note": "职责: sse-client Web 模块目录级架构约束,定义交互分层,状态归属,与演进边界.\n\n本轮新增架构规范:\n- 聊天交互控制最小闭环必须覆盖: 自动置底,中断,回退回填,工作中可排队发送,撤回后编辑.\n- 底部状态栏作为\"会话运行态观察面\",必须展示 sessionWorkStatus(工作中/已停止),且与 API Profile,Token,KV,连接,YOLO 同层并列.\n- \"压缩\"按钮继续保留在聊天操作区,职责仅限当前会话标准压缩.\n- 子代理显示策略冻结,本轮不得引入破坏性改动.\n- 子代理工具并入工具卡片体系,遵循单卡片状态流转(call -> result)与统一卡片结构.\n- 历史恢复与实时流式渲染必须共享同一子代理回复字段契约(subAgentReply),保证新旧会话一致显示.\n- 聊天区渲染策略优先增量更新(chat-only),无法增量时允许回退全量渲染作为兜底.\n\n依赖拓扑约束:\n- render.js 负责 UI 绑定与工具卡片合并渲染.\n- sse.js 负责事件与队列调度.\n- state.js 负责状态事实源.\n- sessions.js 负责回退点与会话载入及历史消息重建.\n\n验收口径:\n- 同一工具调用在 UI 中仅呈现单卡片生命周期,不应出现重复 call/result 卡.\n- subagent-* 卡片在实时与历史两种路径下均可见\"子代理回复\"区块,且内容尽量完整.\n- 高频消息场景下聊天区不应发生整区闪烁式重绘,仅允许兜底场景触发全量重绘.\n\n避坑指南:\n- 禁止把需求过程记录写入蓝图笔记,蓝图仅保留目标约束,接口边界,验收口径.\n- 浏览器验证条目保持中性描述,不写开发历程或修复日志.",
       "createdAt": "2026-02-19T23:50:41.433",
-      "updatedAt": "2026-02-19T23:50:41.433"
+      "updatedAt": "2026-02-26T17:53:15.372"
     },
     {
       "id": "notebook-1771515826002_se55c2j3t",
@@ -600,43 +600,36 @@
     {
       "id": "notebook-1771680138288_w3359bvgo",
       "filePath": "sse-client/src/web/render.js",
-      "note": "⚠️ 实现要点补充(本轮需求: 点击左侧最近会话继续会话)\n\n渲染侧栏(session-list)时每个 item 有 data-session-id,目前 click handler 仅调用 actions.selectRecentSession(sessionId).该行为只更新 currentSessionId/选中态,不会请求 /session/load,因此不会真正\"继续会话\".\n\n建议(最小改动,保持分层):\n- render.js 点击 handler 改为调用 actions.loadSelectedSession(sessionId) (或先 selectRecentSession 再 loadSelectedSession,但需避免重复 render/双请求).\n- 为避免重复请求: 若 sessionId === state.chat.currentSessionId,可以只 selectRecentSession 或直接 return.\n\n注意事项:\n- 必须保持多服务端隔离: click handler 不应直接写 state,只能通过 actions,由 actions 内部使用 withServerTabContext(serverId) 写入对应 slice.\n- 历史消息过滤/摘要属于 sessions.js,render.js 不得做 tool/tool_calls 过滤(避免逻辑散落,也避免破坏实时 SSE 消息展示).\n- 事件绑定需防重复: renderApp 每次重新 innerHTML 后会重新绑定,因此 handler 内避免额外 render() 造成可见闪烁.",
+      "note": "职责: Web 聊天主视图渲染与事件绑定中枢.只负责把 state 渲染为 DOM,并把用户操作路由到 actions,不承载业务编排.\n\n本轮架构口径(必须落实):\n- 保留\"压缩\"按钮,语义限定为\"当前会话标准压缩\",不可与中断/回退复用同一状态位.\n- 子代理显示策略本轮不改动,现有 subAgentPanel 的显示/隐藏与交互保持兼容.\n- 聊天区自动置底规则必须严格执行:\n  1) 默认自动置底.\n  2) 用户手动滚离底部后暂停自动置底.\n  3) 用户滚回底部,或用户发送新消息后恢复自动置底.\n- 会话控制区必须提供\"中断\"与\"回退\"按钮,且\"回退\"成功后需要把回退点消息原文写回输入框.\n- 工具卡片渲染采用单卡片状态流转,同一 tool_call 在 result 到达后原位更新为完成态,避免 call/result 双卡片并存.\n- 子代理工具卡片的条件区块顺序固定为: 任务要求 -> 工作过程 -> 子代理回复.\n\n接口摘要:\n- 输入: state.chat.*(messages,ui,statusBar,dialogs),state.git.view.\n- 输出: 聊天主区 DOM + 按钮事件绑定 + 滚动状态联动.\n- 工具消息解析契约: parseToolMessage(result) 必须透传 toolMeta.subAgentReply.\n- 工具合并契约: buildMergedRenderRecords 在 call/result 合并时,若卡片为 subagent-* 且 result 含 subAgentReply,必须回填到目标卡片.\n\n依赖拓扑:\n- 依赖: state.js(状态源),app.js(actions 注入),sessions.js(回退点/会话加载动作).\n- 被依赖: app.js 的 render 生命周期.\n\n避坑指南:\n- render 层不得直接修改业务状态,只允许通过 actions 或 state 的受控字段写入.\n- 自动置底判定阈值与\"手动滚动\"状态必须是单一事实源,避免出现发送后仍不跟底.\n- 回退后输入框回填必须使用\"回退点原文\",不能使用渲染后的摘要文本.\n- 聊天区刷新必须优先 chat-only 局部更新,仅在无法定位容器或异常场景时回退到全量重绘,避免高频事件下闪烁与滚动抖动.",
       "createdAt": "2026-02-21T21:22:18.288",
-      "updatedAt": "2026-02-21T21:22:18.288"
-    },
-    {
-      "id": "notebook-1771676257168_wqpfaa3uf",
-      "filePath": "sse-client/src/web/render.js",
-      "note": "职责: Web 控制面(无框架)的核心渲染与 DOM 事件绑定层,把 state/view-model 渲染为页面 HTML,并在 render 后进行一次性事件绑定.\n\n边界(本阶段已固化,验收口径):\n- 服务端切换: 禁止使用下拉框(serverSelect).服务选择仅通过顶部 server tabs.\n- 连接控制区(Tab 连接控制): 每个 Tab 下只允许 2 个按钮:\n  1) 重连(reconnectBtn).\n  2) 关闭(closeServerBtn).\n- 禁止出现/绑定\"连接 SSE\"按钮(connectBtn).任何连接恢复动作统一走\"重连\"语义.\n- closeServerBtn 必须调用 stopCurrentServer(关闭当前 Tab 对应的服务端),不得误连 stopAll.\n- \"停止全部\"(stopAllServersBtn)属于服务管理区,不属于 Tab 连接控制区,避免验收歧义.\n\n新增契约(本轮需求: 点击最近会话继续会话):\n- 左侧\"最近5会话\"列表项点击,不得仅 selectRecentSession(sessionId),必须触发 loadSelectedSession(sessionId) 以真正\"继续该会话\"(拉历史消息并绑定会话).\n- 历史消息去噪/摘要逻辑必须在 sessions.js(loadSelectedSession) 内完成,render.js 只消费 state.chat.messages(最终展示数据),不承担协议解析.\n\n接口摘要:\n- 输入: state(包含 control.selectedServerId,control.actionLoading,connection.status 等).\n- 输出: 字符串 HTML + DOM 事件监听(调用 actions.*).\n\n依赖拓扑:\n- 依赖: web/state(actions,state shape),web/utils(escapeHtml,byId).\n- 被依赖: web/app.js(或入口)触发 render/rehydrate.\n\n避坑指南:\n- 事件绑定必须与 DOM id 完全一致,render 变更后需同步调整绑定,避免幽灵按钮/重复绑定.\n- 禁止把 stopAll 放进 Tab 区域(无论 UI 还是事件),否则会破坏多服务端隔离验收口径.\n- 最近会话 click handler 要防止重复触发两次 render 导致的重复请求: 建议 click handler 里只调用一次 loadSelectedSession,selectRecentSession 由 loadSelectedSession 成功后统一设置.",
-      "createdAt": "2026-02-21T20:17:37.168",
-      "updatedAt": "2026-02-21T21:21:06.014"
+      "updatedAt": "2026-02-26T17:53:14.890"
     }
   ],
   "sse-client/src/web/sessions.js": [
     {
       "id": "notebook-1771680023167_oigbzrqy6",
       "filePath": "sse-client/src/web/sessions.js",
-      "note": "职责: Web 端会话管理动作层(无框架).聚焦于会话列表的拉取/分页/选择/继续/删除等流程,并负责把“会话选择”转化为 state.chat.currentSessionId 变更与历史消息加载.\n\n不该做什么:\n- 不处理 SSE 事件解析(由 web/sse.js 统一分发).\n- 不直接操作 DOM(除开 modal 的 hidden class),避免业务逻辑散落在 render.js.\n- 不跨 serverId 读写任何可变状态(必须使用 ensureServerTab/withServerTabContext).\n\n接口摘要:\n- createSessionActions({ render, getBaseUrl }) ->\n  - refreshSessionList(page?, serverId?): Promise<void>\n  - openSessionModal()/closeSessionModal()\n  - selectRecentSession(sessionId)\n  - prevSessionPage()/nextSessionPage()\n  - loadSelectedSession(sessionId): Promise<void>\n  - deleteSelectedSession(sessionId): Promise<void>\n\n依赖拓扑:\n- 依赖: web/state.js(ensureServerTab,setSessions,pushMessage,syncCurrentSessionEvents,clearSessionAttention,clearTodoUnread),以及 app.js 注入的 getBaseUrl.\n- 被依赖: web/app.js(actions 组装),web/render.js(事件绑定调用 actions.*).\n\n精简历史消息展示策略(契约,来自示例客户端与 TUI 经验):\n- loadSelectedSession() 将 /session/load 返回的 session.messages 转为 UI 展示消息时,必须执行“去噪/摘要”:\n  - 仅展示 role in ['system','user','assistant'] 的文本内容.\n  - role==='tool' 的 tool 结果消息默认隐藏.\n  - assistant.tool_calls 默认不展开参数,仅追加 system 摘要行: \"工具调用: <toolName>\".\n  - user.images/多模态内容用占位符显示(\"[包含图片]\")或拼接文本.\n- 上述策略必须做到确定性与向后兼容,即遇到未知字段要安全降级为 String(...).\n\n避坑指南:\n- 点击左侧最近会话只更新 currentSessionId 不足够.必须同时触发 loadSelectedSession(sessionId) 才能做到\"继续该会话\"(加载历史+绑定会话).\n- loadSelectedSession() 内部必须使用 withServerTabContext(serverId, ...) 包裹所有 state 写操作,避免 Tab 串会话.\n- refreshSessionList() 的 requestKey 防抖必须保留,避免慢请求覆盖新页.\n- 失败口径: 会话列表/加载失败不应阻断聊天主流程,仅 pushMessage('error',...) 并 render().",
+      "note": "职责: Web 端会话管理动作层(无框架).聚焦于会话列表的拉取/分页/选择/继续/删除等流程,并负责把\"会话选择\"转化为 state.chat.currentSessionId 变更与历史消息加载.\n\n不该做什么:\n- 不处理 SSE 事件解析(由 web/sse.js 统一分发).\n- 不直接操作 DOM(除开 modal 的 hidden class),避免业务逻辑散落在 render.js.\n- 不跨 serverId 读写任何可变状态(必须使用 ensureServerTab/withServerTabContext).\n\n接口摘要:\n- createSessionActions({ render, getBaseUrl }) ->\n  - refreshSessionList(page?, serverId?): Promise<void>\n  - openSessionModal()/closeSessionModal()\n  - selectRecentSession(sessionId)\n  - prevSessionPage()/nextSessionPage()\n  - loadSelectedSession(sessionId): Promise<void>\n  - deleteSelectedSession(sessionId): Promise<void>\n\n依赖拓扑:\n- 依赖: web/state.js(ensureServerTab,setSessions,pushMessage,syncCurrentSessionEvents,clearSessionAttention,clearTodoUnread),以及 app.js 注入的 getBaseUrl.\n- 被依赖: web/app.js(actions 组装),web/render.js(事件绑定调用 actions.*).\n\n历史消息重建策略(契约):\n- loadSelectedSession() 将 /session/load 返回的 session.messages 转为 UI 展示消息时,必须执行\"去噪/摘要\"与结构恢复:\n  - role in ['system','user','assistant'] 保持文本展示.\n  - role==='tool' 默认不展开为独立正文消息,而是按工具结果摘要写入 assistant 工具结果消息.\n  - assistant.tool_calls 默认不展开参数,仅追加 system 摘要行: \"工具调用: <toolName>\".\n  - user.images/多模态内容用占位符显示(\"[包含图片]\")或拼接文本.\n- 子代理历史恢复补充契约:\n  - 当 role==='tool' 且 toolName 以 subagent- 开头时,必须从 tool result JSON 的 result/content 提取文本,写入 toolMeta.subAgentReply.\n  - summarizeToolResult 对 subagent- 结果不得做 120 字符截断,应返回完整结果文本摘要,保证\"子代理回复\"区块可复现.\n- 上述策略必须做到确定性与向后兼容,即遇到未知字段要安全降级为 String(...).\n\n避坑指南:\n- 点击左侧最近会话只更新 currentSessionId 不足够.必须同时触发 loadSelectedSession(sessionId) 才能做到\"继续该会话\"(加载历史+绑定会话).\n- loadSelectedSession() 内部必须使用 withServerTabContext(serverId, ...) 包裹所有 state 写操作,避免 Tab 串会话.\n- refreshSessionList() 的 requestKey 防抖必须保留,避免慢请求覆盖新页.\n- 失败口径: 会话列表/加载失败不应阻断聊天主流程,仅 pushMessage('error',...) 并 render().",
       "createdAt": "2026-02-21T21:20:23.167",
-      "updatedAt": "2026-02-21T21:20:23.167"
+      "updatedAt": "2026-02-26T17:53:15.155"
     }
   ],
   "sse-client/src/web/sse.js": [
     {
       "id": "notebook-1771680124830_riwy79zc9",
       "filePath": "sse-client/src/web/sse.js",
-      "note": "职责: Web 端 Snow SSE 连接与事件分发层.负责对单个 serverTab 建立/关闭/重连 EventSource,并将 SSE event.type 分发到 state 更新,以及触发 dialogs/tips.\n\n不该做什么:\n- 不加载历史会话消息(/session/load),该职责归 sessions.js.\n- 不在此处实现 render.js 的 DOM 事件绑定.\n\n接口摘要:\n- createSseActions({ render, refreshSessionList }) ->\n  - connectSelectedServer(isReconnect?, serverId?)\n  - closeConnection(reason?, serverId?)\n  - reconnectNow()\n  - sendChat()\n  - openLogDetail(eventId)/closeLogDetail()\n\n关键架构约束:\n- unknown event.type 必须静默忽略(knownEventTypes 白名单).\n- 多服务端隔离: handleSseEvent(event, serverId) 与 withServerTabContext(serverId, ...) 必须贯穿所有状态写入.\n- tips 触发范围固定: 仅 tool_confirmation_request,user_question_request,complete 三类(并维持 allowCurrentSession 语义).\n- 会话维度事件: sessionScopedEventTypes 中的事件,若 event.data.sessionId 缺失,必须绑定到当前 state.chat.currentSessionId 以保证日志弹窗正确过滤.\n\n与本轮需求的边界:\n- sse.js 只负责实时 SSE message 事件 append 到 state.chat.messages(pushMessage).历史消息精简展示仅对 /session/load 返回的 session.messages 生效,必须在 sessions.js 完成,不要在此处对 pushMessage 做全局过滤(否则会误伤实时交互与错误提示).\n\n避坑指南:\n- Tab 切换后旧连接事件仍可能到达,必须确保 handleSseEvent 使用 serverId 参数正确写入对应 slice.\n- handleSseEvent('message') 当前将 event.data.content 渲染为 assistant,但服务端也会发 role:'user' 的 message.后续若要增强,应在 handleSseEvent 内统一根据 event.data.role 决定 pushMessage role,同时保持向后兼容.",
+      "note": "职责: Web SSE 连接与会话消息投递编排层.负责 EventSource 分发,发送消息,队列冲刷,会话级执行状态同步.\n\n本轮架构口径(必须落实):\n- 主代理工作中允许继续发送消息,新消息进入 queuedUserMessages 队列,保持 FIFO 发送.\n- 队列消息必须支持\"撤回后编辑\":\n  - 仅 queued/sending 前可撤回.\n  - 撤回后将原文与图片元数据回填输入草稿区,供用户编辑后重发.\n- \"中断\"动作只影响当前执行中的会话轮次,不得清空已排队但未确认的用户草稿.\n- 未知 SSE event.type 继续容错忽略,不得污染工作状态机.\n\n接口摘要:\n- createSseActions({ render, refreshSessionList }) 提供 connect/close/reconnect/sendChat/rollback 等动作.\n- 队列相关: enqueueUserMessage(),flushQueuedMessagesIfNeeded(),setQueueMessageStatus().\n\n依赖拓扑:\n- 依赖: state.js(pushMessage,withServerTabContext,状态字段),dialogs.js.\n- 被依赖: render.js 事件触发的 actions.\n\n避坑指南:\n- 队列与会话工作状态要解耦,避免 complete 事件提前把仍有 queued 消息的会话标记为\"已停止\".\n- 发送失败回退 queued 状态时,必须保留原始内容,不可丢失编辑上下文.",
       "createdAt": "2026-02-21T21:22:04.830",
-      "updatedAt": "2026-02-21T21:22:04.830"
+      "updatedAt": "2026-02-26T13:47:12.728"
     }
   ],
   "sse-client/src/web/state.js": [
     {
       "id": "notebook-1771680042939_1t1yyut6l",
       "filePath": "sse-client/src/web/state.js",
-      "note": "职责: Web 端全局状态树与纯函数式状态更新工具(轻量 store,无框架).提供 serverId 分片的 Tab 状态隔离,以及 messages/events/todos/sessions/tips 等数据结构与写入 API.\n\n不该做什么:\n- 不在此处做任何 DOM 操作或网络请求.\n- 不在此处解析复杂协议或渲染 Markdown(保持 store 纯度).\n\n接口摘要:\n- state: { auth, control, chat, connection, git }.\n- serverTabs: state.control.serverTabs[serverId] -> { chat, connection, git }.\n- withServerTabContext(serverId, handler): 在指定 tab 上下文中执行读写,结束后恢复之前 tab.\n- pushMessage(role, content): 追加 UI 消息(当前仅支持 'system'|'assistant'|'user'|'error'),并保留最近 120 条.\n- pushEvent(event): 记录 SSE 事件并截断到 80 条,用于日志弹窗.\n- pushInfoMessage/getAllInfoMessages: tips 聚合(多 tab)与静默逻辑.\n\n消息展示与去噪约束(为配合历史消息精简展示):\n- state.chat.messages 是\"渲染层最终消费\"的数据结构,渲染层(render.js)不应再做协议级解析.\n- 历史会话消息从 API(session.load)转换为 state.chat.messages 时,应在 sessions.js 内完成过滤/摘要(如隐藏 role==='tool',把 assistant.tool_calls 变成 system 摘要行),而不是在 pushMessage 内做(避免影响实时 SSE message 展示).\n\n依赖拓扑:\n- 被依赖: web/render.js,web/sse.js,web/sessions.js,web/app.js.\n\n避坑指南:\n- 多服务端隔离硬约束: 任何对 state.chat/state.connection/state.git 的写入,若来源于非当前 selectedServerId,必须在 withServerTabContext(serverId, ...) 内进行.\n- resetChatForConnect() 会清空 sessionTouchedAt/sessionPager,意味着断线重连后会话排序依赖 /session/list 重建,不要在 render.js 做缓存.\n- pushInfoMessage 默认过滤当前会话 sessionId,仅在明确需要(如 complete 提示)时用 allowCurrentSession 绕过(该参数必须保持向后兼容).",
+      "note": "职责: Web 全局状态树与受控写入 API.提供 serverId 分片隔离,以及消息,事件,队列,状态栏等领域状态的单一事实源.\n\n本轮架构口径(必须落实):\n- 底部状态栏新增并必须显示\"当前会话工作状态\",取值仅允许:\"工作中\"或\"已停止\".\n- 建议新增稳定字段 state.chat.statusBar.sessionWorkStatus,禁止由 render 临时推导字符串.\n- 会话工作状态驱动来源建议:\n  1) 发起 send/flush queued -> 工作中.\n  2) 收到 complete/abort 成功/空闲确认 -> 已停止.\n  3) 队列非空时保持工作中.\n- 回退回填输入框的数据,必须保留原始 message 文本与 images 元数据,避免信息损耗.\n\n接口摘要:\n- state: chat/statusBar/ui/messages/events/... .\n- pushMessage/pushEvent/withServerTabContext 等写入工具.\n\n依赖拓扑:\n- 被依赖: sse.js,render.js,sessions.js,app.js.\n\n避坑指南:\n- 所有工作状态更新必须 serverId 隔离写入,禁止跨 tab 串状态.\n- 不要用 connection.status 直接替代 sessionWorkStatus,两者语义不同.",
       "createdAt": "2026-02-21T21:20:42.939",
-      "updatedAt": "2026-02-21T21:20:42.939"
+      "updatedAt": "2026-02-26T13:47:12.896"
     }
   ],
   "CurrentTaskPlan.md": [

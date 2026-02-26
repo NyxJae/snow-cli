@@ -2,7 +2,7 @@ import {state, activateServerTab, getAllInfoMessages} from './state.js';
 import {createControlActions, createGitActions} from './api.js';
 import {createSessionActions} from './sessions.js';
 import {createSseActions} from './sse.js';
-import {renderApp} from './render.js';
+import {renderApp, patchChatMessageList} from './render.js';
 
 let infoExpiryRenderTimer = null;
 
@@ -30,10 +30,21 @@ function scheduleInfoExpiryRender() {
 }
 
 /**
- * 渲染入口,统一注入动作.
+ * 全量渲染入口,统一注入动作.
  */
 function render() {
 	renderApp(actions);
+	scheduleInfoExpiryRender();
+}
+
+/**
+ * 聊天区局部渲染入口,仅刷新聊天消息列表.
+ */
+function renderChatOnly() {
+	const patched = patchChatMessageList();
+	if (!patched) {
+		renderApp(actions);
+	}
 	scheduleInfoExpiryRender();
 }
 
@@ -52,6 +63,7 @@ const sessionActions = createSessionActions({
 
 const sseActions = createSseActions({
 	render,
+	renderChatOnly,
 	refreshSessionList: serverId =>
 		sessionActions.refreshSessionList(undefined, serverId),
 	loadSelectedSession: sessionId =>
