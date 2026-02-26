@@ -496,6 +496,13 @@ export type TranslationKeys = {
 			diff: string;
 			quit: string;
 		};
+		copyLastFeedback: {
+			noAssistantMessage: string;
+			emptyAssistantMessage: string;
+			copySuccess: string;
+			copyFailedPrefix: string;
+			unknownError: string;
+		};
 	};
 	// Profile Panel
 	profilePanel: {

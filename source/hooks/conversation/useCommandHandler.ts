@@ -15,6 +15,7 @@ import {
 } from '../../utils/ui/fileDialog.js';
 import {exportMessagesToFile} from '../../utils/session/chatExporter.js';
 import {copyToClipboard} from '../../utils/clipboard.js';
+import {useI18n} from '../../i18n/index.js';
 
 /**
  * 执行上下文压缩
@@ -318,6 +319,7 @@ type CommandHandlerOptions = {
 
 export function useCommandHandler(options: CommandHandlerOptions) {
 	const {stdout} = useStdout();
+	const {t} = useI18n();
 
 	const handleCommandExecution = useCallback(
 		async (commandName: string, result: any) => {
@@ -922,9 +924,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					}
 				}
 			} else if (result.success && result.action === 'copyLastMessage') {
-				// Handle copy last message command - copy last AI assistant message to clipboard
 				try {
-					// Find the last assistant message
 					const messages = options.messages;
 					let lastAssistantMessage: Message | undefined;
 					for (let i = messages.length - 1; i >= 0; i--) {
@@ -938,48 +938,40 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					if (!lastAssistantMessage) {
 						const errorMessage: Message = {
 							role: 'command',
-							content: 'No AI assistant message found to copy.',
+							content: t.commandPanel.copyLastFeedback.noAssistantMessage,
 							commandName: commandName,
 						};
 						options.setMessages(prev => [...prev, errorMessage]);
 						return;
 					}
 
-					// Get the content to copy
 					const contentToCopy = lastAssistantMessage.content || '';
-
 					if (!contentToCopy) {
 						const errorMessage: Message = {
 							role: 'command',
-							content: 'The last AI assistant message has no content to copy.',
+							content: t.commandPanel.copyLastFeedback.emptyAssistantMessage,
 							commandName: commandName,
 						};
 						options.setMessages(prev => [...prev, errorMessage]);
 						return;
 					}
 
-					// Copy to clipboard using platform-specific method
 					await copyToClipboard(contentToCopy);
-
-					// Show success message
-					const messageLength = contentToCopy.length;
-					const sizeDisplay =
-						messageLength >= 1024
-							? `${Math.floor(messageLength / 1024)}KB`
-							: `${messageLength} characters`;
 
 					const successMessage: Message = {
 						role: 'command',
-						content: `✓ Last AI message copied to clipboard (${sizeDisplay})`,
+						content: t.commandPanel.copyLastFeedback.copySuccess,
 						commandName: commandName,
 					};
 					options.setMessages(prev => [...prev, successMessage]);
 				} catch (error) {
 					const errorMsg =
-						error instanceof Error ? error.message : 'Unknown error';
+						error instanceof Error
+							? error.message
+							: t.commandPanel.copyLastFeedback.unknownError;
 					const errorMessage: Message = {
 						role: 'command',
-						content: `✗ Failed to copy to clipboard: ${errorMsg}`,
+						content: `${t.commandPanel.copyLastFeedback.copyFailedPrefix}: ${errorMsg}`,
 						commandName: commandName,
 					};
 					options.setMessages(prev => [...prev, errorMessage]);

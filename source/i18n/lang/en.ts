@@ -533,6 +533,14 @@ export const en: TranslationKeys = {
 			diff: 'Review file changes from a conversation in IDE diff view',
 			quit: 'Exit the application',
 		},
+		copyLastFeedback: {
+			noAssistantMessage: 'No AI assistant message found to copy.',
+			emptyAssistantMessage:
+				'The last AI assistant message has no content to copy.',
+			copySuccess: '✓ Last AI message copied to clipboard',
+			copyFailedPrefix: '✗ Failed to copy to clipboard',
+			unknownError: 'Unknown error',
+		},
 	},
 	permissionsPanel: {
 		title: 'Permissions',

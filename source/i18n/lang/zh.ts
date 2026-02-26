@@ -494,6 +494,13 @@ export const zh: TranslationKeys = {
 			models: '打开模型切换面板',
 			quit: '退出应用程序',
 		},
+		copyLastFeedback: {
+			noAssistantMessage: '未找到可复制的 AI 助手消息。',
+			emptyAssistantMessage: '最后一条 AI 助手消息没有可复制的内容。',
+			copySuccess: '✓ 已复制最后一条 AI 消息到剪贴板',
+			copyFailedPrefix: '✗ 复制到剪贴板失败',
+			unknownError: '未知错误',
+		},
 	},
 	permissionsPanel: {
 		title: '权限',
