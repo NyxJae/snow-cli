@@ -787,7 +787,8 @@ export const en: TranslationKeys = {
 		statusConnected: 'IDE Connected',
 		statusConnectionFailed:
 			'Connection Failed (this will not affect any usage) - Make sure Snow CLI plugin is installed and active in your IDE',
-		statusStopping: 'Stopping...',
+		statusStopping:
+			"Stopping... This won't take long. It's recommended to wait for internal cleanup to complete before proceeding.",
 		// Profile switch
 		profileCurrent: 'Profile',
 		profileSwitchHint: 'switch',

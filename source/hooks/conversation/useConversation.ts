@@ -125,6 +125,12 @@ export type ConversationHandlerOptions = {
 	getCurrentContextPercentage?: () => number; // Get current context percentage from ChatInput
 	setCurrentModel?: React.Dispatch<React.SetStateAction<string | null>>; // Set current model name for display
 	setIsStopping?: React.Dispatch<React.SetStateAction<boolean>>; // Control stopping state
+	/**
+	 * Sync AbortController to streamingState
+	 * Used during retry to update controller reference, ensuring ESC interrupt can target the current active controller
+	 * @param controller New AbortController instance
+	 */
+	setAbortController?: (controller: AbortController) => void;
 	onRawSubAgentMessage?: (message: SubAgentMessage) => void; // 可选: 原始子代理消息透传回调(SSE 服务端用于转发事件)
 };
 
@@ -156,12 +162,29 @@ export async function handleConversationWithTools(
 
 	while (retryCount <= MAX_RETRIES) {
 		try {
+			// 检查是否是用户主动中断
 			if (controller.signal.aborted) {
 				throw new Error('Request aborted by user');
 			}
 
+			// 重试时创建新controller并同步到streamingState
+			// 确保重试/流消费/ESC中断三方使用同一controller引用
+			if (retryCount > 0) {
+				const newController = new AbortController();
+				options.controller = newController;
+				// 同步更新到streamingState,确保ESC中断能命中当前有效controller
+				if (options.setAbortController) {
+					options.setAbortController(newController);
+				}
+			}
+
 			if (retryCount > 0 && setRetryStatus) {
 				setRetryStatus(null);
+			}
+
+			// 重试时确保isStreaming状态为true
+			if (retryCount > 0 && options.setIsStreaming) {
+				options.setIsStreaming(true);
 			}
 
 			return await executeWithInternalRetry(options);
@@ -203,6 +226,11 @@ export async function handleConversationWithTools(
 						.replace('{current}', String(retryCount))
 						.replace('{max}', String(MAX_RETRIES)),
 				});
+			}
+
+			// 重试延迟期间保持isStreaming=true,避免"思考中"显示消失
+			if (options.setIsStreaming) {
+				options.setIsStreaming(true);
 			}
 
 			await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
@@ -343,11 +371,7 @@ async function executeWithInternalRetry(
 		const {setConversationContext} = await import(
 			'../../utils/codebase/conversationContext.js'
 		);
-		// Use UI history length as messageIndex (after user message is saved)
-		// Snapshots are created during tool execution. Session messages include role === 'tool' records,
-		// but UI history is derived from convertSessionMessagesToUI which may merge/transform tool records.
-		// When tools run in parallel, multiple tool result messages may exist for a single assistant turn.
-		// Using session.messages.length would shift snapshot indices and break rollback mapping.
+		// Use UI message count as snapshot index to maintain correct rollback mapping
 		const updatedSession = sessionManager.getCurrentSession();
 		if (updatedSession) {
 			const {convertSessionMessagesToUI} = await import(
@@ -374,6 +398,9 @@ async function executeWithInternalRetry(
 			}
 		}
 	};
+
+	// Timer reference for retry status cleanup
+	let retryStatusClearTimer: NodeJS.Timeout | null = null;
 
 	try {
 		encoder = encoding_for_model('gpt-5');
@@ -532,15 +559,27 @@ async function executeWithInternalRetry(
 							onRetry,
 					  );
 
-			for await (const chunk of streamGenerator) {
-				if (controller.signal.aborted) break;
+			// 用于管理延迟清理的timer引用
+			let retryStatusClearTimer: NodeJS.Timeout | null = null;
 
-				// 首次接收数据后延迟清除重试状态，确保用户能看到重试提示
+			for await (const chunk of streamGenerator) {
+				if (controller.signal.aborted) {
+					// 中断时清理timer,避免过期回调
+					if (retryStatusClearTimer) {
+						clearTimeout(retryStatusClearTimer);
+						retryStatusClearTimer = null;
+					}
+					break;
+				}
+
+				// 首次接收数据后清除重试状态
+				// 延迟1000ms确保用户能看到重试提示
 				chunkCount++;
 				if (setRetryStatus && chunkCount === 1) {
-					setTimeout(() => {
+					retryStatusClearTimer = setTimeout(() => {
 						setRetryStatus(null);
-					}, 500);
+						retryStatusClearTimer = null;
+					}, 1000);
 				}
 
 				if (chunk.type === 'reasoning_started') {
@@ -2403,6 +2442,12 @@ async function executeWithInternalRetry(
 		// Free encoder
 		freeEncoder();
 	} finally {
+		// Cleanup timer to prevent stale callbacks
+		if (retryStatusClearTimer) {
+			clearTimeout(retryStatusClearTimer);
+			retryStatusClearTimer = null;
+		}
+
 		// CRITICAL: Ensure UI state is always cleaned up
 		// This block MUST execute to prevent "Thinking..." from hanging
 		// Even if an error occurs or the process is aborted
@@ -2410,7 +2455,7 @@ async function executeWithInternalRetry(
 			options.setIsStreaming(false);
 		}
 
-		// 重置停止状态 - 修复 ESC 后界面卡住的问题
+		// 重置停止状态 避免 ESC 后界面卡住的问题
 		if (options.setIsStopping) {
 			options.setIsStopping(false);
 		}

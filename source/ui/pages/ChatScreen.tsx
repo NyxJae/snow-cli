@@ -1175,9 +1175,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			// 中断 controller
 			streamingState.abortController.abort();
 
-			// 立即清理重试状态
-			streamingState.setRetryStatus(null);
-
 			// 移除所有待处理的工具调用消息
 			setMessages(prev => prev.filter(msg => !msg.toolPending));
 

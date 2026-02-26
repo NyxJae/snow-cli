@@ -742,8 +742,8 @@ export const zhTW: TranslationKeys = {
 		statusConnecting: '連線到 IDE...',
 		statusConnected: 'IDE 已連線',
 		statusConnectionFailed:
-			'連線失敗（這不會影響任何使用） - 請確保在你的 IDE 中安裝並啟用了 Snow CLI 外掛',
-		statusStopping: '停止中...',
+		'連線失敗（這不會影響任何使用） - 請確保在你的 IDE 中安裝並啟用了 Snow CLI 外掛',
+		statusStopping: '停止中...將不會太久,建議等至內部清理完成,再進行下步操作。',
 		// Profile switch
 		profileCurrent: '目前設定檔',
 		profileSwitchHint: '切換',

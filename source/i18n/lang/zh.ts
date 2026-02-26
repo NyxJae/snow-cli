@@ -742,7 +742,7 @@ export const zh: TranslationKeys = {
 		statusConnected: 'IDE 已连接',
 		statusConnectionFailed:
 			'连接失败(这不会影响任何使用) - 请确保在你的 IDE 中安装并激活了 Snow CLI 插件',
-		statusStopping: '停止中...',
+		statusStopping: '停止中...将不会太久,建议等至内部清理完成,再进行下步操作.',
 		// Profile switch
 		profileCurrent: '当前配置',
 		profileSwitchHint: '切换',
