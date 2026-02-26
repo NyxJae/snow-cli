@@ -25,26 +25,6 @@
   4. 推送到 origin: `git push origin feat/xxx`
   5. 使用 gh 提 PR 到 upstream/main: `gh pr create --repo MayDay-wpf/snow-cli`
 
-## Worktree 管理
-
-### 查看 Worktree 列表
-
-```bash
-git worktree list
-```
-
-### 创建新 Worktree (如果需要)
-
-```bash
-git worktree add <path> <branch>
-```
-
-### 删除 Worktree
-
-```bash
-git worktree remove <path>
-```
-
 ## 分支说明
 
 - **main**: 本仓库主要分支,开发独属功能并定期合并上游
