@@ -3,7 +3,6 @@ dist
 bundle
 out
 .git
-AGENTS.md
 pr.md
 CHANGELOG.md
 CONTEXT.md
