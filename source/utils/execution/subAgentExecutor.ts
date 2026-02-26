@@ -43,7 +43,6 @@ import {
 	findInsertPositionBeforeNthAssistantFromEnd,
 	insertMessagesAtPosition,
 } from '../message/messageUtils.js';
-import {formatLocalDateTime} from '../core/dateUtils.js';
 
 /**
  * 子智能体消息事件
@@ -620,12 +619,6 @@ You have access to these collaboration tools:
 			currentSession?.id,
 			finalPrompt,
 		);
-
-		// 在子代理系统提示词后添加任务开始时间
-		messages.push({
-			role: 'user',
-			content: `任务开始时间: ${formatLocalDateTime()}`,
-		});
 
 		// 流式执行子代理
 		let finalResponse = '';
