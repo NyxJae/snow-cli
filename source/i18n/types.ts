@@ -456,6 +456,7 @@ export type TranslationKeys = {
 		commands: {
 			help: string;
 			clear: string;
+			copyLast: string;
 			resume: string;
 			mcp: string;
 			yolo: string;
@@ -484,6 +485,13 @@ export type TranslationKeys = {
 			worktree: string; // Git branch management panel
 			diff: string;
 			quit: string;
+		};
+		copyLastFeedback: {
+			noAssistantMessage: string;
+			emptyAssistantMessage: string;
+			copySuccess: string;
+			copyFailedPrefix: string;
+			unknownError: string;
 		};
 	};
 	// Profile Panel
