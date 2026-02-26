@@ -14,7 +14,7 @@ import {
 	isFileDialogSupported,
 } from '../../utils/ui/fileDialog.js';
 import {exportMessagesToFile} from '../../utils/session/chatExporter.js';
-import {copyToClipboard} from '../../utils/clipboard.js';
+import {copyToClipboard} from '../../utils/core/clipboard.js';
 import {useI18n} from '../../i18n/index.js';
 
 /**
