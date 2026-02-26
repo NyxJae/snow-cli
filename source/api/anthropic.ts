@@ -462,6 +462,7 @@ function convertToAnthropicMessages(
 async function* parseSSEStream(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	abortSignal?: AbortSignal,
+	idleTimeoutMs?: number,
 ): AsyncGenerator<any, void, unknown> {
 	const decoder = new TextDecoder();
 	let buffer = '';
@@ -471,8 +472,12 @@ async function* parseSSEStream(
 	// 创建空闲超时保护器
 	const guard = createIdleTimeoutGuard({
 		reader,
+		idleTimeoutMs,
 		onTimeout: () => {
-			throw new StreamIdleTimeoutError('No data received for 180000ms');
+			throw new StreamIdleTimeoutError(
+				`No data received for ${idleTimeoutMs}ms`,
+				idleTimeoutMs,
+			);
 		},
 	});
 
@@ -485,9 +490,6 @@ async function* parseSSEStream(
 			}
 
 			const {done, value} = await reader.read();
-
-			// 更新活动时间
-			guard.touch();
 
 			// 检查是否有超时错误需要在读取循环中抛出(确保被正确的 try/catch 捕获)
 			const timeoutError = guard.getTimeoutError();
@@ -553,10 +555,23 @@ async function* parseSSEStream(
 					});
 
 					if (parseResult.success) {
+						const event = parseResult.data;
+						const hasBusinessDelta =
+							(event?.type === 'content_block_start' &&
+								event?.content_block?.type === 'tool_use') ||
+							(event?.type === 'content_block_delta' &&
+								((event?.delta?.type === 'text_delta' && event?.delta?.text) ||
+									(event?.delta?.type === 'thinking_delta' &&
+										event?.delta?.thinking) ||
+									(event?.delta?.type === 'input_json_delta' &&
+										event?.delta?.partial_json)));
+						if (hasBusinessDelta) {
+							guard.touch();
+						}
 						dataCount++;
 						// yield前检查是否已被丢弃
 						if (!guard.isAbandoned()) {
-							yield parseResult.data;
+							yield event;
 						}
 					}
 				}
@@ -774,12 +789,14 @@ export async function* createStreamingAnthropicCompletion(
 			let blockIndexToId: Map<number, string> = new Map();
 			let blockIndexToType: Map<number, string> = new Map(); // 跟踪块类型(text, thinking, tool_use)
 			let completedToolBlocks = new Set<string>(); // 跟踪哪些工具块已完成流式传输
+			const idleTimeoutMs = (config.streamIdleTimeoutSec ?? 180) * 1000;
 
 			for await (const event of parseSSEStream(
 				response.body.getReader(),
 				abortSignal,
+				idleTimeoutMs,
 			)) {
-				// 原有外层 abort 检查可移除,已内置于 parseSSEStream
+				// abort 由 parseSSEStream 统一处理,避免重复分支导致行为漂移
 				if (event.type === 'content_block_start') {
 					const block = event.content_block;
 					const blockIndex = event.index;

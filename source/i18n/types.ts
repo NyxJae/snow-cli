@@ -176,6 +176,7 @@ export type TranslationKeys = {
 		basicModel: string;
 		maxContextTokens: string;
 		maxTokens: string;
+		streamIdleTimeoutSec: string;
 		toolResultTokenLimit: string;
 		editSimilarityThreshold: string;
 		notSet: string;

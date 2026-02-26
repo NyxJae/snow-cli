@@ -640,11 +640,16 @@ export async function* createStreamingGeminiCompletion(
 			const decoder = new TextDecoder();
 			let buffer = '';
 
+			const idleTimeoutMs = (config.streamIdleTimeoutSec ?? 180) * 1000;
 			// 创建空闲超时保护器
 			const guard = createIdleTimeoutGuard({
 				reader,
+				idleTimeoutMs,
 				onTimeout: () => {
-					throw new StreamIdleTimeoutError('No data received for 180000ms');
+					throw new StreamIdleTimeoutError(
+						`No data received for ${idleTimeoutMs}ms`,
+						idleTimeoutMs,
+					);
 				},
 			});
 
@@ -656,9 +661,6 @@ export async function* createStreamingGeminiCompletion(
 					}
 
 					const {done, value} = await reader.read();
-
-					// 更新活动时间
-					guard.touch();
 
 					// 检查是否有超时错误需要在读取循环中抛出(确保被正确的 try/catch 捕获)
 					const timeoutError = guard.getTimeoutError();
@@ -717,6 +719,15 @@ export async function* createStreamingGeminiCompletion(
 
 							if (parseResult.success) {
 								const chunk = parseResult.data;
+								const hasBusinessDelta = !!chunk?.candidates?.some(
+									(candidate: any) =>
+										candidate?.content?.parts?.some((part: any) =>
+											Boolean(part?.text || part?.functionCall),
+										),
+								);
+								if (hasBusinessDelta) {
+									guard.touch();
+								}
 
 								// 处理候选结果
 								if (chunk.candidates && chunk.candidates.length > 0) {

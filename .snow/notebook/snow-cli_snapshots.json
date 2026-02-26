@@ -558,5 +558,86 @@
       "notebookId": "notebook-1771516241433_9nd0jazox",
       "previousNote": "职责: sse-client Web 模块目录级架构约束,定义交互分层,状态归属,与演进边界.\n\n本轮新增架构规范:\n- 聊天交互控制最小闭环必须覆盖: 自动置底,中断,回退回填,工作中可排队发送,撤回后编辑.\n- 底部状态栏作为\"会话运行态观察面\",必须展示 sessionWorkStatus(工作中/已停止),且与 API Profile,Token,KV,连接,YOLO 同层并列.\n- \"压缩\"按钮继续保留在聊天操作区,职责仅限当前会话标准压缩.\n- 子代理显示策略冻结,本轮不得引入破坏性改动.\n\n依赖拓扑约束:\n- render.js 负责 UI 绑定.\n- sse.js 负责事件与队列调度.\n- state.js 负责状态事实源.\n- sessions.js 负责回退点与会话载入.\n\n避坑指南:\n- 禁止把需求过程记录写入蓝图笔记,蓝图仅保留目标约束,接口边界,验收口径.\n- 浏览器验证条目保持中性描述,不写开发历程或修复日志."
     }
+  ],
+  "472e00a2-e048-48dd-8ef2-e16103904741:35": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1770953800000_streamguards",
+      "previousNote": "职责: core 层流式读取保护器,提供统一的 idle timeout 检测(固定 STREAM_IDLE_TIMEOUT_MS=180000),abandoned 丢弃屏障,以及将超时异常从定时器回调安全传递到读取循环的机制.\n不该做什么:\n- 不在 setInterval/setTimeout 回调里直接 throw,也不允许 onTimeout 的异常冒泡到事件循环,避免触发 uncaughtException.\n- 不在本模块实现重试/退避策略,只提供可被上层(withRetryGenerator)消费的信号与错误.\n- 不把 idle timeout 作为用户配置项暴露;生产代码不应覆盖 idleTimeoutMs,以确保所有适配器行为一致.\n接口摘要:\n- STREAM_IDLE_TIMEOUT_MS: number,3 分钟常量.\n- StreamIdleTimeoutError: Error 子类,name 固定为 StreamIdleTimeoutError,供 retryUtils 优先通过 error.name 判定可重试.\n- StreamGuard: {abandon,isAbandoned,getTimeoutError,touch,dispose}.\n- createIdleTimeoutGuard({reader?,onTimeout?,idleTimeoutMs?}): StreamGuard.\n  - onTimeout 可以 throw,但异常会被 guard 捕获并保存为 timeoutError.\n  - 调用方必须在读取循环中检查 guard.getTimeoutError() 并在循环上下文 throw,确保被业务 try/catch 捕获并进入重试链路.\n依赖拓扑:\n- 依赖: utils/core/logger.ts(仅日志).\n- 被依赖: source/api/chat.ts,responses.ts,anthropic.ts,gemini.ts 的流式读取循环.\n- 协作: utils/core/retryUtils.ts 通过 error.name===StreamIdleTimeoutError 判定可重试.\n避坑指南:\n- Node.js 定时器回调里的 throw 不会被外层 parseSSEStream 的 try/catch 捕获,会变成 uncaughtException,并在本项目中可能触发 process.exit(1).\n- logger.warn/error 最终会走 fs.appendFileSync 写文件,可能同步抛错;定时器回调内的日志也必须被 try/catch 覆盖,禁止异常冒泡到事件循环.\n- 当前实现已在 setInterval 回调外层使用全量 try/catch,覆盖 logger.warn,reader.cancel,onTimeout 等所有路径,确保任何异常都不会冒泡.\n- 超时触发重试的正确模式: 定时器只做 abandon/cancel + 记录 timeoutError,读取循环负责检测 getTimeoutError 并 throw.\n- 适配器必须实现 getTimeoutError 检查,否则超时错误会被吞掉(常见表现: reader.cancel/done 后静默结束,或下游一直等待结束事件).\n- 文档注释/示例已更新: 示例现在明确演示 onTimeout 可以 throw(由 guard 捕获并保存),调用方必须在读取循环中检查 guard.getTimeoutError() 并在循环上下文 throw,避免误导调用方."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1771495044055_cbcvm3sjp",
+      "previousNote": "职责: 模型渠道适配层.承载各第三方模型渠道适配器(source/api/*.ts),负责把内部统一的 ChatMessage/ToolCall 结构映射为各渠道请求格式,并解析渠道流式响应(SSE/HTTP stream).\n\n不该做什么:\n- 不承载会话业务状态,不维护 UI 状态.\n- 不做主代理/子代理选择逻辑与会话级状态管理(归 MainAgentManager + execution/session).\n\n统一架构原则(长期规范,跨 4 适配器一致,SSoT: requirements/API渠道冲突合并需求文档.md):\n1) 多条自定义 system prompt 支持:\n- customSystemPromptOverride 类型统一为 string[] | undefined,顺序敏感.\n- 各渠道可用等价映射表达(多条 system 消息或拼接为单条),但语义与顺序必须一致.\n\n2) system prompt 优先级模型(4 文件完全一致):\n1) 子代理调用且配置多条自定义 system prompts -> 使用子代理自定义数组.\n2) 子代理调用且无自定义但有子代理角色定义 -> 使用子代理角色定义.\n3) 主代理调用且配置多条自定义 system prompts -> 使用主代理自定义数组.\n4) 无自定义且允许内置 -> 使用对应代理的角色定义.\n\n3) 主/子代理提示词隔离(硬约束):\n- 角色定义提示词仅来自当前调用所属 agent profile,不得跨注入.\n- customSystemPromptOverride 仅影响本次调用,不得写回 profile.\n\n4) 特殊 user 消息后插语义:\n- 必须保留动态后插能力,且插入位置策略不得随 system prompt 来源变化.\n\n5) 多模态兼容与中转平台支持:\n- 必须保留本地对 Responses API 的多模态特殊处理(尤其是工具返回与图片消息拆分策略).\n- 合并 upstream 能力时,以\"能力并存\"为准则,禁止覆盖删除本地兼容路径.\n\n6) 流式健壮性(保护模式,所有适配器一致):\n- 必须接入 idle timeout guard(180000ms) + abandoned 丢弃.\n- abort 时必须 abandon 并 return,避免延迟 chunk 外泄.\n- done=true 但 buffer.trim() 非空必须抛可重试错误.\n\n依赖拓扑:\n- 依赖: source/utils/core/*(streamGuards,retryUtils 等),source/prompt/*(提示词组装),source/types/*.\n- 被依赖: source/utils/execution/* 与会话执行层.\n\n避坑指南:\n- 禁止单文件漂移: 任一适配器新增字段映射或 system prompt 处理规则,必须同步到其他 3 个适配器或明确标注差异原因.\n- 解冲突时优先保留本地多模态链路与主/子代理隔离边界,再吸收 upstream 的多 system prompts 能力."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1770694883398_3ow0urpes",
+      "previousNote": "职责: Anthropic API 适配器.将内部 ChatMessage 转换为 Anthropic 消息格式,并实现 Anthropic 流式 SSE 解析与产出.\n\n接口摘要:\n- createStreamingAnthropicCompletion(options,abortSignal,onRetry) -> AsyncGenerator<AnthropicStreamChunk>.\n- parseSSEStream(reader,abortSignal?) 解析 SSE data 行 JSON 并 yield.\n\n架构规范(必须与 chat/gemini/responses 对齐):\n- customSystemPromptOverride: 支持多条自定义 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 保留动态后插语义.\n\n流式保护模式(不得破坏):\n- idle timeout guard(180000ms) + abandoned 丢弃.\n- abort 时 abandon 并 return.\n- done=true 但 buffer.trim() 非空必须抛可重试错误.\n\n避坑指南:\n- 不要把 system prompts 在此文件中退化为单字符串,否则会与其他适配器产生语义漂移.\n- 解冲突时,先对齐统一提示词模型,再做渠道特有字段映射."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1770694883572_4ydxyl8k0",
+      "previousNote": "职责: OpenAI ChatCompletions API 适配器.负责消息格式转换与 ChatCompletions 流式 SSE 解析.\n\n接口摘要:\n- createStreamingChatCompletion(options,abortSignal,onRetry) -> AsyncGenerator<ChatCompletionChunk|...>.\n- parseSSEStream(reader,abortSignal?) 解析 SSE data 行 JSON 并 yield.\n\n统一规范(必须与 anthropic/gemini/responses 对齐):\n- customSystemPromptOverride: 多条 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 必须保留且位置策略一致.\n\n流式保护模式(不得破坏):\n- idle timeout guard(180000ms) + abandoned 丢弃 + finally dispose.\n- abort 时 abandon.\n- done=true 且 buffer.trim() 非空必须抛可重试错误.\n\n避坑指南:\n- 禁止把多 system prompts 在此文件拼接成单字符串,而其他适配器保持多条消息,会导致行为不一致.\n- 不要将 UI/会话状态写入该层."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1770694883908_ow13cu46t",
+      "previousNote": "职责: Google Gemini API 适配器.将内部 ChatMessage 转换为 Gemini 请求格式,并实现 Gemini 流式读取与产出.\n\n接口摘要:\n- createStreamingGeminiCompletion(options,abortSignal,onRetry) -> AsyncGenerator<GeminiStreamChunk>.\n\n统一规范(必须与 anthropic/chat/responses 对齐):\n- customSystemPromptOverride: 多条 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 保留动态后插语义.\n\n流式保护模式(不得破坏):\n- idle timeout guard(180000ms),abort abandon,done 残留半包抛错,finally dispose.\n\n避坑指南:\n- Gemini 的 message/parts 映射容易把 system prompt 与普通文本混淆,必须确保系统提示词路径与用户消息路径严格区分.\n- 若渠道限制需要合并多条 system prompt,必须显式保留顺序语义."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1770694883742_l9t553m1w",
+      "previousNote": "职责: OpenAI Responses API 适配器.将内部 ChatMessage 转换为 Responses API 请求格式,并实现 Responses 流式 SSE 解析.\n\n接口摘要:\n- createStreamingResponse(options,abortSignal,onRetry) -> AsyncGenerator<ResponseStreamChunk>.\n\n统一规范(必须与 anthropic/chat/gemini 对齐):\n- customSystemPromptOverride: 多条 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 必须保留.\n\nResponses 渠道映射约束:\n- 多条 system prompts 可能映射到 system 或 instruction 等字段,但必须保持与其他渠道等价语义与顺序.\n\n本地不可覆盖点(中转平台兼容):\n- 必须保留本地 Responses 多模态特殊处理路径,尤其是图片消息拆分与 tool_result 兼容策略.\n- 解冲突时以保留本地多模态链路为先,再吸收 upstream 的多 system prompts 能力,禁止反向覆盖.\n\n流式保护模式(不得破坏):\n- parseSSEStream 内 abort abandon,guard.touch/isAbandoned,timeout error throw,finally dispose.\n\n避坑指南:\n- 本文件最容易在解冲突时被 upstream 覆盖掉本地多模态处理,每次合并必须显式比对保留.\n- 注意多模态与系统提示词注入的相对顺序,避免改变上下文语义."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772102890816_ewfvt754d"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772102890983_fbxjvwghi"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772102891152_9vg6mf8xl"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772102891329_hs0nlkx88"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772102891504_avfjnpdlm"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772102891717_hflmmzua9"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772102891936_0wnayjsrg"
+    }
+  ],
+  "88d815b8-8b9f-480e-b67c-dbf140c22397:7": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1772102891152_9vg6mf8xl",
+      "previousNote": "职责: API配置模型与默认值管理(含读写主配置 snowcfg).\n接口摘要:\n- ApiConfig 类型定义.\n- getOpenAiConfig/updateOpenAiConfig 等读写函数.\n本需求改造边界:\n- 新增并维护 streamIdleTimeoutSec:number 字段,单位秒,默认180.\n- 非法值处理: 字段缺失->默认180,非数字/非整数/空字符串->回退180.\n- 保持仅一个配置字段,不新增优先级层次.\n依赖拓扑:\n- 被 ConfigScreen 与各 API 适配器间接消费.\n避坑指南:\n- 字段语义是流式空闲超时,不得与 MCP/tool timeout 混用.\n- 向下兼容合并逻辑中需确保该字段不会丢失."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772102891329_hs0nlkx88",
+      "previousNote": "职责: profile 配置文件加载与保存管理器,负责 C:/Users/Administrator/.snow/profiles 下配置持久化.\n接口摘要:\n- loadProfile/saveProfile/listProfiles 等.\n本需求改造边界:\n- profile 的 snowcfg 必须读写 streamIdleTimeoutSec.\n- 切换 profile 时该字段随 profile 切换生效.\n- 字段缺失或非法时回退默认180,不中断流程.\n依赖拓扑:\n- 被 ConfigScreen,执行层,API适配器(configProfile)依赖.\n避坑指南:\n- 保存 profile 时避免只写部分字段导致 streamIdleTimeoutSec 丢失.\n- 与主配置 snowcfg 合并时保持字段一致命名."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772102891717_hflmmzua9",
+      "previousNote": "职责: API和模型设置界面,负责 snowcfg 字段编辑,校验,保存到主配置与当前profile.\n接口摘要:\n- 配置字段列表渲染(getAllFields/renderField).\n- 输入编辑与校验逻辑(含数字字段).\n- 保存逻辑(updateOpenAiConfig + saveProfile).\n本需求改造边界:\n- 新增可编辑字段 streamIdleTimeoutSec(秒),默认180.\n- 校验规则: 缺失按默认,非数字/非整数/空字符串回退180.\n- 必须同时保存到主配置和当前 profile 的 snowcfg.\n依赖拓扑:\n- 依赖 apiConfig.ts 与 configManager.ts.\n- 被用户通过配置页直接操作.\n避坑指南:\n- 字段必须出现在 ConfigField,getAllFields,getCurrentValue,数字输入处理,保存两处路径中.\n- 不要把该字段接入请求方法条件分支,应为通用字段."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772107272120_8ae464f6q"
+    }
   ]
 }

@@ -372,6 +372,7 @@ function convertToResponseInput(
 async function* parseSSEStream(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	abortSignal?: AbortSignal,
+	idleTimeoutMs?: number,
 ): AsyncGenerator<any, void, unknown> {
 	const decoder = new TextDecoder();
 	let buffer = '';
@@ -379,8 +380,12 @@ async function* parseSSEStream(
 	// 创建空闲超时保护器
 	const guard = createIdleTimeoutGuard({
 		reader,
+		idleTimeoutMs,
 		onTimeout: () => {
-			throw new StreamIdleTimeoutError('No data received for 180000ms');
+			throw new StreamIdleTimeoutError(
+				`No data received for ${idleTimeoutMs}ms`,
+				idleTimeoutMs,
+			);
 		},
 	});
 
@@ -393,9 +398,6 @@ async function* parseSSEStream(
 			}
 
 			const {done, value} = await reader.read();
-
-			// 更新活动时间
-			guard.touch();
 
 			// 检查是否有超时错误需要在读取循环中抛出(确保被正确的 try/catch 捕获)
 			const timeoutError = guard.getTimeoutError();
@@ -452,9 +454,21 @@ async function* parseSSEStream(
 					});
 
 					if (parseResult.success) {
+						const event = parseResult.data;
+						const hasBusinessDelta =
+							(event?.type === 'response.output_text.delta' && event?.delta) ||
+							(event?.type === 'response.reasoning_summary_text.delta' &&
+								event?.delta) ||
+							(event?.type === 'response.function_call_arguments.delta' &&
+								event?.delta) ||
+							(event?.type === 'response.output_item.added' &&
+								event?.item?.type === 'function_call');
+						if (hasBusinessDelta) {
+							guard.touch();
+						}
 						// yield 前检查是否已被丢弃
 						if (!guard.isAbandoned()) {
-							yield parseResult.data;
+							yield event;
 						}
 					}
 				}
@@ -632,11 +646,13 @@ export async function* createStreamingResponse(
 				  }
 				| undefined;
 
+			const idleTimeoutMs = (config.streamIdleTimeoutSec ?? 180) * 1000;
 			for await (const chunk of parseSSEStream(
 				response.body.getReader(),
 				abortSignal,
+				idleTimeoutMs,
 			)) {
-				// 原有外层 abort 检查可移除,已内置于 parseSSEStream
+				// abort 由 parseSSEStream 统一处理,避免重复分支导致行为漂移
 				// Responses API 使用 SSE 事件格式
 				const eventType = chunk.type;
 

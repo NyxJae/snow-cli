@@ -58,6 +58,7 @@ type ConfigField =
 	| 'basicModel'
 	| 'maxContextTokens'
 	| 'maxTokens'
+	| 'streamIdleTimeoutSec'
 	| 'toolResultTokenLimit'
 	| 'editSimilarityThreshold';
 
@@ -164,6 +165,7 @@ export default function ConfigScreen({
 	const [basicModel, setBasicModel] = useState('');
 	const [maxContextTokens, setMaxContextTokens] = useState(4000);
 	const [maxTokens, setMaxTokens] = useState(4096);
+	const [streamIdleTimeoutSec, setStreamIdleTimeoutSec] = useState(180);
 	const [toolResultTokenLimit, setToolResultTokenLimit] = useState(100000);
 	const [editSimilarityThreshold, setEditSimilarityThreshold] = useState(0.75);
 
@@ -239,6 +241,7 @@ export default function ConfigScreen({
 			'basicModel',
 			'maxContextTokens',
 			'maxTokens',
+			'streamIdleTimeoutSec',
 			'toolResultTokenLimit',
 			'editSimilarityThreshold',
 		];
@@ -356,6 +359,7 @@ export default function ConfigScreen({
 		setBasicModel(config.basicModel || '');
 		setMaxContextTokens(config.maxContextTokens || 4000);
 		setMaxTokens(config.maxTokens || 4096);
+		setStreamIdleTimeoutSec(config.streamIdleTimeoutSec || 180);
 		setToolResultTokenLimit(config.toolResultTokenLimit || 100000);
 		setEditSimilarityThreshold(config.editSimilarityThreshold ?? 0.75);
 
@@ -421,6 +425,8 @@ export default function ConfigScreen({
 		if (currentField === 'basicModel') return basicModel;
 		if (currentField === 'maxContextTokens') return maxContextTokens.toString();
 		if (currentField === 'maxTokens') return maxTokens.toString();
+		if (currentField === 'streamIdleTimeoutSec')
+			return streamIdleTimeoutSec.toString();
 		if (currentField === 'toolResultTokenLimit')
 			return toolResultTokenLimit.toString();
 		if (currentField === 'editSimilarityThreshold')
@@ -687,6 +693,7 @@ export default function ConfigScreen({
 				basicModel,
 				maxContextTokens,
 				maxTokens,
+				streamIdleTimeoutSec,
 				toolResultTokenLimit,
 				editSimilarityThreshold,
 			};
@@ -749,6 +756,7 @@ export default function ConfigScreen({
 						basicModel,
 						maxContextTokens,
 						maxTokens,
+						streamIdleTimeoutSec,
 						toolResultTokenLimit,
 						editSimilarityThreshold,
 					},
@@ -883,26 +891,17 @@ export default function ConfigScreen({
 				let display = t.configScreen.followGlobalNone;
 				if (systemPromptId === '') {
 					display = t.configScreen.notUse;
-				} else if (
-					Array.isArray(systemPromptId) &&
-					systemPromptId.length > 0
-				) {
+				} else if (Array.isArray(systemPromptId) && systemPromptId.length > 0) {
 					display = systemPromptId
 						.map(id => getSystemPromptNameById(id))
 						.join(', ');
-				} else if (
-					systemPromptId &&
-					typeof systemPromptId === 'string'
-				) {
+				} else if (systemPromptId && typeof systemPromptId === 'string') {
 					display = getSystemPromptNameById(systemPromptId);
 				} else if (activeSystemPromptIds.length > 0) {
 					const activeNames = activeSystemPromptIds
 						.map(id => getSystemPromptNameById(id))
 						.join(', ');
-					display = t.configScreen.followGlobal.replace(
-						'{name}',
-						activeNames,
-					);
+					display = t.configScreen.followGlobal.replace('{name}', activeNames);
 				}
 				return (
 					<Box key={field} flexDirection="column">
@@ -1354,6 +1353,34 @@ export default function ConfigScreen({
 					</Box>
 				);
 
+			case 'streamIdleTimeoutSec':
+				return (
+					<Box key={field} flexDirection="column">
+						<Text
+							color={
+								isActive ? theme.colors.menuSelected : theme.colors.menuNormal
+							}
+						>
+							{isActive ? '❯ ' : '  '}
+							{t.configScreen.streamIdleTimeoutSec}
+						</Text>
+						{isCurrentlyEditing && (
+							<Box marginLeft={3}>
+								<Text color={theme.colors.menuInfo}>
+									{t.configScreen.enterValue} {streamIdleTimeoutSec}
+								</Text>
+							</Box>
+						)}
+						{!isCurrentlyEditing && (
+							<Box marginLeft={3}>
+								<Text color={theme.colors.menuSecondary}>
+									{streamIdleTimeoutSec}
+								</Text>
+							</Box>
+						)}
+					</Box>
+				);
+
 			case 'toolResultTokenLimit':
 				return (
 					<Box key={field} flexDirection="column">
@@ -1557,6 +1584,7 @@ export default function ConfigScreen({
 			if (
 				currentField === 'maxContextTokens' ||
 				currentField === 'maxTokens' ||
+				currentField === 'streamIdleTimeoutSec' ||
 				currentField === 'toolResultTokenLimit' ||
 				currentField === 'thinkingBudgetTokens' ||
 				currentField === 'geminiThinkingBudget' ||
@@ -1608,6 +1636,8 @@ export default function ConfigScreen({
 							? maxContextTokens
 							: currentField === 'maxTokens'
 							? maxTokens
+							: currentField === 'streamIdleTimeoutSec'
+							? streamIdleTimeoutSec
 							: currentField === 'toolResultTokenLimit'
 							? toolResultTokenLimit
 							: currentField === 'thinkingBudgetTokens'
@@ -1619,6 +1649,8 @@ export default function ConfigScreen({
 							setMaxContextTokens(newValue);
 						} else if (currentField === 'maxTokens') {
 							setMaxTokens(newValue);
+						} else if (currentField === 'streamIdleTimeoutSec') {
+							setStreamIdleTimeoutSec(newValue);
 						} else if (currentField === 'toolResultTokenLimit') {
 							setToolResultTokenLimit(newValue);
 						} else if (currentField === 'thinkingBudgetTokens') {
@@ -1633,6 +1665,8 @@ export default function ConfigScreen({
 							? maxContextTokens
 							: currentField === 'maxTokens'
 							? maxTokens
+							: currentField === 'streamIdleTimeoutSec'
+							? streamIdleTimeoutSec
 							: currentField === 'toolResultTokenLimit'
 							? toolResultTokenLimit
 							: currentField === 'thinkingBudgetTokens'
@@ -1645,6 +1679,8 @@ export default function ConfigScreen({
 						setMaxContextTokens(!isNaN(newValue) ? newValue : 0);
 					} else if (currentField === 'maxTokens') {
 						setMaxTokens(!isNaN(newValue) ? newValue : 0);
+					} else if (currentField === 'streamIdleTimeoutSec') {
+						setStreamIdleTimeoutSec(!isNaN(newValue) ? newValue : 0);
 					} else if (currentField === 'toolResultTokenLimit') {
 						setToolResultTokenLimit(!isNaN(newValue) ? newValue : 0);
 					} else if (currentField === 'thinkingBudgetTokens') {
@@ -1658,6 +1694,8 @@ export default function ConfigScreen({
 							? 4000
 							: currentField === 'maxTokens'
 							? 100
+							: currentField === 'streamIdleTimeoutSec'
+							? 1
 							: currentField === 'toolResultTokenLimit'
 							? 1000
 							: currentField === 'thinkingBudgetTokens'
@@ -1668,6 +1706,8 @@ export default function ConfigScreen({
 							? maxContextTokens
 							: currentField === 'maxTokens'
 							? maxTokens
+							: currentField === 'streamIdleTimeoutSec'
+							? streamIdleTimeoutSec
 							: currentField === 'toolResultTokenLimit'
 							? toolResultTokenLimit
 							: currentField === 'thinkingBudgetTokens'
@@ -1678,6 +1718,8 @@ export default function ConfigScreen({
 						setMaxContextTokens(finalValue);
 					} else if (currentField === 'maxTokens') {
 						setMaxTokens(finalValue);
+					} else if (currentField === 'streamIdleTimeoutSec') {
+						setStreamIdleTimeoutSec(finalValue);
 					} else if (currentField === 'toolResultTokenLimit') {
 						setToolResultTokenLimit(finalValue);
 					} else if (currentField === 'thinkingBudgetTokens') {
@@ -1732,6 +1774,7 @@ export default function ConfigScreen({
 				} else if (
 					currentField === 'maxContextTokens' ||
 					currentField === 'maxTokens' ||
+					currentField === 'streamIdleTimeoutSec' ||
 					currentField === 'toolResultTokenLimit' ||
 					currentField === 'thinkingBudgetTokens' ||
 					currentField === 'geminiThinkingBudget'
@@ -1762,10 +1805,7 @@ export default function ConfigScreen({
 					if (currentField === 'systemPromptId') {
 						if (Array.isArray(systemPromptId)) {
 							setPendingPromptIds(new Set(systemPromptId));
-						} else if (
-							systemPromptId &&
-							systemPromptId !== ''
-						) {
+						} else if (systemPromptId && systemPromptId !== '') {
 							setPendingPromptIds(new Set([systemPromptId]));
 						} else {
 							setPendingPromptIds(new Set());
@@ -2179,21 +2219,13 @@ export default function ConfigScreen({
 											limit={10}
 											initialIndex={Math.max(
 												0,
-												items.findIndex(
-													opt => opt.value === selected,
-												),
+												items.findIndex(opt => opt.value === selected),
 											)}
 											isFocused={true}
 											selectedValues={pendingPromptIds}
-											renderItem={({
-												label,
-												value,
-												isSelected,
-												isMarked,
-											}) => {
+											renderItem={({label, value, isSelected, isMarked}) => {
 												const isMeta =
-													value === '__FOLLOW__' ||
-													value === '__DISABLED__';
+													value === '__FOLLOW__' || value === '__DISABLED__';
 												return (
 													<Text
 														color={
@@ -2204,11 +2236,7 @@ export default function ConfigScreen({
 																: 'white'
 														}
 													>
-														{isMeta
-															? ''
-															: isMarked
-															? '[✓] '
-															: '[ ] '}
+														{isMeta ? '' : isMarked ? '[✓] ' : '[ ] '}
 														{label}
 													</Text>
 												);
@@ -2218,9 +2246,7 @@ export default function ConfigScreen({
 													item.value === '__FOLLOW__' ||
 													item.value === '__DISABLED__'
 												) {
-													applySystemPromptSelectValue(
-														item.value,
-													);
+													applySystemPromptSelectValue(item.value);
 													setPendingPromptIds(new Set());
 													setIsEditing(false);
 													return;
@@ -2240,9 +2266,7 @@ export default function ConfigScreen({
 													item.value === '__FOLLOW__' ||
 													item.value === '__DISABLED__'
 												) {
-													applySystemPromptSelectValue(
-														item.value,
-													);
+													applySystemPromptSelectValue(item.value);
 													setPendingPromptIds(new Set());
 													setIsEditing(false);
 													return;
@@ -2259,21 +2283,15 @@ export default function ConfigScreen({
 													finalIds.push(item.value);
 												}
 												setSystemPromptId(
-													finalIds.length === 1
-														? finalIds[0]!
-														: finalIds,
+													finalIds.length === 1 ? finalIds[0]! : finalIds,
 												);
 												setPendingPromptIds(new Set());
 												setIsEditing(false);
 											}}
 										/>
 										<Box marginTop={1}>
-											<Text
-												color={theme.colors.menuSecondary}
-												dimColor
-											>
-												{t.configScreen
-													.systemPromptMultiSelectHint ||
+											<Text color={theme.colors.menuSecondary} dimColor>
+												{t.configScreen.systemPromptMultiSelectHint ||
 													'Space: toggle | Enter: confirm | Esc: cancel'}
 											</Text>
 										</Box>

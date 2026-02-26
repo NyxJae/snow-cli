@@ -93,45 +93,45 @@
     {
       "id": "notebook-1771495044055_cbcvm3sjp",
       "filePath": "source/api/",
-      "note": "职责: 模型渠道适配层.承载各第三方模型渠道适配器(source/api/*.ts),负责把内部统一的 ChatMessage/ToolCall 结构映射为各渠道请求格式,并解析渠道流式响应(SSE/HTTP stream).\n\n不该做什么:\n- 不承载会话业务状态,不维护 UI 状态.\n- 不做主代理/子代理选择逻辑与会话级状态管理(归 MainAgentManager + execution/session).\n\n统一架构原则(长期规范,跨 4 适配器一致,SSoT: requirements/API渠道冲突合并需求文档.md):\n1) 多条自定义 system prompt 支持:\n- customSystemPromptOverride 类型统一为 string[] | undefined,顺序敏感.\n- 各渠道可用等价映射表达(多条 system 消息或拼接为单条),但语义与顺序必须一致.\n\n2) system prompt 优先级模型(4 文件完全一致):\n1) 子代理调用且配置多条自定义 system prompts -> 使用子代理自定义数组.\n2) 子代理调用且无自定义但有子代理角色定义 -> 使用子代理角色定义.\n3) 主代理调用且配置多条自定义 system prompts -> 使用主代理自定义数组.\n4) 无自定义且允许内置 -> 使用对应代理的角色定义.\n\n3) 主/子代理提示词隔离(硬约束):\n- 角色定义提示词仅来自当前调用所属 agent profile,不得跨注入.\n- customSystemPromptOverride 仅影响本次调用,不得写回 profile.\n\n4) 特殊 user 消息后插语义:\n- 必须保留动态后插能力,且插入位置策略不得随 system prompt 来源变化.\n\n5) 多模态兼容与中转平台支持:\n- 必须保留本地对 Responses API 的多模态特殊处理(尤其是工具返回与图片消息拆分策略).\n- 合并 upstream 能力时,以\"能力并存\"为准则,禁止覆盖删除本地兼容路径.\n\n6) 流式健壮性(保护模式,所有适配器一致):\n- 必须接入 idle timeout guard(180000ms) + abandoned 丢弃.\n- abort 时必须 abandon 并 return,避免延迟 chunk 外泄.\n- done=true 但 buffer.trim() 非空必须抛可重试错误.\n\n依赖拓扑:\n- 依赖: source/utils/core/*(streamGuards,retryUtils 等),source/prompt/*(提示词组装),source/types/*.\n- 被依赖: source/utils/execution/* 与会话执行层.\n\n避坑指南:\n- 禁止单文件漂移: 任一适配器新增字段映射或 system prompt 处理规则,必须同步到其他 3 个适配器或明确标注差异原因.\n- 解冲突时优先保留本地多模态链路与主/子代理隔离边界,再吸收 upstream 的多 system prompts 能力.",
+      "note": "职责: 模型渠道适配层(source/api/*.ts).负责将内部消息映射到各渠道请求格式,并解析流式响应.\n不该做什么:\n- 不承载 UI 状态和会话业务状态.\n统一架构原则(Anthropic/Gemini/Chat/Responses 一致):\n1) 流式空闲超时使用单字段 snowcfg.streamIdleTimeoutSec(单位秒,默认180),禁止多层优先级.\n2) 超时判定口径一致: 仅有效业务数据刷新计时器,心跳/空事件不刷新.\n3) 超时后行为一致: 标记 abandoned,整次请求重发(非断点续传),旧连接迟到消息必须丢弃.\n4) 用户主动中断一致: 立即终止,不触发超时重试.\n5) 维持既有 system prompt 隔离与多模态兼容规范不变.\n依赖拓扑:\n- 依赖 source/utils/core/{streamGuards,retryUtils}.ts 与 source/utils/config/apiConfig.ts.\n- 被 source/utils/execution/* 调用.\n避坑指南:\n- 任何一个适配器修改超时逻辑,必须同步审查另外3个,防止行为漂移.\n- 禁止硬编码 180000ms 在适配器内,必须走配置解析后的毫秒值.",
       "createdAt": "2026-02-19T17:57:24.055",
-      "updatedAt": "2026-02-22T12:51:53.936"
+      "updatedAt": "2026-02-26T18:48:09.800"
     }
   ],
   "source/api/anthropic.ts": [
     {
       "id": "notebook-1770694883398_3ow0urpes",
       "filePath": "source/api/anthropic.ts",
-      "note": "职责: Anthropic API 适配器.将内部 ChatMessage 转换为 Anthropic 消息格式,并实现 Anthropic 流式 SSE 解析与产出.\n\n接口摘要:\n- createStreamingAnthropicCompletion(options,abortSignal,onRetry) -> AsyncGenerator<AnthropicStreamChunk>.\n- parseSSEStream(reader,abortSignal?) 解析 SSE data 行 JSON 并 yield.\n\n架构规范(必须与 chat/gemini/responses 对齐):\n- customSystemPromptOverride: 支持多条自定义 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 保留动态后插语义.\n\n流式保护模式(不得破坏):\n- idle timeout guard(180000ms) + abandoned 丢弃.\n- abort 时 abandon 并 return.\n- done=true 但 buffer.trim() 非空必须抛可重试错误.\n\n避坑指南:\n- 不要把 system prompts 在此文件中退化为单字符串,否则会与其他适配器产生语义漂移.\n- 解冲突时,先对齐统一提示词模型,再做渠道特有字段映射.",
+      "note": "职责: Anthropic 适配器,负责请求映射与流式解析.\n接口摘要:\n- createStreamingAnthropicCompletion(...),parseSSEStream(...).\n本需求改造边界:\n- 从配置读取 snowcfg.streamIdleTimeoutSec(秒),转换毫秒传入 createIdleTimeoutGuard.\n- 仅在有效业务数据到达时 touch(),心跳/空事件不刷新.\n- 超时后 abandoned + 重试,旧连接迟到消息丢弃.\n- 用户主动中断不重试.\n依赖拓扑:\n- 依赖 apiConfig/configManager 配置读取,依赖 streamGuards/retryUtils.\n避坑指南:\n- 禁止在本文件保留固定 180000ms 文案或逻辑.\n- 与 chat/gemini/responses 保持同口径实现.",
       "createdAt": "2026-02-10T11:41:23.398",
-      "updatedAt": "2026-02-22T12:51:54.085"
+      "updatedAt": "2026-02-26T18:48:09.999"
     }
   ],
   "source/api/chat.ts": [
     {
       "id": "notebook-1770694883572_4ydxyl8k0",
       "filePath": "source/api/chat.ts",
-      "note": "职责: OpenAI ChatCompletions API 适配器.负责消息格式转换与 ChatCompletions 流式 SSE 解析.\n\n接口摘要:\n- createStreamingChatCompletion(options,abortSignal,onRetry) -> AsyncGenerator<ChatCompletionChunk|...>.\n- parseSSEStream(reader,abortSignal?) 解析 SSE data 行 JSON 并 yield.\n\n统一规范(必须与 anthropic/gemini/responses 对齐):\n- customSystemPromptOverride: 多条 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 必须保留且位置策略一致.\n\n流式保护模式(不得破坏):\n- idle timeout guard(180000ms) + abandoned 丢弃 + finally dispose.\n- abort 时 abandon.\n- done=true 且 buffer.trim() 非空必须抛可重试错误.\n\n避坑指南:\n- 禁止把多 system prompts 在此文件拼接成单字符串,而其他适配器保持多条消息,会导致行为不一致.\n- 不要将 UI/会话状态写入该层.",
+      "note": "职责: ChatCompletions 适配器,负责请求映射与流式解析.\n接口摘要:\n- createStreamingChatCompletion(...),parseSSEStream(...).\n本需求改造边界:\n- 使用 snowcfg.streamIdleTimeoutSec(秒) 作为 idle timeout 单一来源,传入 guard.\n- 仅有效业务数据刷新计时器,心跳/空事件不刷新.\n- 超时整次重发,旧连接迟到消息丢弃,主动中断不重试.\n依赖拓扑:\n- 依赖 apiConfig/configManager,streamGuards,retryUtils.\n避坑指南:\n- 不得引入渠道特有超时优先级.\n- 必须与 anthropic/gemini/responses 保持一致行为.",
       "createdAt": "2026-02-10T11:41:23.572",
-      "updatedAt": "2026-02-22T12:51:54.218"
+      "updatedAt": "2026-02-26T18:48:10.202"
     }
   ],
   "source/api/gemini.ts": [
     {
       "id": "notebook-1770694883908_ow13cu46t",
       "filePath": "source/api/gemini.ts",
-      "note": "职责: Google Gemini API 适配器.将内部 ChatMessage 转换为 Gemini 请求格式,并实现 Gemini 流式读取与产出.\n\n接口摘要:\n- createStreamingGeminiCompletion(options,abortSignal,onRetry) -> AsyncGenerator<GeminiStreamChunk>.\n\n统一规范(必须与 anthropic/chat/responses 对齐):\n- customSystemPromptOverride: 多条 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 保留动态后插语义.\n\n流式保护模式(不得破坏):\n- idle timeout guard(180000ms),abort abandon,done 残留半包抛错,finally dispose.\n\n避坑指南:\n- Gemini 的 message/parts 映射容易把 system prompt 与普通文本混淆,必须确保系统提示词路径与用户消息路径严格区分.\n- 若渠道限制需要合并多条 system prompt,必须显式保留顺序语义.",
+      "note": "职责: Gemini 适配器,负责请求映射与流式解析.\n接口摘要:\n- createStreamingGeminiCompletion(...).\n本需求改造边界:\n- 统一消费 snowcfg.streamIdleTimeoutSec(秒),转毫秒传入 guard.\n- 仅业务数据触发 touch(),心跳/空事件不触发.\n- 超时走整次重发,主动中断不重试,断开后迟到消息丢弃.\n依赖拓扑:\n- 依赖 apiConfig/configManager,streamGuards,retryUtils.\n避坑指南:\n- 禁止保留硬编码 180000ms.\n- 与其他3个适配器保持严格一致口径.",
       "createdAt": "2026-02-10T11:41:23.908",
-      "updatedAt": "2026-02-22T12:51:54.334"
+      "updatedAt": "2026-02-26T18:48:10.411"
     }
   ],
   "source/api/responses.ts": [
     {
       "id": "notebook-1770694883742_l9t553m1w",
       "filePath": "source/api/responses.ts",
-      "note": "职责: OpenAI Responses API 适配器.将内部 ChatMessage 转换为 Responses API 请求格式,并实现 Responses 流式 SSE 解析.\n\n接口摘要:\n- createStreamingResponse(options,abortSignal,onRetry) -> AsyncGenerator<ResponseStreamChunk>.\n\n统一规范(必须与 anthropic/chat/gemini 对齐):\n- customSystemPromptOverride: 多条 system prompts(string[]),顺序敏感.\n- system prompt 优先级: 遵循 source/api/ 统一 1-4 模型.\n- 主/子代理隔离: 角色定义提示词仅来自当前调用 agent profile.\n- 特殊 user 消息后插: 必须保留.\n\nResponses 渠道映射约束:\n- 多条 system prompts 可能映射到 system 或 instruction 等字段,但必须保持与其他渠道等价语义与顺序.\n\n本地不可覆盖点(中转平台兼容):\n- 必须保留本地 Responses 多模态特殊处理路径,尤其是图片消息拆分与 tool_result 兼容策略.\n- 解冲突时以保留本地多模态链路为先,再吸收 upstream 的多 system prompts 能力,禁止反向覆盖.\n\n流式保护模式(不得破坏):\n- parseSSEStream 内 abort abandon,guard.touch/isAbandoned,timeout error throw,finally dispose.\n\n避坑指南:\n- 本文件最容易在解冲突时被 upstream 覆盖掉本地多模态处理,每次合并必须显式比对保留.\n- 注意多模态与系统提示词注入的相对顺序,避免改变上下文语义.",
+      "note": "职责: Responses 适配器,负责请求映射与流式解析,并保留本地多模态兼容链路.\n接口摘要:\n- createStreamingResponse(...),parseSSEStream(...).\n本需求改造边界:\n- 空闲超时改为读取 snowcfg.streamIdleTimeoutSec(秒),单字段配置.\n- 仅有效业务数据刷新计时器,心跳/空事件不刷新.\n- 超时整次重发,断开后旧连接迟到消息丢弃.\n- 用户主动中断不触发重试.\n依赖拓扑:\n- 依赖 apiConfig/configManager,streamGuards,retryUtils.\n避坑指南:\n- 保留本地 Responses 多模态特殊处理,不得被超时改造破坏.\n- 禁止在该文件维持固定3分钟硬编码.",
       "createdAt": "2026-02-10T11:41:23.741",
-      "updatedAt": "2026-02-22T12:51:54.449"
+      "updatedAt": "2026-02-26T18:48:10.608"
     }
   ],
   "source/api/sse-server.ts": [
@@ -150,6 +150,15 @@
       "note": "职责: 内置主代理配置集合(SSoT for built-in).提供每个内置主代理的默认 profile(名称,描述,系统提示词/角色定义,工具权限,限制可编辑文件类型等).\n\n接口摘要:\n- 输入: 无(静态内置配置).\n- 输出: 供 MainAgentManager 合并到运行时配置树的 BuiltinMainAgentConfig 列表/映射.\n\n依赖拓扑:\n- 被依赖: source/utils/MainAgentManager.ts 初始化阶段加载,并与用户自定义 main-agents.toml 合并.\n\n避坑指南:\n- 内置 id 必须稳定,且与 BUILTIN_AGENT_ORDER 对齐,否则 TUI 与 SSE 的 agent_list 顺序会漂移.\n- 修改内置代理的工具权限或可编辑文件类型限制时,必须同步更新文档/笔记中的隔离边界,避免主/子代理越权.",
       "createdAt": "2026-02-22T12:50:00.708",
       "updatedAt": "2026-02-22T12:50:00.708"
+    }
+  ],
+  "source/hooks/conversation/useConversation.ts": [
+    {
+      "id": "notebook-1772107272120_8ae464f6q",
+      "filePath": "source/hooks/conversation/useConversation.ts",
+      "note": "职责: 会话执行编排层,统一接入四类流式适配器并管理重试状态提示.\n接口摘要:\n- 根据 requestMethod 选择 streaming generator.\n- onRetry 回调负责 UI 重试状态更新,文案必须走 i18n key(retryResending).\n依赖拓扑:\n- 依赖 source/api/{chat,anthropic,gemini,responses}.ts.\n- 依赖 source/i18n/lang/* 的 retry 文案.\n避坑指南:\n- 用户主动中断(Request aborted by user)必须短路退出,不得进入重试提示循环.\n- 不得在此硬编码任意语言重试文案,避免多语言漂移.",
+      "createdAt": "2026-02-26T20:01:12.120",
+      "updatedAt": "2026-02-26T20:01:12.120"
     }
   ],
   "source/hooks/ui/usePanelState.ts": [
@@ -278,6 +287,24 @@
       "updatedAt": "2026-02-13T11:35:18.419"
     }
   ],
+  "source/ui/pages/": [
+    {
+      "id": "notebook-1772102891936_0wnayjsrg",
+      "filePath": "source/ui/pages/",
+      "note": "职责: TUI 页面层,承载设置页与交互流程.\n架构约束(本需求):\n- API和模型设置页作为 streamIdleTimeoutSec 唯一UI入口.\n- 字段文案,单位,默认值与需求文档一致(秒,180).\n依赖拓扑:\n- 依赖 source/utils/config/* 持久化配置.\n避坑指南:\n- 页面展示与实际保存字段必须一一对应,避免只改UI不落盘.\n- 数字字段输入需遵循统一验证模式,防止非法值写入.",
+      "createdAt": "2026-02-26T18:48:11.936",
+      "updatedAt": "2026-02-26T18:48:11.936"
+    }
+  ],
+  "source/ui/pages/ConfigScreen.tsx": [
+    {
+      "id": "notebook-1772102891717_hflmmzua9",
+      "filePath": "source/ui/pages/ConfigScreen.tsx",
+      "note": "职责: API和模型设置页,作为 streamIdleTimeoutSec 的唯一 UI 编辑入口.\n不该做什么:\n- 不在 UI 层实现超时重试语义或流解析细节.\n接口摘要:\n- 字段展示/编辑/校验/保存.\n- 保存路径必须同时写入 updateOpenAiConfig 与 saveProfile(activeProfile, snowcfg).\n依赖拓扑:\n- 依赖 apiConfig.ts 与 configManager.ts 的同口径归一化.\n避坑指南:\n- 数字输入必须保持整数语义,非法输入回退180.\n- 字段标签必须明确单位为秒,避免用户误填毫秒.\n- 只允许单字段 streamIdleTimeoutSec,禁止新增同义字段造成配置分叉.",
+      "createdAt": "2026-02-26T18:48:11.717",
+      "updatedAt": "2026-02-26T20:01:11.891"
+    }
+  ],
   "source/ui/pages/MCPConfigScreen.tsx": [
     {
       "id": "notebook-1770950000001_mcpcfgscreen",
@@ -294,6 +321,33 @@
       "note": "职责: 核心业务与通用能力层.包含对话执行(execution),会话(session),SSE(sse),模型调用与流控制(core),配置读写(config),命令(commands),事件(events)等.\n\n接口摘要:\n- 输入: UI/CLI 层传入的用户指令与上下文.\n- 输出: 对话结果,状态变更事件,以及对外协议输出(SSE 事件等).\n\n依赖拓扑:\n- 依赖: source/api/ 作为模型渠道适配器.\n- 被依赖: source/ui/ 与 CLI 入口.\n\n避坑指南:\n- 任何跨会话的可变状态必须显式按 sessionId/connectionId 分片,禁止隐式单例导致串扰.\n- 流式输出必须统一使用 streamGuards/idle timeout/abandoned 丢弃策略,避免 abort 后 chunk 外泄.\n- 主/子代理提示词隔离是硬约束: 角色定义提示词只来自各自 profile,自定义 system prompt 仅影响本次调用且不得跨注入.",
       "createdAt": "2026-02-22T12:50:37.045",
       "updatedAt": "2026-02-22T12:50:37.045"
+    }
+  ],
+  "source/utils/config/": [
+    {
+      "id": "notebook-1772102891504_avfjnpdlm",
+      "filePath": "source/utils/config/",
+      "note": "职责: 配置域模块,负责主配置与 profile 配置的类型定义,读取,校验,持久化.\n架构约束(本需求):\n- 流式空闲超时唯一字段 snowcfg.streamIdleTimeoutSec.\n- 单位秒,默认180,非法值统一回退180.\n- 不引入配置优先级链,仅按现有主配置/profile覆盖机制工作.\n依赖拓扑:\n- 被 source/ui/pages/ConfigScreen.tsx 和 source/api/* 消费.\n避坑指南:\n- 该字段不等价于请求超时或工具超时.\n- 配置迁移/兼容时必须保证该字段可持久化和可回读.",
+      "createdAt": "2026-02-26T18:48:11.504",
+      "updatedAt": "2026-02-26T18:48:11.504"
+    }
+  ],
+  "source/utils/config/apiConfig.ts": [
+    {
+      "id": "notebook-1772102891152_9vg6mf8xl",
+      "filePath": "source/utils/config/apiConfig.ts",
+      "note": "职责: API配置模型与默认值管理(含主配置 snowcfg 的读写与归一化).\n不该做什么:\n- 不承载流式重试策略实现,仅提供配置真值.\n- 不引入 streamIdleTimeoutSec 的多层优先级来源.\n接口摘要:\n- ApiConfig 定义 streamIdleTimeoutSec:number(单位秒).\n- DEFAULT_STREAM_IDLE_TIMEOUT_SEC=180 作为唯一默认值常量.\n- normalizeStreamIdleTimeoutSec(value): 非数字/非整数/<=0/缺失统一回退180.\n依赖拓扑:\n- 被 source/utils/config/configManager.ts,source/ui/pages/ConfigScreen.tsx,source/api/*.ts 消费.\n避坑指南:\n- streamIdleTimeoutSec 仅表示流式空闲超时,不得复用于请求超时或工具超时.\n- 任何配置迁移必须保持该字段可读可写且回退规则不变.",
+      "createdAt": "2026-02-26T18:48:11.152",
+      "updatedAt": "2026-02-26T20:01:11.546"
+    }
+  ],
+  "source/utils/config/configManager.ts": [
+    {
+      "id": "notebook-1772102891329_hs0nlkx88",
+      "filePath": "source/utils/config/configManager.ts",
+      "note": "职责: profile 配置加载与保存管理器,保证主配置与 profile 的 snowcfg 字段语义一致.\n不该做什么:\n- 不在本层新增渠道特化覆盖逻辑.\n接口摘要:\n- loadProfile/saveProfile/listProfiles.\n- normalizeStreamIdleTimeoutSec(value) 与 apiConfig 保持同口径: 非法值回退180.\n依赖拓扑:\n- 被 ConfigScreen 保存路径与执行时配置读取链路依赖.\n避坑指南:\n- profile 保存必须包含 snowcfg.streamIdleTimeoutSec,防止切换 profile 后行为漂移.\n- 主配置与 profile 合并时,字段命名与单位必须严格一致(秒).",
+      "createdAt": "2026-02-26T18:48:11.329",
+      "updatedAt": "2026-02-26T20:01:11.696"
     }
   ],
   "source/utils/config/disabledBuiltInTools.ts": [
@@ -323,13 +377,31 @@
       "updatedAt": "2026-02-13T10:31:52.970"
     }
   ],
+  "source/utils/core/": [
+    {
+      "id": "notebook-1772102890983_fbxjvwghi",
+      "filePath": "source/utils/core/",
+      "note": "职责: 对话核心运行时能力层(core),包含重试,流保护,模型调用通用健壮性.\n不该做什么:\n- 不承载 UI 输入输出状态.\n- 不保存 profile 持久化配置.\n架构约束(本需求):\n- 流式空闲超时配置单一来源为 snowcfg.streamIdleTimeoutSec(秒),默认180.\n- 核心层仅负责秒->毫秒转换与执行,不引入多层优先级.\n依赖拓扑:\n- 依赖 config 层提供配置值,被 source/api/* 调用.\n避坑指南:\n- 心跳/空事件不能触发活跃刷新.\n- 断开后必须丢弃旧流延迟消息,避免串流污染.",
+      "createdAt": "2026-02-26T18:48:10.983",
+      "updatedAt": "2026-02-26T18:48:10.983"
+    }
+  ],
+  "source/utils/core/retryUtils.ts": [
+    {
+      "id": "notebook-1772102890816_ewfvt754d",
+      "filePath": "source/utils/core/retryUtils.ts",
+      "note": "职责: 核心重试策略与可重试错误判定.为流式与非流式调用提供统一退避重试能力.\n接口摘要:\n- withRetryGenerator(...): 统一重试执行器.\n- isRetriableError(...): 识别可重试错误(含 StreamIdleTimeoutError).\n依赖拓扑:\n- 被 source/api/* 适配器调用.\n- 与 streamGuards.ts 协同,消费 idle timeout 错误进入重试链路.\n避坑指南:\n- 本需求不新增重试次数配置,仅复用现有策略.\n- 用户主动中断错误不得误判为可重试.\n- 超时重试提示文案应使用当前第X次语义,不引入新计数来源.",
+      "createdAt": "2026-02-26T18:48:10.816",
+      "updatedAt": "2026-02-26T18:48:10.816"
+    }
+  ],
   "source/utils/core/streamGuards.ts": [
     {
       "id": "notebook-1770953800000_streamguards",
       "filePath": "source/utils/core/streamGuards.ts",
-      "note": "职责: core 层流式读取保护器,提供统一的 idle timeout 检测(固定 STREAM_IDLE_TIMEOUT_MS=180000),abandoned 丢弃屏障,以及将超时异常从定时器回调安全传递到读取循环的机制.\n不该做什么:\n- 不在 setInterval/setTimeout 回调里直接 throw,也不允许 onTimeout 的异常冒泡到事件循环,避免触发 uncaughtException.\n- 不在本模块实现重试/退避策略,只提供可被上层(withRetryGenerator)消费的信号与错误.\n- 不把 idle timeout 作为用户配置项暴露;生产代码不应覆盖 idleTimeoutMs,以确保所有适配器行为一致.\n接口摘要:\n- STREAM_IDLE_TIMEOUT_MS: number,3 分钟常量.\n- StreamIdleTimeoutError: Error 子类,name 固定为 StreamIdleTimeoutError,供 retryUtils 优先通过 error.name 判定可重试.\n- StreamGuard: {abandon,isAbandoned,getTimeoutError,touch,dispose}.\n- createIdleTimeoutGuard({reader?,onTimeout?,idleTimeoutMs?}): StreamGuard.\n  - onTimeout 可以 throw,但异常会被 guard 捕获并保存为 timeoutError.\n  - 调用方必须在读取循环中检查 guard.getTimeoutError() 并在循环上下文 throw,确保被业务 try/catch 捕获并进入重试链路.\n依赖拓扑:\n- 依赖: utils/core/logger.ts(仅日志).\n- 被依赖: source/api/chat.ts,responses.ts,anthropic.ts,gemini.ts 的流式读取循环.\n- 协作: utils/core/retryUtils.ts 通过 error.name===StreamIdleTimeoutError 判定可重试.\n避坑指南:\n- Node.js 定时器回调里的 throw 不会被外层 parseSSEStream 的 try/catch 捕获,会变成 uncaughtException,并在本项目中可能触发 process.exit(1).\n- logger.warn/error 最终会走 fs.appendFileSync 写文件,可能同步抛错;定时器回调内的日志也必须被 try/catch 覆盖,禁止异常冒泡到事件循环.\n- 当前实现已在 setInterval 回调外层使用全量 try/catch,覆盖 logger.warn,reader.cancel,onTimeout 等所有路径,确保任何异常都不会冒泡.\n- 超时触发重试的正确模式: 定时器只做 abandon/cancel + 记录 timeoutError,读取循环负责检测 getTimeoutError 并 throw.\n- 适配器必须实现 getTimeoutError 检查,否则超时错误会被吞掉(常见表现: reader.cancel/done 后静默结束,或下游一直等待结束事件).\n- 文档注释/示例已更新: 示例现在明确演示 onTimeout 可以 throw(由 guard 捕获并保存),调用方必须在读取循环中检查 guard.getTimeoutError() 并在循环上下文 throw,避免误导调用方.",
+      "note": "职责: core 层流式读取保护器.提供统一 idle timeout 检测,abandoned 丢弃屏障,以及将超时异常安全传递到读取循环.本模块允许调用方传入 idleTimeoutMs,但配置来源必须统一来自 snowcfg.streamIdleTimeoutSec(秒转毫秒).\n不该做什么:\n- 不在定时器回调直接 throw 到事件循环.\n- 不实现重试次数/退避策略,只提供可重试信号.\n- 不在此引入多层优先级,仅消费单一超时参数.\n接口摘要:\n- STREAM_IDLE_TIMEOUT_MS: 默认常量 180000ms(兜底).\n- StreamIdleTimeoutError: 可重试超时错误,供 retryUtils 识别.\n- createIdleTimeoutGuard({reader?,onTimeout?,idleTimeoutMs?}): 允许传入运行时超时毫秒.\n依赖拓扑:\n- 被 source/api/{anthropic,chat,gemini,responses}.ts 流式循环调用.\n- 与 source/utils/core/retryUtils.ts 协作完成超时重试.\n避坑指南:\n- 超时计时刷新必须由适配器在收到有效业务数据时调用 touch(),心跳/空事件不得刷新.\n- 断开后必须 abandon,并丢弃旧连接迟到消息.\n- 用户主动中断路径不得转化为超时重试.",
       "createdAt": "2026-02-13T12:30:00.000",
-      "updatedAt": "2026-02-13T13:26:27.899"
+      "updatedAt": "2026-02-26T18:48:09.593"
     }
   ],
   "source/utils/execution/mcpToolsManager.ts": [

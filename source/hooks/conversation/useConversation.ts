@@ -25,6 +25,8 @@ import {unifiedHooksExecutor} from '../../utils/execution/unifiedHooksExecutor.j
 import {formatTodoContext} from '../../utils/core/todoPreprocessor.js';
 import {formatUsefulInfoContext} from '../../utils/core/usefulInfoPreprocessor.js';
 import {formatFolderNotebookContext} from '../../utils/core/folderNotebookPreprocessor.js';
+import {translations} from '../../i18n/translations.js';
+import {getCurrentLanguage} from '../../utils/config/languageConfig.js';
 import {
 	findInsertPositionBeforeNthAssistantFromEnd,
 	insertMessagesAtPosition,
@@ -190,12 +192,16 @@ export async function handleConversationWithTools(
 
 			retryCount++;
 			if (setRetryStatus) {
+				const currentLanguage = getCurrentLanguage();
+				const t = translations[currentLanguage].chatScreen;
 				setRetryStatus({
 					isRetrying: true,
 					attempt: retryCount,
 					nextDelay: RETRY_DELAY,
 					remainingSeconds: Math.floor(RETRY_DELAY / 1000),
-					errorMessage: `网络或服务错误，正在重试 (${retryCount}/${MAX_RETRIES})...`,
+					errorMessage: t.retryResending
+						.replace('{current}', String(retryCount))
+						.replace('{max}', String(MAX_RETRIES)),
 				});
 			}
 
@@ -487,7 +493,6 @@ async function executeWithInternalRetry(
 								sessionId: currentSession?.id,
 								// Disable thinking for basicModel (e.g., init command)
 								disableThinking: options.useBasicModel,
-								// teamMode 已整合为 currentAgentName，API 直接从 MainAgentManager 获取状态
 							},
 							controller.signal,
 							onRetry,
@@ -499,7 +504,6 @@ async function executeWithInternalRetry(
 								messages: conversationMessages,
 								temperature: 0,
 								tools: mcpTools.length > 0 ? mcpTools : undefined,
-								// teamMode 已整合为 currentAgentName，API 直接从 MainAgentManager 获取状态
 							},
 							controller.signal,
 							onRetry,
@@ -513,8 +517,6 @@ async function executeWithInternalRetry(
 								tools: mcpTools.length > 0 ? mcpTools : undefined,
 								tool_choice: 'auto',
 								prompt_cache_key: cacheKey, // Use session ID as cache key
-								// reasoning 参数已移除，API 使用默认配置
-								// teamMode 已整合为 currentAgentName，API 直接从 MainAgentManager 获取状态
 							},
 							controller.signal,
 							onRetry,
@@ -525,7 +527,6 @@ async function executeWithInternalRetry(
 								messages: conversationMessages,
 								temperature: 0,
 								tools: mcpTools.length > 0 ? mcpTools : undefined,
-								// teamMode 已整合为 currentAgentName，API 直接从 MainAgentManager 获取状态
 							},
 							controller.signal,
 							onRetry,

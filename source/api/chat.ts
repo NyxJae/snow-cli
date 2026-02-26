@@ -330,6 +330,7 @@ export interface StreamChunk {
 async function* parseSSEStream(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	abortSignal?: AbortSignal,
+	idleTimeoutMs?: number,
 ): AsyncGenerator<any, void, unknown> {
 	const decoder = new TextDecoder();
 	let buffer = '';
@@ -339,8 +340,12 @@ async function* parseSSEStream(
 	// 创建空闲超时保护器
 	const guard = createIdleTimeoutGuard({
 		reader,
+		idleTimeoutMs,
 		onTimeout: () => {
-			throw new StreamIdleTimeoutError('No data received for 180000ms');
+			throw new StreamIdleTimeoutError(
+				`No data received for ${idleTimeoutMs}ms`,
+				idleTimeoutMs,
+			);
 		},
 	});
 
@@ -353,9 +358,6 @@ async function* parseSSEStream(
 			}
 
 			const {done, value} = await reader.read();
-
-			// 更新活动时间
-			guard.touch();
 
 			// 检查是否有超时错误需要在读取循环中抛出(确保被正确的 try/catch 捕获)
 			const timeoutError = guard.getTimeoutError();
@@ -421,10 +423,22 @@ async function* parseSSEStream(
 					});
 
 					if (parseResult.success) {
+						const chunk = parseResult.data;
+						const hasBusinessDelta = !!chunk?.choices?.some((choice: any) => {
+							const delta = choice?.delta;
+							return Boolean(
+								delta?.content ||
+									delta?.reasoning_content ||
+									(delta?.tool_calls && delta.tool_calls.length > 0),
+							);
+						});
+						if (hasBusinessDelta) {
+							guard.touch();
+						}
 						dataCount++;
 						// yield 前检查是否已被丢弃(竞态条件防护)
 						if (!guard.isAbandoned()) {
-							yield parseResult.data;
+							yield chunk;
 						}
 					}
 				}
@@ -596,11 +610,13 @@ export async function* createStreamingChatCompletion(
 			let usageData: UsageInfo | undefined;
 			let reasoningStarted = false; // Track if reasoning has started
 			let reasoningContentBuffer = ''; // Accumulate complete reasoning content for saving
+			const idleTimeoutMs = (config.streamIdleTimeoutSec ?? 180) * 1000;
 			for await (const chunk of parseSSEStream(
 				response.body.getReader(),
 				abortSignal,
+				idleTimeoutMs,
 			)) {
-				// 原有外层 abort 检查可移除,已内置于 parseSSEStream
+				// abort 由 parseSSEStream 统一处理,避免重复分支导致行为漂移
 				// Capture usage information if available (usually in the last chunk)
 				const usageValue = (chunk as any).usage;
 				if (usageValue !== null && usageValue !== undefined) {
