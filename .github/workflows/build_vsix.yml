@@ -94,3 +94,5 @@ jobs:
             - Sidebar and split terminal modes
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
+          make_latest: true
