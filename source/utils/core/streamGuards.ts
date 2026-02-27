@@ -7,8 +7,8 @@
 import {logger} from './logger.js';
 
 /**
- * 流式读取空闲超时常量(3分钟)
- * 固定值,不可配置,确保所有流式API行为一致
+ * 流式读取空闲超时默认常量(3分钟)
+ * 作为兜底值使用,调用方可通过 createIdleTimeoutGuard 传入 idleTimeoutMs 覆盖
  */
 export const STREAM_IDLE_TIMEOUT_MS = 180000;
 

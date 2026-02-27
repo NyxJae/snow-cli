@@ -181,7 +181,11 @@ export const en: TranslationKeys = {
 		enableAutoCompress: 'Enable Auto Compression:',
 		showThinking: 'Show Thinking Process:',
 		thinkingEnabled: 'Thinking Enabled:',
+		thinkingMode: 'Thinking Mode:',
+		thinkingModeTokens: 'Input Tokens',
+		thinkingModeAdaptive: 'Adaptive',
 		thinkingBudgetTokens: 'Thinking Budget Tokens:',
+		thinkingEffort: 'Thinking Effort:',
 		geminiThinkingEnabled: 'Gemini Thinking Enabled:',
 		geminiThinkingBudget: 'Gemini Thinking Budget:',
 		responsesReasoningEnabled: 'Responses Reasoning Enabled:',
@@ -216,7 +220,7 @@ export const en: TranslationKeys = {
 		manualInputHint: 'Press Enter to confirm, Esc to cancel',
 		loadingError: '⚠ Failed to load models from API',
 		requestMethodChat:
-			'Chat Completions - Modern chat API (GPT-4, GPT-3.5-turbo)',
+			'Chat Completions - Modern chat API (DeepSeek)',
 		requestMethodResponses:
 			'Responses - New responses API (2025, with built-in tools)',
 		requestMethodGemini: 'Gemini - Google Gemini API',
@@ -569,6 +573,7 @@ export const en: TranslationKeys = {
 		requestMethod: 'Request Method:',
 		showThinkingProcess: 'Show Thinking Process:',
 		enableThinking: 'Enable Thinking:',
+		thinkingMode: 'Thinking Mode:',
 		thinkingStrength: 'Thinking Strength:',
 		inputNumberHint: 'Enter number, press Enter to save',
 		escCancel: 'Esc to cancel',

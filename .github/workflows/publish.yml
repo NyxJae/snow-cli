@@ -58,9 +58,7 @@ jobs:
 
             ### What's New
 
-            - Fix some UI display problems
-            - Optimize the display logic of the instruction panel
-            - Repair some international translations are indeed missing
+            - Add Anthropic request signature parameter padding strategy
 
             ### Installation
             ```bash

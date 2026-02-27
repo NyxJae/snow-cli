@@ -679,10 +679,6 @@ export async function* createStreamingGeminiCompletion(
 							// 连接异常中断,抛出明确错误
 							const errorMsg = `[API_ERROR] [RETRIABLE] Gemini stream terminated unexpectedly with incomplete data`;
 							const bufferPreview = buffer.substring(0, 100);
-							logger.error(errorMsg, {
-								bufferLength: buffer.length,
-								bufferPreview,
-							});
 							throw new Error(`${errorMsg}: ${bufferPreview}...`);
 						}
 						break; // 正常结束

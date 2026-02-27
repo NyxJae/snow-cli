@@ -566,12 +566,12 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				options.setMessages(prev => [...prev, commandMessage]);
 			} else if (result.success && result.action === 'showProfilePanel') {
 				options.onSwitchProfile();
-				// 不追加command消息,避免无效反馈挤占主对话区
+				// Don't add command message to keep UI clean
 			} else if (result.success && result.action === 'home') {
-				// 先清理会话与缓存消息,避免返回首页后旧状态泄漏到新会话
+				// Clear session BEFORE navigating to prevent stale session leaking into new chat
 				sessionManager.clearCurrentSession();
 				options.clearSavedMessages();
-				// 重置终端显示,确保welcome页呈现干净的交互环境
+				// Reset terminal before navigating to welcome screen
 				resetTerminal(stdout);
 				void import('../../utils/core/folderNotebookPreprocessor.js').then(
 					({clearReadFolders}) => {
@@ -783,10 +783,10 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					options.setMessages(prev => [...prev, errorMessage]);
 				}
 			} else if (result.success && result.action === 'home') {
-				// 先清理会话与缓存消息,避免返回首页后旧状态泄漏到新会话
+				// Clear session BEFORE navigating to prevent stale session leaking into new chat
 				sessionManager.clearCurrentSession();
 				options.clearSavedMessages();
-				// 重置终端显示,确保welcome页呈现干净的交互环境
+				// Reset terminal before navigating to welcome screen
 				resetTerminal(stdout);
 				void import('../../utils/core/folderNotebookPreprocessor.js').then(
 					({clearReadFolders}) => {
@@ -795,7 +795,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				);
 				navigateTo('welcome');
 			} else if (result.success && result.action === 'toggleYolo') {
-				// 切换YOLO模式时不追加消息,避免命令噪音干扰会话阅读
+				// Toggle YOLO mode without adding command message
 				options.setYoloMode(prev => !prev);
 				// 不追加command消息,避免无效反馈挤占主对话区
 			} else if (
@@ -1001,7 +1001,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				options.setMessages(prev => [...prev, commandMessage]);
 			}
 		},
-		[stdout, options],
+		[stdout, options, t],
 	);
 
 	return {handleCommandExecution};

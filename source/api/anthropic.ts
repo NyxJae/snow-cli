@@ -228,7 +228,18 @@ function convertToAnthropicMessages(
 	let systemContents: string[] | undefined;
 	const anthropicMessages: AnthropicMessageParam[] = [];
 
+	const toolResults: any[] = [];
+
 	for (const msg of messages) {
+		// Flush tool results when encountering non-tool messages
+		if (msg.role !== 'tool' && toolResults.length > 0) {
+			anthropicMessages.push({
+				role: 'user',
+				content: [...toolResults],
+			});
+			toolResults.length = 0;
+		}
+
 		if (msg.role === 'system') {
 			// 输入中的system消息不直接透传,统一由下方优先级逻辑重建
 			continue;
@@ -289,6 +300,7 @@ function convertToAnthropicMessages(
 					],
 				});
 			}
+
 			continue;
 		}
 
@@ -340,8 +352,11 @@ function convertToAnthropicMessages(
 			// 启用 thinking 时,thinking 块必须放在最前面
 			// 当 disableThinking 为 true 时跳过 thinking 块
 			if (msg.thinking && !disableThinking) {
-				// 使用完整的 thinking 块对象(包含签名)
-				content.push(msg.thinking);
+				// Ensure signature is always present (required by Anthropic API)
+				content.push({
+					...msg.thinking,
+					signature: msg.thinking.signature || '',
+				});
 			}
 
 			if (msg.content) {
@@ -373,8 +388,11 @@ function convertToAnthropicMessages(
 			if (msg.role === 'assistant' && msg.thinking && !disableThinking) {
 				const content: any[] = [];
 
-				// Thinking 块必须放在最前面 - 使用完整的块对象(包含签名)
-				content.push(msg.thinking);
+				// Thinking block must come first - ensure signature is always present
+				content.push({
+					...msg.thinking,
+					signature: msg.thinking.signature || '',
+				});
 
 				// 然后是文本内容
 				if (msg.content) {
@@ -397,8 +415,17 @@ function convertToAnthropicMessages(
 		}
 	}
 
-	// 统一系统提示词优先级: 子代理自定义 -> 子代理角色定义 -> 主代理自定义 -> 主代理角色定义
-	if (isSubAgentCall && customSystemPrompts && customSystemPrompts.length > 0) {
+	// Flush any remaining tool results at the end of message processing
+	if (toolResults.length > 0) {
+		anthropicMessages.push({
+			role: 'user',
+			content: [...toolResults],
+		});
+		toolResults.length = 0;
+	}
+
+	// 如果配置了自定义系统提示词（最高优先级，始终添加）
+	if (customSystemPrompts && customSystemPrompts.length > 0) {
 		systemContents = customSystemPrompts;
 	} else if (isSubAgentCall && subAgentSystemPrompt) {
 		systemContents = [subAgentSystemPrompt];
@@ -682,12 +709,29 @@ export async function* createStreamingAnthropicCompletion(
 				stream: true,
 			};
 
-			// 如果启用且未明确禁用,则添加 thinking 配置
-			// 启用 thinking 时,temperature 必须为 1
-			// 注意: agents 和其他内部工具应设置 disableThinking=true
-			if (config.thinking && !options.disableThinking) {
-				requestBody.thinking = config.thinking;
-				requestBody.temperature = 1;
+			// Add thinking configuration if enabled and not explicitly disabled
+			// When thinking is enabled, temperature must be 1
+			// Note: agents and other internal tools should set disableThinking=true
+			// Debug: Log thinking decision for troubleshooting
+			if (config.thinking) {
+				logger.debug('Thinking config check:', {
+					configThinking: !!config.thinking,
+					disableThinking: options.disableThinking,
+					willEnableThinking: config.thinking && !options.disableThinking,
+				});
+				if (config.thinking && !options.disableThinking) {
+					if (config.thinking.type === 'adaptive') {
+						requestBody.thinking = {
+							type: 'adaptive',
+						};
+						requestBody.output_config = {
+							effort: config.thinking.effort || 'high',
+						};
+					} else {
+						requestBody.thinking = config.thinking;
+					}
+					requestBody.temperature = 1;
+				}
 			}
 
 			// 如果提供了自定义 headers 则使用,否则从当前配置获取(支持配置文件覆盖)
@@ -787,8 +831,8 @@ export async function* createStreamingAnthropicCompletion(
 			let hasToolCalls = false;
 			let usageData: UsageInfo | undefined;
 			let blockIndexToId: Map<number, string> = new Map();
-			let blockIndexToType: Map<number, string> = new Map(); // 跟踪块类型(text, thinking, tool_use)
-			let completedToolBlocks = new Set<string>(); // 跟踪哪些工具块已完成流式传输
+			let blockIndexToType: Map<number, string> = new Map(); // Track block types (text, thinking, tool_use)
+			let completedToolBlocks = new Set<string>(); // Track which tool blocks have finished streaming
 			const idleTimeoutMs = (config.streamIdleTimeoutSec ?? 180) * 1000;
 
 			for await (const event of parseSSEStream(
@@ -1000,7 +1044,7 @@ export async function* createStreamingAnthropicCompletion(
 				? {
 						type: 'thinking' as const,
 						thinking: thinkingTextBuffer,
-						signature: thinkingSignature || undefined,
+						signature: thinkingSignature || '',
 				  }
 				: undefined;
 

@@ -104,7 +104,9 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 			},
 			{
 				name: 'diff',
-				description: t.commandPanel.commands.diff || 'Review file changes from a conversation in IDE diff view',
+				description:
+					t.commandPanel.commands.diff ||
+					'Review file changes from a conversation in IDE diff view',
 			},
 			{
 				name: 'quit',

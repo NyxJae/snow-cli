@@ -645,8 +645,8 @@ export async function* createStreamingResponse(
 						encrypted_content?: string;
 				  }
 				| undefined;
-
 			const idleTimeoutMs = (config.streamIdleTimeoutSec ?? 180) * 1000;
+
 			for await (const chunk of parseSSEStream(
 				response.body.getReader(),
 				abortSignal,
