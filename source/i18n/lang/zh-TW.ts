@@ -201,7 +201,7 @@ export const zhTW: TranslationKeys = {
 		manualInputSubtitle: '手動輸入模型名稱',
 		manualInputHint: '按 Enter 確認,Esc 取消',
 		loadingError: '⚠ 無法從 API 載入模型',
-		requestMethodChat: 'Chat Completions - 現代聊天 API (GPT-4, GPT-3.5-turbo)',
+		requestMethodChat: 'Chat Completions - 現代聊天 API (DeepSeek)',
 		requestMethodResponses: 'Responses - 新 Responses API (2025, 內建工具)',
 		requestMethodGemini: 'Gemini - Google Gemini API',
 		requestMethodAnthropic: 'Anthropic - Claude API',

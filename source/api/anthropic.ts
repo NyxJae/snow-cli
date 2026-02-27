@@ -222,7 +222,18 @@ function convertToAnthropicMessages(
 	let systemContents: string[] | undefined;
 	const anthropicMessages: AnthropicMessageParam[] = [];
 
+	const toolResults: any[] = [];
+
 	for (const msg of messages) {
+		// Flush tool results when encountering non-tool messages
+		if (msg.role !== 'tool' && toolResults.length > 0) {
+			anthropicMessages.push({
+				role: 'user',
+				content: [...toolResults],
+			});
+			toolResults.length = 0;
+		}
+
 		if (msg.role === 'system') {
 			systemContents = [msg.content];
 			continue;
@@ -271,15 +282,10 @@ function convertToAnthropicMessages(
 				toolResultContent = msg.content;
 			}
 
-			anthropicMessages.push({
-				role: 'user',
-				content: [
-					{
-						type: 'tool_result',
-						tool_use_id: msg.tool_call_id,
-						content: toolResultContent,
-					},
-				],
+			toolResults.push({
+				type: 'tool_result',
+				tool_use_id: msg.tool_call_id,
+				content: toolResultContent,
 			});
 			continue;
 		}
@@ -387,6 +393,15 @@ function convertToAnthropicMessages(
 				});
 			}
 		}
+	}
+
+	// Flush any remaining tool results at the end of message processing
+	if (toolResults.length > 0) {
+		anthropicMessages.push({
+			role: 'user',
+			content: [...toolResults],
+		});
+		toolResults.length = 0;
 	}
 
 	// 如果配置了自定义系统提示词（最高优先级，始终添加）

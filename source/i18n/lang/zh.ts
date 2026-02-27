@@ -200,7 +200,7 @@ export const zh: TranslationKeys = {
 		manualInputSubtitle: '手动输入模型名称',
 		manualInputHint: '按 Enter 确认,Esc 取消',
 		loadingError: '⚠ 无法从 API 加载模型',
-		requestMethodChat: 'Chat Completions - 现代聊天 API (GPT-4, GPT-3.5-turbo)',
+		requestMethodChat: 'Chat Completions - 现代聊天 API (DeepSeek)',
 		requestMethodResponses: 'Responses - 新 Responses API (2025, 内置工具)',
 		requestMethodGemini: 'Gemini - Google Gemini API',
 		requestMethodAnthropic: 'Anthropic - Claude API',

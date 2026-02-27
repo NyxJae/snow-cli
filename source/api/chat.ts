@@ -584,8 +584,14 @@ export async function* createStreamingChatCompletion(
 				}
 
 				// Skip content processing if no choices (but usage is already captured above)
-				const choice = chunk.choices[0];
+				const choice = chunk.choices?.[0];
 				if (!choice) {
+					// If this chunk has usage but no choices, it's the final usage-only chunk
+					// Some APIs send this as the last chunk after finish_reason
+					if ((chunk as any).usage) {
+						// Final chunk with usage, exit the loop
+						break;
+					}
 					continue;
 				}
 
@@ -663,7 +669,10 @@ export async function* createStreamingChatCompletion(
 				}
 
 				if (choice.finish_reason) {
-					break;
+					// Continue to wait for the final usage chunk.
+					// Some APIs send finish_reason first, then usage-only chunk.
+					// Don't break immediately as some APIs stream usage in each chunk.
+					continue;
 				}
 			}
 

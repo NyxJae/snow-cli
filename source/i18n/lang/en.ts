@@ -218,7 +218,7 @@ export const en: TranslationKeys = {
 		manualInputHint: 'Press Enter to confirm, Esc to cancel',
 		loadingError: '⚠ Failed to load models from API',
 		requestMethodChat:
-			'Chat Completions - Modern chat API (GPT-4, GPT-3.5-turbo)',
+			'Chat Completions - Modern chat API (DeepSeek)',
 		requestMethodResponses:
 			'Responses - New responses API (2025, with built-in tools)',
 		requestMethodGemini: 'Gemini - Google Gemini API',
