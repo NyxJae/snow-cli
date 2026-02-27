@@ -1184,6 +1184,19 @@ export function createSseActions(options) {
 				const content = String(
 					event.data?.content ?? event.data?.text ?? event.data?.message ?? '',
 				);
+				const reasoningSummary = Array.isArray(event.data?.reasoning?.summary)
+					? event.data.reasoning.summary
+							.map(item => String(item?.text ?? '').trim())
+							.filter(Boolean)
+							.join('\n')
+					: '';
+				const thinking = String(
+					event.data?.thinking?.thinking ||
+						reasoningSummary ||
+						event.data?.reasoning_content ||
+						event.data?.reasoningContent ||
+						'',
+				).trim();
 				if (typeof event.data?.sessionId === 'string') {
 					state.chat.currentSessionId = event.data.sessionId;
 					touchSession(event.data.sessionId);
@@ -1192,13 +1205,15 @@ export function createSseActions(options) {
 				if (role !== 'assistant') {
 					break;
 				}
-				if (!content.trim()) {
+				if (!content.trim() && !thinking) {
 					break;
 				}
 				if (content.includes('Auto-compressing context')) {
 					pushMessage('system', '⏳ 自动压缩已触发,正在整理会话上下文');
 				}
-				pushMessage('assistant', content);
+				pushMessage('assistant', content, {
+					thinking,
+				});
 				break;
 			}
 			case 'error': {

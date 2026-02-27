@@ -155,6 +155,27 @@ export function createSessionActions(options) {
 	}
 
 	/**
+	 * 归一化会话历史中的思考内容.
+	 * @param {any} message 历史消息对象.
+	 * @returns {string}
+	 */
+	function normalizeHistoryThinkingText(message) {
+		const reasoningSummary = Array.isArray(message?.reasoning?.summary)
+			? message.reasoning.summary
+					.map(item => String(item?.text ?? '').trim())
+					.filter(Boolean)
+					.join('\n')
+			: '';
+		const raw =
+			message?.thinking?.thinking ||
+			reasoningSummary ||
+			message?.reasoning_content ||
+			message?.reasoningContent ||
+			'';
+		return String(raw ?? '').trim();
+	}
+
+	/**
 	 * 生成工具调用参数摘要(前3个字段, 值截断60字符).
 	 * @param {any} tc 工具调用对象 {function:{name,arguments}}.
 	 * @returns {string} 如 "filePath: /src/..., startLine: 1"
@@ -289,12 +310,18 @@ export function createSessionActions(options) {
 
 			if (role === 'assistant') {
 				const text = normalizeHistoryMessageText(item);
+				const thinking = normalizeHistoryThinkingText(item);
 				const hasToolCalls =
 					Array.isArray(item?.tool_calls) && item.tool_calls.length > 0;
 				const shouldKeepAssistantText =
 					text && !(hasToolCalls && isToolCallLikeText(text));
-				if (shouldKeepAssistantText) {
-					messages.push({role, content: text, timestamp});
+				if (shouldKeepAssistantText || thinking) {
+					messages.push({
+						role,
+						content: shouldKeepAssistantText ? text : '',
+						timestamp,
+						thinking,
+					});
 				}
 				// 展开 tool_calls 为 🔧 摘要行
 				if (hasToolCalls) {

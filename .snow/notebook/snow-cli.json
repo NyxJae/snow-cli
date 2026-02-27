@@ -589,6 +589,13 @@
   ],
   "sse-client/src/web/": [
     {
+      "id": "notebook-1772193845076_b09kuo25z",
+      "filePath": "sse-client/src/web/",
+      "note": "目录级新增架构约束(assistant 思考内容一致性):\n- 实时路径(sse.js)与历史回放路径(sessions.js)必须维持同构字段契约与同序回退策略,禁止各自演化.\n- 统一优先级契约固定为: thinking.thinking -> reasoning.summary[].text -> reasoning_content/reasoningContent.\n- fallback 规则: 涉及可空字符串的多源回退时,默认采用 || 或显式非空判断,禁止用 ?? 直接串接中间归一化结果.\n- UI 口径: render.js 必须以 details 折叠块呈现思考内容,标签文案固定 \"自考内容\",默认折叠.\n- 联调验收: 同一会话在实时流式与历史回放中,思考内容出现条件,内容文本,展示位置三者必须一致.",
+      "createdAt": "2026-02-27T20:04:05.076",
+      "updatedAt": "2026-02-27T20:04:05.076"
+    },
+    {
       "id": "notebook-1771516241433_9nd0jazox",
       "filePath": "sse-client/src/web/",
       "note": "职责: sse-client Web 模块目录级架构约束,定义交互分层,状态归属,与演进边界.\n\n本轮新增架构规范:\n- 聊天交互控制最小闭环必须覆盖: 自动置底,中断,回退回填,工作中可排队发送,撤回后编辑.\n- 底部状态栏作为\"会话运行态观察面\",必须展示 sessionWorkStatus(工作中/已停止),且与 API Profile,Token,KV,连接,YOLO 同层并列.\n- \"压缩\"按钮继续保留在聊天操作区,职责仅限当前会话标准压缩.\n- 子代理显示策略冻结,本轮不得引入破坏性改动.\n- 子代理工具并入工具卡片体系,遵循单卡片状态流转(call -> result)与统一卡片结构.\n- 历史恢复与实时流式渲染必须共享同一子代理回复字段契约(subAgentReply),保证新旧会话一致显示.\n- 聊天区渲染策略优先增量更新(chat-only),无法增量时允许回退全量渲染作为兜底.\n\n依赖拓扑约束:\n- render.js 负责 UI 绑定与工具卡片合并渲染.\n- sse.js 负责事件与队列调度.\n- state.js 负责状态事实源.\n- sessions.js 负责回退点与会话载入及历史消息重建.\n\n验收口径:\n- 同一工具调用在 UI 中仅呈现单卡片生命周期,不应出现重复 call/result 卡.\n- subagent-* 卡片在实时与历史两种路径下均可见\"子代理回复\"区块,且内容尽量完整.\n- 高频消息场景下聊天区不应发生整区闪烁式重绘,仅允许兜底场景触发全量重绘.\n\n避坑指南:\n- 禁止把需求过程记录写入蓝图笔记,蓝图仅保留目标约束,接口边界,验收口径.\n- 浏览器验证条目保持中性描述,不写开发历程或修复日志.",
@@ -677,6 +684,13 @@
   ],
   "sse-client/src/web/render.js": [
     {
+      "id": "notebook-1772193844666_dwmhde684",
+      "filePath": "sse-client/src/web/render.js",
+      "note": "UI 规范(assistant 思考内容展示):\n- 职责: 普通 assistant 消息渲染时,在气泡区域前置思考折叠块.\n- 展示组件契约: 使用 <details> + <summary> + <pre>,默认折叠(不设置 open).\n- 文案规范: summary 标签固定为 \"自考内容\",不得随意改名,避免跨端验收歧义.\n- 数据契约: 仅消费上游归一化后的 item.thinking,render 层不再做来源推断.\n- 验收口径: 仅 assistant 且 thinking 非空时展示折叠块,user 消息与空 thinking 不展示.",
+      "createdAt": "2026-02-27T20:04:04.666",
+      "updatedAt": "2026-02-27T20:04:04.666"
+    },
+    {
       "id": "notebook-1771680138288_w3359bvgo",
       "filePath": "sse-client/src/web/render.js",
       "note": "职责: Web 聊天主视图渲染与事件绑定中枢.只负责把 state 渲染为 DOM,并把用户操作路由到 actions,不承载业务编排.\n\n本轮架构口径(必须落实):\n- 保留\"压缩\"按钮,语义限定为\"当前会话标准压缩\",不可与中断/回退复用同一状态位.\n- 子代理显示策略本轮不改动,现有 subAgentPanel 的显示/隐藏与交互保持兼容.\n- 聊天区自动置底规则必须严格执行:\n  1) 默认自动置底.\n  2) 用户手动滚离底部后暂停自动置底.\n  3) 用户滚回底部,或用户发送新消息后恢复自动置底.\n- 会话控制区必须提供\"中断\"与\"回退\"按钮,且\"回退\"成功后需要把回退点消息原文写回输入框.\n- 工具卡片渲染采用单卡片状态流转,同一 tool_call 在 result 到达后原位更新为完成态,避免 call/result 双卡片并存.\n- 子代理工具卡片的条件区块顺序固定为: 任务要求 -> 工作过程 -> 子代理回复.\n\n接口摘要:\n- 输入: state.chat.*(messages,ui,statusBar,dialogs),state.git.view.\n- 输出: 聊天主区 DOM + 按钮事件绑定 + 滚动状态联动.\n- 工具消息解析契约: parseToolMessage(result) 必须透传 toolMeta.subAgentReply.\n- 工具合并契约: buildMergedRenderRecords 在 call/result 合并时,若卡片为 subagent-* 且 result 含 subAgentReply,必须回填到目标卡片.\n\n依赖拓扑:\n- 依赖: state.js(状态源),app.js(actions 注入),sessions.js(回退点/会话加载动作).\n- 被依赖: app.js 的 render 生命周期.\n\n避坑指南:\n- render 层不得直接修改业务状态,只允许通过 actions 或 state 的受控字段写入.\n- 自动置底判定阈值与\"手动滚动\"状态必须是单一事实源,避免出现发送后仍不跟底.\n- 回退后输入框回填必须使用\"回退点原文\",不能使用渲染后的摘要文本.\n- 聊天区刷新必须优先 chat-only 局部更新,仅在无法定位容器或异常场景时回退到全量重绘,避免高频事件下闪烁与滚动抖动.",
@@ -686,6 +700,13 @@
   ],
   "sse-client/src/web/sessions.js": [
     {
+      "id": "notebook-1772193844435_h7ktrj7wb",
+      "filePath": "sse-client/src/web/sessions.js",
+      "note": "架构约束(assistant 思考内容历史回放链路):\n- 职责: 会话历史重建时负责 thinking 归一化,并与实时 SSE 链路保持同构.\n- 字段契约优先级必须与 sse.js 完全一致: thinking.thinking -> reasoning.summary[].text -> reasoning_content -> reasoningContent.\n- 回退链避坑: 与实时链路同样禁止 ?? 串接可空字符串中间值,避免 fallback 被提前短路.\n- 输入输出: 输入历史 message 对象,输出标准 thinking 字符串(已 trim),供 render 层直接消费.\n- 验收口径: 同一条 assistant 数据在实时到达与历史重放两路径下,thinking 展示结果一致.",
+      "createdAt": "2026-02-27T20:04:04.435",
+      "updatedAt": "2026-02-27T20:04:04.435"
+    },
+    {
       "id": "notebook-1771680023167_oigbzrqy6",
       "filePath": "sse-client/src/web/sessions.js",
       "note": "职责: Web 端会话管理动作层(无框架).聚焦于会话列表的拉取/分页/选择/继续/删除等流程,并负责把\"会话选择\"转化为 state.chat.currentSessionId 变更与历史消息加载.\n\n不该做什么:\n- 不处理 SSE 事件解析(由 web/sse.js 统一分发).\n- 不直接操作 DOM(除开 modal 的 hidden class),避免业务逻辑散落在 render.js.\n- 不跨 serverId 读写任何可变状态(必须使用 ensureServerTab/withServerTabContext).\n\n接口摘要:\n- createSessionActions({ render, getBaseUrl }) ->\n  - refreshSessionList(page?, serverId?): Promise<void>\n  - openSessionModal()/closeSessionModal()\n  - selectRecentSession(sessionId)\n  - prevSessionPage()/nextSessionPage()\n  - loadSelectedSession(sessionId): Promise<void>\n  - deleteSelectedSession(sessionId): Promise<void>\n\n依赖拓扑:\n- 依赖: web/state.js(ensureServerTab,setSessions,pushMessage,syncCurrentSessionEvents,clearSessionAttention,clearTodoUnread),以及 app.js 注入的 getBaseUrl.\n- 被依赖: web/app.js(actions 组装),web/render.js(事件绑定调用 actions.*).\n\n历史消息重建策略(契约):\n- loadSelectedSession() 将 /session/load 返回的 session.messages 转为 UI 展示消息时,必须执行\"去噪/摘要\"与结构恢复:\n  - role in ['system','user','assistant'] 保持文本展示.\n  - role==='tool' 默认不展开为独立正文消息,而是按工具结果摘要写入 assistant 工具结果消息.\n  - assistant.tool_calls 默认不展开参数,仅追加 system 摘要行: \"工具调用: <toolName>\".\n  - user.images/多模态内容用占位符显示(\"[包含图片]\")或拼接文本.\n- 子代理历史恢复补充契约:\n  - 当 role==='tool' 且 toolName 以 subagent- 开头时,必须从 tool result JSON 的 result/content 提取文本,写入 toolMeta.subAgentReply.\n  - summarizeToolResult 对 subagent- 结果不得做 120 字符截断,应返回完整结果文本摘要,保证\"子代理回复\"区块可复现.\n- 上述策略必须做到确定性与向后兼容,即遇到未知字段要安全降级为 String(...).\n\n避坑指南:\n- 点击左侧最近会话只更新 currentSessionId 不足够.必须同时触发 loadSelectedSession(sessionId) 才能做到\"继续该会话\"(加载历史+绑定会话).\n- loadSelectedSession() 内部必须使用 withServerTabContext(serverId, ...) 包裹所有 state 写操作,避免 Tab 串会话.\n- refreshSessionList() 的 requestKey 防抖必须保留,避免慢请求覆盖新页.\n- 失败口径: 会话列表/加载失败不应阻断聊天主流程,仅 pushMessage('error',...) 并 render().",
@@ -694,6 +715,13 @@
     }
   ],
   "sse-client/src/web/sse.js": [
+    {
+      "id": "notebook-1772193844146_vnfxtxvlk",
+      "filePath": "sse-client/src/web/sse.js",
+      "note": "架构约束(assistant 思考内容实时链路):\n- 职责: 仅在 SSE message 事件入口完成 assistant 思考字段归一化与透传,下游不重复推断来源.\n- 字段契约优先级固定为: thinking.thinking -> reasoning.summary[].text(按行拼接) -> reasoning_content -> reasoningContent.\n- 回退链避坑: 不可使用 ?? 串接上述中间结果,因为空字符串会阻断后续 fallback;必须使用 || 或显式非空判断.\n- 输入输出: 输入 event.data 多形态对象,输出 pushMessage('assistant', content, { thinking }) 的标准 thinking 字符串(已 trim).\n- 验收口径: 当 content 为空但 thinking 非空时,仍允许渲染 assistant 消息,确保思考内容可见.",
+      "createdAt": "2026-02-27T20:04:04.146",
+      "updatedAt": "2026-02-27T20:04:04.146"
+    },
     {
       "id": "notebook-1772172933159_ib20l1wrz",
       "filePath": "sse-client/src/web/sse.js",
@@ -716,6 +744,15 @@
       "note": "职责: Web 全局状态树与受控写入 API.提供 serverId 分片隔离,以及消息,事件,队列,状态栏等领域状态的单一事实源.\n\n本轮架构口径(必须落实):\n- 底部状态栏新增并必须显示\"当前会话工作状态\",取值仅允许:\"工作中\"或\"已停止\".\n- 建议新增稳定字段 state.chat.statusBar.sessionWorkStatus,禁止由 render 临时推导字符串.\n- 会话工作状态驱动来源建议:\n  1) 发起 send/flush queued -> 工作中.\n  2) 收到 complete/abort 成功/空闲确认 -> 已停止.\n  3) 队列非空时保持工作中.\n- 回退回填输入框的数据,必须保留原始 message 文本与 images 元数据,避免信息损耗.\n\n接口摘要:\n- state: chat/statusBar/ui/messages/events/... .\n- pushMessage/pushEvent/withServerTabContext 等写入工具.\n\n依赖拓扑:\n- 被依赖: sse.js,render.js,sessions.js,app.js.\n\n避坑指南:\n- 所有工作状态更新必须 serverId 隔离写入,禁止跨 tab 串状态.\n- 不要用 connection.status 直接替代 sessionWorkStatus,两者语义不同.",
       "createdAt": "2026-02-21T21:20:42.939",
       "updatedAt": "2026-02-26T13:47:12.896"
+    }
+  ],
+  "sse-client/src/web/styles.css": [
+    {
+      "id": "notebook-1772193844872_8awhcaul6",
+      "filePath": "sse-client/src/web/styles.css",
+      "note": "样式规范(思考折叠块):\n- 职责: 为 chat-thinking-block 提供一致的可读性与层次样式,不承载业务逻辑.\n- 结构约束: 样式必须覆盖 details 容器,summary 头部,pre 内容区三层结构.\n- 可用性要求: summary 必须保持可点击与可区分状态,pre 必须支持长文本换行与滚动可读.\n- 演进约束: 若调整配色或间距,不得改变 \"默认折叠 + 点击展开\" 的交互语义.\n- 验收口径: 深色主题下思考区与正文气泡视觉可区分,展开后文本不截断.",
+      "createdAt": "2026-02-27T20:04:04.872",
+      "updatedAt": "2026-02-27T20:04:04.872"
     }
   ],
   "CurrentTaskPlan.md": [

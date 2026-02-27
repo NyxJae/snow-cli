@@ -802,6 +802,10 @@ class SSEManager {
 						role: 'assistant',
 						content: msg.content,
 						streaming: msg.streaming || false,
+						thinking: msg.thinking,
+						reasoning: msg.reasoning,
+						reasoning_content: msg.reasoning_content,
+						reasoningContent: msg.reasoningContent,
 					},
 					timestamp: new Date().toISOString(),
 				});

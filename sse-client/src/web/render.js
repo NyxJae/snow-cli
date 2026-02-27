@@ -25,6 +25,88 @@ const LOG_PREVIEW_MAX = 180;
 let cachedChatRowHtmlList = [];
 
 /**
+ * 清洗思考文本中的 think 标签.
+ * @param {string} value 原始文本.
+ * @returns {string}
+ */
+function cleanThinkingContent(value) {
+	return String(value ?? '')
+		.replace(/\s*<\/?think(?:ing)?>\s*/gi, ' ')
+		.trim();
+}
+
+/**
+ * 捕获聊天输入框状态,用于重绘后恢复输入体验.
+ * @returns {{isFocused:boolean,value:string,selectionStart:number|null,selectionEnd:number|null,selectionDirection:'forward'|'backward'|'none'|null}|null}
+ */
+function captureChatInputSnapshot() {
+	const chatInput = byId('chatInput');
+	if (!chatInput) {
+		return null;
+	}
+	return {
+		isFocused: document.activeElement === chatInput,
+		value: String(chatInput.value ?? ''),
+		selectionStart: chatInput.selectionStart,
+		selectionEnd: chatInput.selectionEnd,
+		selectionDirection: chatInput.selectionDirection,
+	};
+}
+
+/**
+ * 恢复聊天输入框状态,仅在重绘前已聚焦时生效.
+ * @param {{isFocused:boolean,value:string,selectionStart:number|null,selectionEnd:number|null,selectionDirection:'forward'|'backward'|'none'|null}|null} snapshot 输入框快照.
+ * @param {{updatePendingDraftText?:(text:string)=>void}} actions 渲染动作集合.
+ */
+function restoreChatInputSnapshot(snapshot, actions) {
+	if (!snapshot?.isFocused) {
+		return;
+	}
+	const chatInput = byId('chatInput');
+	if (!chatInput) {
+		return;
+	}
+	const activeElement = document.activeElement;
+	const canRestoreFocus =
+		!activeElement ||
+		activeElement === document.body ||
+		activeElement === chatInput;
+	if (!canRestoreFocus) {
+		return;
+	}
+	const value = String(snapshot.value ?? '');
+	if (chatInput.value !== value) {
+		chatInput.value = value;
+	}
+	if (typeof actions?.updatePendingDraftText === 'function') {
+		actions.updatePendingDraftText(value);
+	}
+	const textLength = value.length;
+	const rawStart = Number.isInteger(snapshot.selectionStart)
+		? Number(snapshot.selectionStart)
+		: textLength;
+	const rawEnd = Number.isInteger(snapshot.selectionEnd)
+		? Number(snapshot.selectionEnd)
+		: rawStart;
+	const selectionStart = Math.min(Math.max(rawStart, 0), textLength);
+	const selectionEnd = Math.min(Math.max(rawEnd, 0), textLength);
+	try {
+		chatInput.focus({preventScroll: true});
+	} catch {
+		chatInput.focus();
+	}
+	try {
+		chatInput.setSelectionRange(
+			selectionStart,
+			selectionEnd,
+			snapshot.selectionDirection ?? 'none',
+		);
+	} catch {
+		chatInput.setSelectionRange(selectionStart, selectionEnd);
+	}
+}
+
+/**
  * 生成日志预览文本.
  * @param {string} text 完整日志文本.
  * @returns {string}
@@ -612,6 +694,7 @@ function buildMessageRowHtmlList() {
 		const isUser = item.role === 'user';
 		const side = isUser ? 'right' : 'left';
 		const content = String(item.content ?? '');
+		const thinking = cleanThinkingContent(item?.thinking ?? '');
 		const queueId = String(item?.queueId ?? '');
 		const queueStatus = String(item?.queueStatus ?? '');
 		const isQueuedUser = isUser && queueId && queueStatus === 'queued';
@@ -628,10 +711,20 @@ function buildMessageRowHtmlList() {
 				)}">撤回</button>
 			</div>`
 			: '';
+		const thinkingBlock =
+			!isUser && thinking
+				? `<details class="chat-thinking-block"><summary>思考内容</summary><pre>${escapeHtml(
+						thinking,
+				  )}</pre></details>`
+				: '';
+		const bubble = content
+			? `<div class="chat-bubble ${bubbleClass}">${escapeHtml(content)}</div>`
+			: '';
 		return `<div class="chat-bubble-wrap chat-bubble-wrap-${side}">
 			<span class="chat-avatar">${avatar}</span>
 			<div>
-				<div class="chat-bubble ${bubbleClass}">${escapeHtml(content)}</div>
+				${thinkingBlock}
+				${bubble}
 				${queueActions}
 			</div>
 		</div>`;
@@ -707,6 +800,7 @@ export function renderApp(actions) {
 	if (!app) {
 		return;
 	}
+	const chatInputSnapshot = captureChatInputSnapshot();
 	const previousChatMessageList = byId('chatMessageList');
 	const previousScrollTop = previousChatMessageList
 		? Number(previousChatMessageList.scrollTop || 0)
@@ -1311,6 +1405,7 @@ export function renderApp(actions) {
 		);
 		actions.updatePendingDraftText(target?.value ?? '');
 	});
+	restoreChatInputSnapshot(chatInputSnapshot, actions);
 	byId('sendBtn')?.addEventListener('click', () => {
 		state.chat.ui.chatAutoScrollEnabled = true;
 		void actions.sendChat();
