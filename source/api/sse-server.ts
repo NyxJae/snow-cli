@@ -44,7 +44,8 @@ export interface ClientMessage {
 		| 'user_question_response'
 		| 'abort' // 中断当前任务
 		| 'rollback' // 回滚会话/快照
-		| 'switch_agent'; // 切换主代理
+		| 'switch_agent' // 切换主代理
+		| 'switch_profile'; // 切换渠道配置
 	content?: string;
 	images?: Array<{
 		data: string; // base64 data URI (data:image/png;base64,...)
@@ -55,6 +56,7 @@ export interface ClientMessage {
 	sessionId?: string; // 会话ID，用于连续对话
 	yoloMode?: boolean; // YOLO 模式，自动批准所有工具
 	agentId?: string; // 目标主代理ID，用于 switch_agent 消息
+	profile?: string; // 目标渠道配置名，用于 switch_profile 消息
 	rollback?: {
 		messageIndex: number;
 		snapshotIndex?: number; // UI 消息索引, 用于快照操作(与 messageIndex 属不同索引体系)
@@ -187,14 +189,16 @@ export class SSEServer {
 		sessionId: string,
 		connectionId: string,
 		initialAgentId?: string,
-	) => void;
+		initialProfile?: string,
+	) => void | Promise<void>;
 
 	setSessionCreatedHandler(
 		handler: (
 			sessionId: string,
 			connectionId: string,
 			initialAgentId?: string,
-		) => void,
+			initialProfile?: string,
+		) => void | Promise<void>,
 	): void {
 		this.sessionCreatedHandler = handler;
 	}
@@ -447,6 +451,7 @@ export class SSEServer {
 				const body = await this.readJsonBody<{
 					connectionId?: string;
 					initialAgentId?: string;
+					initialProfile?: string;
 				}>(req);
 				const connectionId = this.getActiveConnectionId(body.connectionId);
 				if (!connectionId) {
@@ -463,10 +468,13 @@ export class SSEServer {
 
 				// 通知会话创建处理器(用于设置初始主代理)
 				if (this.sessionCreatedHandler) {
-					this.sessionCreatedHandler(
-						session.id,
-						connectionId,
-						body.initialAgentId,
+					await Promise.resolve(
+						this.sessionCreatedHandler(
+							session.id,
+							connectionId,
+							body.initialAgentId,
+							body.initialProfile,
+						),
 					);
 				}
 

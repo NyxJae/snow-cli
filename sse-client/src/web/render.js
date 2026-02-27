@@ -919,6 +919,9 @@ export function renderApp(actions) {
 				<span class="status-item"><span class="status-label">连接</span> <span class="status-value">${escapeHtml(
 					state.connection.status || '-',
 				)}</span></span>
+				<span class="status-item"><span class="status-label">会话</span> <span class="status-value">${escapeHtml(
+					String(statusBar.sessionWorkStatus ?? '已停止'),
+				)}</span></span>
 				<button id="toggleYoloBtn" type="button" class="yolo-toggle ${
 					Boolean(statusBar.yoloMode) ? 'yolo-on' : 'yolo-off'
 				}">YOLO: ${escapeHtml(

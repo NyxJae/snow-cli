@@ -95,6 +95,7 @@ export function createSseActions(options) {
 			state.chat.ui.flushingQueuedMessage = false;
 			state.chat.ui.queuedUserMessages = [];
 			state.chat.ui.queuedMessageSeq = 0;
+			state.chat.statusBar.sessionWorkStatus = '已停止';
 		});
 	}
 
@@ -384,11 +385,26 @@ export function createSseActions(options) {
 		return !state.chat.ui.flushingQueuedMessage;
 	}
 
+	function updateSessionWorkStatus() {
+		const queue = Array.isArray(state.chat.ui.queuedUserMessages)
+			? state.chat.ui.queuedUserMessages
+			: [];
+		const hasPendingQueue = queue.some(
+			item => item?.status === 'queued' || item?.status === 'sending',
+		);
+		const isWorking =
+			Boolean(state.chat.ui.assistantWorking) ||
+			Boolean(state.chat.ui.flushingQueuedMessage) ||
+			hasPendingQueue;
+		state.chat.statusBar.sessionWorkStatus = isWorking ? '工作中' : '已停止';
+	}
+
 	function setAssistantWorking(working) {
 		state.chat.ui.assistantWorking = Boolean(working);
 		if (!working) {
 			state.chat.ui.flushingQueuedMessage = false;
 		}
+		updateSessionWorkStatus();
 	}
 
 	function removeQueuedMessage(queueId) {
@@ -400,6 +416,7 @@ export function createSseActions(options) {
 			return null;
 		}
 		const [removed] = queue.splice(index, 1);
+		updateSessionWorkStatus();
 		return removed ?? null;
 	}
 
@@ -409,6 +426,7 @@ export function createSseActions(options) {
 			return;
 		}
 		target.queueStatus = status;
+		updateSessionWorkStatus();
 	}
 
 	function applyQueueMessageSent(queueId) {
@@ -479,6 +497,7 @@ export function createSseActions(options) {
 			queueStatus: 'queued',
 		});
 		state.chat.messages = state.chat.messages.slice(-120);
+		updateSessionWorkStatus();
 		return queuedItem;
 	}
 
@@ -490,9 +509,19 @@ export function createSseActions(options) {
 		targetAgentNodeId,
 	}) {
 		let currentSessionId = state.chat.currentSessionId || undefined;
+		const pendingProfile = String(
+			state.chat.quickSwitch.pendingProfileForNextMessage ?? '',
+		).trim();
 		const initialAgentId =
 			!currentSessionId && state.chat.mainAgent.preferredAgentIdForNewSession
 				? state.chat.mainAgent.preferredAgentIdForNewSession
+				: undefined;
+		const initialProfile =
+			!currentSessionId && pendingProfile
+				? pendingProfile
+				: !currentSessionId &&
+				  state.chat.quickSwitch.preferredProfileForNewSession
+				? state.chat.quickSwitch.preferredProfileForNewSession
 				: undefined;
 		const postChatMessage = async (chatContent, options = {}) => {
 			const body = {
@@ -517,9 +546,31 @@ export function createSseActions(options) {
 				throw new Error(`发送失败: HTTP ${response.status}`);
 			}
 		};
+		const applyProfileForCurrentSession = async profile => {
+			if (!profile || !currentSessionId) {
+				return;
+			}
+			const response = await fetch(`${baseUrl}/message`, {
+				method: 'POST',
+				headers: {'Content-Type': 'application/json'},
+				body: JSON.stringify({
+					type: 'switch_profile',
+					profile,
+					sessionId: currentSessionId,
+					connectionId: state.connection.connectionId || undefined,
+				}),
+			});
+			if (!response.ok) {
+				throw new Error(`渠道切换失败: HTTP ${response.status}`);
+			}
+			state.chat.quickSwitch.pendingProfileForNextMessage = '';
+			state.chat.quickSwitch.preferredProfileForNewSession = profile;
+			state.chat.statusBar.apiProfile = profile;
+		};
 		if (!currentSessionId) {
 			const createBody = {
 				...(initialAgentId ? {initialAgentId} : {}),
+				...(initialProfile ? {initialProfile} : {}),
 				...(state.connection.connectionId
 					? {connectionId: state.connection.connectionId}
 					: {}),
@@ -540,15 +591,14 @@ export function createSseActions(options) {
 			currentSessionId = createdSessionId;
 			state.chat.currentSessionId = createdSessionId;
 			state.chat.mainAgent.preferredAgentIdForNewSession = '';
-			void refreshSessionList(serverId);
-			const shouldApplyPreferredProfile =
-				!String(content).startsWith('/profile ') &&
-				Boolean(state.chat.quickSwitch.preferredProfileForNewSession);
-			if (shouldApplyPreferredProfile) {
-				await postChatMessage(
-					`/profile ${state.chat.quickSwitch.preferredProfileForNewSession}`,
-				);
+			if (initialProfile) {
+				state.chat.quickSwitch.pendingProfileForNextMessage = '';
+				state.chat.quickSwitch.preferredProfileForNewSession = initialProfile;
+				state.chat.statusBar.apiProfile = initialProfile;
 			}
+			void refreshSessionList(serverId);
+		} else if (pendingProfile) {
+			await applyProfileForCurrentSession(pendingProfile);
 		}
 
 		setAssistantWorking(true);
@@ -724,11 +774,20 @@ export function createSseActions(options) {
 
 	/**
 	 * 切换渠道配置(纯本地, 不发消息给 AI).
-	 * 仅更新 preferredProfileForNewSession, 下次新建会话时生效.
+	 * 空闲时仅标记下一条消息发送前生效,工作中禁止切换.
 	 * @param {'profile'} field 字段.
 	 */
 	function applyQuickSwitch(field) {
 		if (field !== 'profile') {
+			return;
+		}
+		if (
+			state.chat.ui.assistantWorking ||
+			state.chat.ui.flushingQueuedMessage ||
+			String(state.chat.statusBar.sessionWorkStatus ?? '') === '工作中'
+		) {
+			pushMessage('error', '当前会话工作中,暂不允许切换渠道');
+			render();
 			return;
 		}
 		const value = String(state.chat.quickSwitch.profile ?? '').trim();
@@ -737,9 +796,10 @@ export function createSseActions(options) {
 			render();
 			return;
 		}
+		state.chat.quickSwitch.pendingProfileForNextMessage = value;
 		state.chat.quickSwitch.preferredProfileForNewSession = value;
 		state.chat.statusBar.apiProfile = value;
-		pushMessage('system', `渠道已切换为 ${value}, 下次新建会话时生效`);
+		pushMessage('system', `渠道已切换为 ${value}, 将在下一条消息发送前生效`);
 		render();
 	}
 
@@ -766,6 +826,7 @@ export function createSseActions(options) {
 			state.chat.ui.flushingQueuedMessage = false;
 			state.chat.ui.queuedUserMessages = [];
 			state.chat.ui.queuedMessageSeq = 0;
+			state.chat.statusBar.sessionWorkStatus = '已停止';
 			pushMessage('system', '已创建新会话');
 			void refreshSessionList(serverId);
 			render();

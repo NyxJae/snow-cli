@@ -28,6 +28,7 @@ function createChatState() {
 		},
 		statusBar: {
 			apiProfile: '-',
+			sessionWorkStatus: '已停止',
 			contextPercent: 0,
 			tokenUsed: 0,
 			tokenTotal: 0,
@@ -38,6 +39,7 @@ function createChatState() {
 		quickSwitch: {
 			profile: '',
 			preferredProfileForNewSession: '',
+			pendingProfileForNextMessage: '',
 		},
 		subAgents: [],
 		ui: {

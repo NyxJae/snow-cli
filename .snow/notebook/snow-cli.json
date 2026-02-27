@@ -458,6 +458,13 @@
   ],
   "source/utils/sse/sseManager.ts": [
     {
+      "id": "notebook-1772172933437_yilnqr6lc",
+      "filePath": "source/utils/sse/sseManager.ts",
+      "note": "架构决策(ADR-ProfileSwitch-ServerExecutionPath):\n- 决策: profile切换执行下沉到服务端两条路径: session create(initialProfile) 与 message(switch_profile),统一调用 switchProfile+reloadConfig.\n- 决策: 客户端只表达意图,服务端负责配置生效与错误回传,避免\"配置切换消息\"进入模型上下文.\n- 已知风险: 当前 switchProfile+reloadConfig 为进程全局语义,多会话并发时存在跨会话耦合与竞态.\n- 强约束: 现阶段必须在协议与文档中明确\"全局生效\"边界,并避免宣称完全会话隔离.\n- 最小可行演进: 引入 sessionId->profileName 映射与请求级配置解析,将 reload 从全局状态迁移到会话上下文读取,逐步消除全局可变状态.",
+      "createdAt": "2026-02-27T14:15:33.437",
+      "updatedAt": "2026-02-27T14:15:33.437"
+    },
+    {
       "id": "notebook-1770979050800_ws9seqhn5",
       "filePath": "source/utils/sse/sseManager.ts",
       "note": "职责: SSE 服务编排与会话交互管理.负责启动/停止 SSEServer,处理 ClientMessage(chat,image,abort,rollback,交互响应,switch_agent 等),并与 sessionManager/useConversation 对接实现会话级对话与流式输出.\n\n核心架构决策(会话隔离,关键约束):\n- 一个 sessionId 只对应一个 SSE 连接(不支持同 session 多连接复用).\n- 因此任何\"会话级\"状态都必须以 sessionId 为 key,且只影响该 sessionId 当前绑定的单个 connectionId.\n\n关键状态/机制(主代理适配的事实源):\n- sessionAgentIds: Map<string,string>,sessionId -> agentId.作为会话级主代理选择的唯一事实源,默认 defaultAgentId='general'.\n- connectionSessionMap: Map<string,string>,connectionId -> sessionId.业务层维护的绑定镜像,禁止再从 (server as any).sessionConnections 穿透读取.\n- sessionBoundHandler: SSEServer 在 /session/create,/session/load 完成 bindSessionToConnection 后触发的回调.本模块在 start() 注册 setSessionBoundHandler,回调内仅调用 bindSessionToConnection 同步 connectionSessionMap,用于修复 switch_agent 严格校验时序下的 session_not_found 误判.\n- pendingInteractions: 等待 tool_confirmation/user_question 的交互队列.若涉及 busy 判定,PendingInteraction 必须携带 sessionId,且 busy 判定必须精确匹配 sessionId.\n\n本模块职责(与主代理选择相关):\n- 连接建立/会话绑定后下发 agent_list({agents,currentAgentId}),为客户端提供可选项.\n- 处理 switch_agent 客户端消息,完成会话级 agentId 切换并推送 agent_switched,或返回 error(含 errorCode 与 availableAgents).\n- 统一错误事件结构,必要时附带 availableAgents,便于客户端自恢复与重新选择.\n\n不该做什么:\n- 不在此处解析/加载 main-agents.toml 细节,通过 MainAgentManager 提供的查询接口获取可用代理列表与配置.\n- 不把主代理状态存成全局单例字段导致跨 session 串扰.\n\n接口摘要(与切换相关):\n- handleSwitchAgentRequest({ agentId },{ connectionId,sendEvent }):\n  - 通过 connectionSessionMap 获取 sessionId,不存在则 errorCode=session_not_found.\n  - 校验 agentId: 空 -> invalid_agent_id;格式不匹配 ^[a-z0-9_-]+$ -> invalid_agent_id_format;不在 listAvailableAgents -> agent_not_found.\n  - busy 判定: 若该 sessionId 存在进行中的对话(sessionControllers)或该 sessionId 有 pendingInteractions,则 errorCode=agent_busy.\n  - 通过 MainAgentManager.getAgentConfig(agentId) 做最终存在性校验,并更新 sessionAgentIds.set(sessionId,agentId).\n  - 推送 agent_switched({ previousAgentId,currentAgentId,agentName }).\n\n错误码体系(固定枚举,客户端可依赖):\n- invalid_agent_id,invalid_agent_id_format,agent_not_found,agent_busy,session_not_found.\n\n依赖拓扑:\n- 依赖: source/api/sse-server.ts(协议与连接),source/utils/session/sessionManager.ts(会话创建/续接),source/utils/MainAgentManager.ts(可用代理列表与配置查询).\n- 被依赖: 启动入口(命令/服务模式)调用 start/stop,以及 SSEServer 回调.\n\n避坑指南:\n- busy 判定必须覆盖所有进行中的任务: 对话生成流(sessionControllers) + pendingInteractions(等待 tool_confirmation/user_question).\n- session 绑定验证: 任何需要 sessionId 的操作必须通过 connectionSessionMap 校验连接已绑定,防止\"幽灵 session\"(客户端伪造 sessionId 或断线残留).\n- 回调职责清晰: sessionBoundHandler 回调内不得反向调用 SSEServer.bindSessionToConnection,避免循环与覆盖绑定;仅同步本地镜像.\n- 切换只影响后续新对话: 进行中的对话继续使用旧 agent 配置;若要立即生效,客户端应先 abort.\n- agent_list/agent_switched 为协议扩展,必须允许老客户端忽略未知事件类型(向后兼容).",
@@ -687,6 +694,13 @@
     }
   ],
   "sse-client/src/web/sse.js": [
+    {
+      "id": "notebook-1772172933159_ib20l1wrz",
+      "filePath": "sse-client/src/web/sse.js",
+      "note": "架构决策(ADR-ProfileSwitch-ClientSemantics):\n- 决策: 前端禁止通过聊天文本注入配置切换(如 /profile),统一改为控制面参数语义.\n- 决策: 引入 pendingProfileForNextMessage 作为\"下一条消息前生效\"的前端语义位.\n- 约束: 会话工作中(assistantWorking/flushingQueuedMessage/sessionWorkStatus=工作中)禁止切换,必须立即给出错误提示.\n- 约束: 切换成功后仅更新本Tab状态(apiProfile,preferredProfileForNewSession,pendingProfileForNextMessage),不得跨Tab污染.\n- 验收口径: 切换动作本身不向AI发送聊天消息,仅在后续发送前由请求参数触发服务端执行.\n- 演进预留: pendingProfileForNextMessage 仅是客户端编排语义,未来切到会话级profile后仍可保留为UI意图层.",
+      "createdAt": "2026-02-27T14:15:33.159",
+      "updatedAt": "2026-02-27T14:15:33.159"
+    },
     {
       "id": "notebook-1771680124830_riwy79zc9",
       "filePath": "sse-client/src/web/sse.js",

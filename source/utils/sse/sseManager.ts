@@ -152,15 +152,33 @@ class SSEManager {
 	}
 
 	/**
-	 * 处理会话创建，设置初始主代理
+	 * 处理会话创建，应用初始配置并设置初始主代理
 	 */
-	private handleSessionCreated(
+	private async handleSessionCreated(
 		sessionId: string,
 		connectionId: string,
 		initialAgentId?: string,
-	): void {
+		initialProfile?: string,
+	): Promise<void> {
 		// 同步本地映射,若本连接首次绑定该会话则触发一次 TODO 快照
 		this.mirrorSessionBinding(sessionId, connectionId);
+
+		if (initialProfile) {
+			try {
+				const {switchProfile} = await import('../config/configManager.js');
+				const {reloadConfig} = await import('../config/apiConfig.js');
+				switchProfile(initialProfile);
+				reloadConfig();
+				this.log(`会话 ${sessionId} 初始配置切换为: ${initialProfile}`, 'info');
+			} catch (error) {
+				this.log(
+					`会话 ${sessionId} 初始配置切换失败: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+					'error',
+				);
+			}
+		}
 
 		// 设置初始主代理
 		let agentId = this.defaultAgentId;
@@ -283,8 +301,13 @@ class SSEManager {
 
 		// 设置会话创建处理器(用于初始化主代理)
 		this.server.setSessionCreatedHandler(
-			(sessionId, connectionId, initialAgentId) => {
-				this.handleSessionCreated(sessionId, connectionId, initialAgentId);
+			async (sessionId, connectionId, initialAgentId, initialProfile) => {
+				await this.handleSessionCreated(
+					sessionId,
+					connectionId,
+					initialAgentId,
+					initialProfile,
+				);
 			},
 		);
 		// 同步 create/load 的会话绑定关系到本地映射,避免 switch_agent 校验误判
@@ -445,6 +468,12 @@ class SSEManager {
 			// 处理主代理切换请求
 			if (message.type === 'switch_agent') {
 				await this.handleSwitchAgentRequest(message, sendEvent, connectionId);
+				return;
+			}
+
+			// 处理渠道配置切换请求
+			if (message.type === 'switch_profile') {
+				await this.handleSwitchProfileRequest(message, sendEvent, connectionId);
 				return;
 			}
 
@@ -1226,6 +1255,101 @@ class SSEManager {
 			`Session ${targetSessionId} switched agent: ${previousAgentId} -> ${agentId}`,
 			'info',
 		);
+	}
+
+	/**
+	 * 处理渠道配置切换请求.
+	 */
+	private async handleSwitchProfileRequest(
+		message: ClientMessage,
+		sendEvent: (event: SSEEvent) => void,
+		connectionId: string,
+	): Promise<void> {
+		const profile = String(message.profile ?? '').trim();
+		if (!profile) {
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'invalid_profile',
+					message: 'profile cannot be empty',
+				},
+				timestamp: new Date().toISOString(),
+			});
+			return;
+		}
+
+		let targetSessionId = message.sessionId;
+		if (!targetSessionId) {
+			targetSessionId = this.getSessionIdByConnectionId(connectionId);
+		}
+		if (!targetSessionId) {
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'session_not_found',
+					message: 'No session associated with this connection',
+				},
+				timestamp: new Date().toISOString(),
+			});
+			return;
+		}
+
+		const boundSessionId = this.connectionSessionMap.get(connectionId);
+		if (!boundSessionId || boundSessionId !== targetSessionId) {
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'session_not_found',
+					message: `Session not found or not bound: ${targetSessionId}`,
+				},
+				timestamp: new Date().toISOString(),
+			});
+			return;
+		}
+
+		if (this.isSessionBusy(targetSessionId)) {
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'profile_busy',
+					message: 'Session is busy with an ongoing task. Please abort first.',
+				},
+				timestamp: new Date().toISOString(),
+			});
+			return;
+		}
+
+		try {
+			const {switchProfile} = await import('../config/configManager.js');
+			const {reloadConfig} = await import('../config/apiConfig.js');
+			switchProfile(profile);
+			reloadConfig();
+			sendEvent({
+				type: 'message',
+				data: {
+					role: 'system',
+					sessionId: targetSessionId,
+					content: `profile switched to ${profile}`,
+				},
+				timestamp: new Date().toISOString(),
+			});
+			this.log(
+				`Session ${targetSessionId} switched profile to ${profile}`,
+				'info',
+			);
+		} catch (error) {
+			sendEvent({
+				type: 'error',
+				data: {
+					errorCode: 'profile_switch_failed',
+					message:
+						error instanceof Error
+							? error.message
+							: `profile switch failed: ${String(error)}`,
+				},
+				timestamp: new Date().toISOString(),
+			});
+		}
 	}
 
 	/**
