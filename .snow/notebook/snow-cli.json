@@ -152,7 +152,30 @@
       "updatedAt": "2026-02-22T12:50:00.708"
     }
   ],
+  "source/hooks/conversation/useChatLogic.ts": [
+    {
+      "id": "notebook-1772264494883_88wsluepy",
+      "filePath": "source/hooks/conversation/useChatLogic.ts",
+      "note": "职责补充: pendingMessages 入口层,负责在 streaming 非 idle 时接收延迟处理消息.\n接口摘要:\n- 输入: message + images.\n- 输出: pendingMessages 队列追加项.\n依赖拓扑:\n- 被 useConversation.ts 的 pending 消费逻辑读取并合并插回.\n架构约束(本需求新增):\n- ace-text_search 后台完成结果必须以同链路消息形态入 pendingMessages,保持统一消费顺序.\n- 入队消息需带会话隔离标识(至少 sessionId),避免跨会话串写.\n避坑指南:\n- 入口层只接入队,不做业务去重和渲染.",
+      "createdAt": "2026-02-28T15:41:34.883",
+      "updatedAt": "2026-02-28T15:41:34.883"
+    }
+  ],
   "source/hooks/conversation/useConversation.ts": [
+    {
+      "id": "notebook-1772268208346_ifz01rl46",
+      "filePath": "source/hooks/conversation/useConversation.ts",
+      "note": "架构守护补充(session隔离+清理策略): clearPendingMessages 必须以 sessionId 为唯一清理边界,禁止默认全量清空.若无 sessionId,应走防御性分支(跳过清理或仅清理无 sessionId 历史兼容项),避免跨会话误删.后续若抽取共享类型,PendingMessage 的 sessionId,dedupeKey,messageKind,createdAt 必须在入口与消费侧保持同构,防止类型漂移导致过滤/去重失效.",
+      "createdAt": "2026-02-28T16:43:28.346",
+      "updatedAt": "2026-02-28T16:43:28.346"
+    },
+    {
+      "id": "notebook-1772264495053_nltihwgyp",
+      "filePath": "source/hooks/conversation/useConversation.ts",
+      "note": "职责补充: pendingMessages 消费与插回主链路,负责在最新工具轮次结束后合并并插回 user 消息.\n接口摘要:\n- 输入: pendingMessages.\n- 输出: 合并 user message 写入 UI + conversation history + session 持久化.\n依赖拓扑:\n- 上游: useChatLogic.ts 入队.\n- 下游: saveMessage/sessionManager.\n架构约束(本需求新增):\n- 背景搜索结果仅在\"最新一条工具执行完毕后\"插回.\n- 必须保证顺序一致性,同会话先入先出.\n- 必须支持幂等去重,防止后台任务重复完成导致重复插回.\n避坑指南:\n- 插回必须保留 user 角色语义,不可绕过现有 pending 消费路径直写 messages.",
+      "createdAt": "2026-02-28T15:41:35.053",
+      "updatedAt": "2026-02-28T15:41:35.053"
+    },
     {
       "id": "notebook-1772107272120_8ae464f6q",
       "filePath": "source/hooks/conversation/useConversation.ts",
@@ -186,6 +209,15 @@
       "note": "职责: 批量文件操作公共执行器,负责逐文件执行与结果聚合.\n接口摘要: executeBatchOperation 输入 parseParams,executeSingle,mapResult,输出 results,totalFiles,successCount,failureCount.\n依赖拓扑: source/mcp/filesystem.ts 的 editFile/editFileBySearch 共用该层.\n避坑指南:\n- 本层是通用执行器,不得引入任何 UI 语义(showMcpPanel,mcpPanelSource)或屏幕路由概念.\n- 不在此处做工具禁用/权限过滤,上游应传入已完成\"服务级禁用 + 代理级权限\"筛选后的最终执行集合.\n- 与本需求相关: 流式 API idle timeout/断开丢弃属于网络流处理层,与批量文件操作无关.不要将任何 stream 健壮性逻辑塞进 batch executor,避免职责污染.",
       "createdAt": "2026-02-12T10:50:31.000",
       "updatedAt": "2026-02-13T10:30:20.438"
+    }
+  ],
+  "source/mcp/aceCodeSearch.ts": [
+    {
+      "id": "notebook-1772264494545_u58cz3x0u",
+      "filePath": "source/mcp/aceCodeSearch.ts",
+      "note": "职责: 承载 ace-text_search 的三层搜索策略执行内核,并输出统一结构化匹配结果.\n接口摘要:\n- 输入: pattern,fileGlob,isRegex,maxResults.\n- 输出: Array<{filePath,line,column,content}>.\n依赖拓扑:\n- 上游调用: source/utils/execution/mcpToolsManager.ts 的 text_search 分支.\n- 下游能力: gitGrepSearch,systemGrepSearch,JavaScript fallback.\n架构约束(本需求新增):\n- 策略优先级固定为 git grep -> rg/grep(优先 rg) -> JavaScript fallback.\n- JavaScript fallback 仅在前两层报错或不可用时触发.\n- 任一层超时均不得触发 JavaScript fallback.\n- maxResults 默认 100,建议边界 1~500,非法值回退 100.\n避坑指南:\n- 必须区分\"空结果\"与\"不可用/报错\",空结果应继续下一层而不是直接判错.\n- 超时属于可预期失败分支,禁止静默降级到 JS 继续放大耗时.",
+      "createdAt": "2026-02-28T15:41:34.545",
+      "updatedAt": "2026-02-28T15:41:34.545"
     }
   ],
   "source/mcp/filesystem.ts": [
@@ -405,6 +437,20 @@
     }
   ],
   "source/utils/execution/mcpToolsManager.ts": [
+    {
+      "id": "notebook-1772268208519_i0c5snn8t",
+      "filePath": "source/utils/execution/mcpToolsManager.ts",
+      "note": "架构守护补充(foreground/background职责分离): foreground timeout 场景只负责用户可见占位反馈,不得入队 placeholder 到 pendingMessages.后台任务仅允许入队终态消息(success/fail),且必须绑定 sessionId + dedupeKey(toolCall维度).禁止在超时分支触发 JS fallback,避免双通道结果竞争与重复插回.",
+      "createdAt": "2026-02-28T16:43:28.519",
+      "updatedAt": "2026-02-28T16:43:28.519"
+    },
+    {
+      "id": "notebook-1772264494713_wohchqvwk",
+      "filePath": "source/utils/execution/mcpToolsManager.ts",
+      "note": "职责补充(ace-text_search 异步化): 作为工具执行入口编排前台响应与后台继续执行,不承担 UI 状态机渲染.\n接口摘要:\n- 输入: text_search 调用参数与会话上下文.\n- 输出: 15s 内返回结果或占位提示,并可触发后台任务.\n依赖拓扑:\n- 调用 source/mcp/aceCodeSearch.ts 执行搜索.\n- 与 source/hooks/conversation/useChatLogic.ts + useConversation.ts 的 pendingMessages 链路对接.\n架构约束(本需求新增):\n- 15s 为前台阈值,超时后立刻返回占位提示并转后台.\n- 5min 为 rg/grep 后台超时上限,超限失败并产出失败提示.\n- 超时场景不触发 JavaScript fallback.\n- 需携带 sessionId + toolCallId(或等效幂等键),保证同会话隔离与去重.\n避坑指南:\n- 不要在本层直接 setMessages,只能通过等待消息队列链路插回.\n- 同一 toolCall 只允许一次终态插回(成功或失败).",
+      "createdAt": "2026-02-28T15:41:34.713",
+      "updatedAt": "2026-02-28T15:41:34.713"
+    },
     {
       "id": "notebook-1771993976867_1m6jwnx2a",
       "filePath": "source/utils/execution/mcpToolsManager.ts",
@@ -840,6 +886,13 @@
     }
   ],
   "CurrentTaskPlan.md": [
+    {
+      "id": "notebook-1772264495230_yje6zipki",
+      "filePath": "CurrentTaskPlan.md",
+      "note": "职责更新: 当前计划书用于 ace-text_search 双超时+后台插回改造的短线实施,完成后应及时替换为下一任务计划.\n约束:\n- 必须引用 requirements/文本搜索工具优化.md 第2章作为需求基线.\n- 计划需覆盖模块职责,数据结构,时序,阶段验收,风险回滚,关键待确认决策.\n- 仅做执行指导,不替代长期蓝图笔记.",
+      "createdAt": "2026-02-28T15:41:35.230",
+      "updatedAt": "2026-02-28T15:41:35.230"
+    },
     {
       "id": "notebook-1771735962484_dpvy47imp",
       "filePath": "CurrentTaskPlan.md",

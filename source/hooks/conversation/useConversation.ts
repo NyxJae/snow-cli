@@ -104,8 +104,20 @@ export type ConversationHandlerOptions = {
 	getPendingMessages?: () => Array<{
 		text: string;
 		images?: Array<{data: string; mimeType: string}>;
+		sessionId?: string;
+		dedupeKey?: string;
+		messageKind?: 'user_input' | 'tool_async_result';
+		createdAt?: number;
 	}>; // Get pending user messages
-	clearPendingMessages?: () => void; // Clear pending messages after insertion
+	clearPendingMessages?: (sessionId?: string) => void; // Clear pending messages after insertion
+	enqueuePendingMessage?: (message: {
+		text: string;
+		images?: Array<{data: string; mimeType: string}>;
+		sessionId?: string;
+		dedupeKey?: string;
+		messageKind?: 'user_input' | 'tool_async_result';
+		createdAt?: number;
+	}) => void;
 	setIsStreaming?: React.Dispatch<React.SetStateAction<boolean>>; // Control streaming state
 	setIsReasoning?: React.Dispatch<React.SetStateAction<boolean>>; // Control reasoning state (Responses API only)
 	setRetryStatus?: React.Dispatch<
@@ -1012,8 +1024,11 @@ async function executeWithInternalRetry(
 
 				// 获取当前主代理配置的 editableFileSuffixes
 				const currentConfig = mainAgentManager.getCurrentAgentConfig();
+				const currentSession = sessionManager.getCurrentSession();
 				const executionContext: MCPExecutionContext = {
 					editableFileSuffixes: currentConfig?.editableFileSuffixes,
+					sessionId: currentSession?.id,
+					enqueuePendingMessage: options.enqueuePendingMessage,
 				};
 
 				// Track latest context usage per sub-agent (keyed by agentId).
@@ -2095,7 +2110,29 @@ async function executeWithInternalRetry(
 				// Check if there are pending user messages to insert
 				if (options.getPendingMessages && options.clearPendingMessages) {
 					const pendingMessages = options.getPendingMessages();
-					if (pendingMessages.length > 0) {
+					const activeSessionId = sessionManager.getCurrentSession()?.id;
+					const sessionScopedPendingMessages = pendingMessages.filter(
+						message => {
+							if (!activeSessionId) {
+								return !message.sessionId;
+							}
+							return (
+								!message.sessionId || message.sessionId === activeSessionId
+							);
+						},
+					);
+					const dedupedPendingMessages = sessionScopedPendingMessages
+						.filter((message, index, arr) => {
+							if (!message.dedupeKey) {
+								return true;
+							}
+							return (
+								arr.findIndex(item => item.dedupeKey === message.dedupeKey) ===
+								index
+							);
+						})
+						.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+					if (dedupedPendingMessages.length > 0) {
 						// 检查 token 占用，如果 >= 80% 先执行自动压缩
 						const config = getOpenAiConfig();
 						if (
@@ -2255,15 +2292,15 @@ async function executeWithInternalRetry(
 						}
 
 						// Clear pending messages
-						options.clearPendingMessages();
+						options.clearPendingMessages(activeSessionId);
 
 						// Combine multiple pending messages into one
-						const combinedMessage = pendingMessages
+						const combinedMessage = dedupedPendingMessages
 							.map(m => m.text)
 							.join('\n\n');
 
 						// Collect all images from pending messages
-						const allPendingImages = pendingMessages
+						const allPendingImages = dedupedPendingMessages
 							.flatMap(m => m.images || [])
 							.map(img => ({
 								type: 'image' as const,

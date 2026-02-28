@@ -806,11 +806,11 @@ export class ACECodeSearchService {
 		fileGlob?: string,
 		maxResults: number = 100,
 		grepCommand: 'rg' | 'grep' = 'rg',
+		timeoutMs: number = 5 * 60 * 1000,
 	): Promise<
 		Array<{filePath: string; line: number; column: number; content: string}>
 	> {
 		const isRipgrep = grepCommand === 'rg';
-		const timeoutMs = 15000;
 
 		return new Promise((resolve, reject) => {
 			const args = isRipgrep
@@ -1104,11 +1104,18 @@ export class ACECodeSearchService {
 		return results;
 	}
 
+	private isSearchTimeoutError(error: unknown): boolean {
+		if (!(error instanceof Error)) {
+			return false;
+		}
+		return /timed out/i.test(error.message);
+	}
+
 	/**
 	 * Fast text search with multi-layer strategy
 	 * Strategy 1: git grep (fastest, uses git index)
 	 * Strategy 2: system grep/ripgrep (fast, system-optimized)
-	 * Strategy 3: JavaScript fallback (slower, but always works)
+	 * Strategy 3: JavaScript fallback (only when previous strategies are unavailable or failed)
 	 * Searches for text patterns across files with glob filtering
 	 */
 	async textSearch(
@@ -1119,6 +1126,14 @@ export class ACECodeSearchService {
 	): Promise<
 		Array<{filePath: string; line: number; column: number; content: string}>
 	> {
+		const normalizedMaxResults =
+			typeof maxResults === 'number' &&
+			Number.isInteger(maxResults) &&
+			maxResults >= 1 &&
+			maxResults <= 500
+				? maxResults
+				: 100;
+
 		// Check command availability once (cached)
 		const [isGitRepo, gitAvailable, rgAvailable, grepAvailable] =
 			await Promise.all([
@@ -1128,44 +1143,64 @@ export class ACECodeSearchService {
 				this.isCommandAvailableCached('grep'),
 			]);
 
+		const canUseGitGrep = isGitRepo && gitAvailable;
+		const canUseSystemGrep = rgAvailable || grepAvailable;
+		let gitGrepFailed = false;
+		let systemGrepFailed = false;
+
 		// Strategy 1: Try git grep first
-		if (isGitRepo && gitAvailable) {
+		if (canUseGitGrep) {
 			try {
 				const results = await this.gitGrepSearch(
 					pattern,
 					fileGlob,
-					maxResults,
+					normalizedMaxResults,
 					isRegex,
 				);
 				if (results.length > 0) {
 					return await this.sortResultsByRecency(results);
 				}
 			} catch (error) {
-				// Fall through to next strategy
+				if (this.isSearchTimeoutError(error)) {
+					throw error;
+				}
+				gitGrepFailed = true;
 			}
 		}
 
-		// Strategy 2: Try system grep/ripgrep (pass which command to use)
-		if (rgAvailable || grepAvailable) {
+		// Strategy 2: Try system grep/ripgrep (rg preferred)
+		if (canUseSystemGrep) {
 			try {
 				const results = await this.systemGrepSearch(
 					pattern,
 					fileGlob,
-					maxResults,
+					normalizedMaxResults,
 					rgAvailable ? 'rg' : 'grep',
+					5 * 60 * 1000,
 				);
 				return await this.sortResultsByRecency(results);
 			} catch (error) {
-				// Fall through to JavaScript fallback
+				if (this.isSearchTimeoutError(error)) {
+					throw error;
+				}
+				systemGrepFailed = true;
 			}
 		}
 
-		// Strategy 3: JavaScript fallback (always works)
+		const shouldUseJsFallback =
+			(!canUseGitGrep || gitGrepFailed) &&
+			(!canUseSystemGrep || systemGrepFailed);
+
+		if (!shouldUseJsFallback) {
+			return [];
+		}
+
+		// Strategy 3: JavaScript fallback
 		const results = await this.jsTextSearch(
 			pattern,
 			fileGlob,
 			isRegex,
-			maxResults,
+			normalizedMaxResults,
 		);
 		return await this.sortResultsByRecency(results);
 	}

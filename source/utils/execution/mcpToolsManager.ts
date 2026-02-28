@@ -1014,8 +1014,20 @@ export async function closeAllMCPConnections(): Promise<void> {
 	}
 	persistentClients.clear();
 }
+export interface PendingMessageForQueue {
+	text: string;
+	images?: Array<{data: string; mimeType: string}>;
+	sessionId?: string;
+	dedupeKey?: string;
+	messageKind?: 'user_input' | 'tool_async_result';
+	createdAt?: number;
+}
+
 export interface MCPExecutionContext {
 	editableFileSuffixes?: string[];
+	sessionId?: string;
+	toolCallId?: string;
+	enqueuePendingMessage?: (message: PendingMessageForQueue) => void;
 	/**
 	 * Skip beforeToolCall/afterToolCall execution in executeMCPTool.
 	 * Use this when the caller already executes tool hooks.
@@ -1531,14 +1543,101 @@ export async function executeMCPTool(
 						symbolTypes: args.symbolTypes,
 					});
 					break;
-				case 'text_search':
-					result = await hybridCodeSearchService.textSearch(
+				case 'text_search': {
+					const FOREGROUND_TIMEOUT_MS = 15 * 1000;
+					const BACKGROUND_TIMEOUT_MS = 5 * 60 * 1000;
+					const PLACEHOLDER_TEXT =
+						'本次搜索时间较长,已转为后台异步搜索.结果完成后会自动插回当前会话.建议缩小搜索范围后重试.';
+					const BACKGROUND_TIMEOUT_TEXT =
+						'后台搜索已超时(5分钟),本次任务可能异常终止.建议缩小搜索范围后重试.';
+					const normalizedMaxResults =
+						typeof args.maxResults === 'number' &&
+						Number.isInteger(args.maxResults) &&
+						args.maxResults >= 1 &&
+						args.maxResults <= 500
+							? args.maxResults
+							: 100;
+
+					class ForegroundTimeoutError extends Error {
+						constructor() {
+							super('ace-text_search foreground timeout');
+							this.name = 'ForegroundTimeoutError';
+						}
+					}
+
+					const searchPromise = hybridCodeSearchService.textSearch(
 						args.pattern,
 						args.fileGlob,
 						args.isRegex,
-						args.maxResults,
+						normalizedMaxResults,
 					);
+
+					try {
+						result = await Promise.race([
+							searchPromise,
+							new Promise<never>((_, reject) => {
+								setTimeout(
+									() => reject(new ForegroundTimeoutError()),
+									FOREGROUND_TIMEOUT_MS,
+								);
+							}),
+						]);
+					} catch (error) {
+						if (!(error instanceof ForegroundTimeoutError)) {
+							throw error;
+						}
+
+						const dedupeBase = `ace-text_search:${
+							executionContext?.sessionId || 'unknown'
+						}:${executionContext?.toolCallId || Date.now()}`;
+
+						void (async () => {
+							try {
+								const backgroundResult = await Promise.race([
+									searchPromise,
+									new Promise<never>((_, reject) => {
+										setTimeout(
+											() =>
+												reject(new Error('ace-text_search background timeout')),
+											BACKGROUND_TIMEOUT_MS,
+										);
+									}),
+								]);
+								executionContext?.enqueuePendingMessage?.({
+									text: `[ace-text_search background result]\n\n${JSON.stringify(
+										backgroundResult,
+										null,
+										2,
+									)}`,
+									sessionId: executionContext?.sessionId,
+									dedupeKey: `${dedupeBase}:result`,
+									messageKind: 'tool_async_result',
+									createdAt: Date.now(),
+								});
+							} catch (backgroundError) {
+								const isBackgroundTimeout =
+									backgroundError instanceof Error &&
+									/background timeout/i.test(backgroundError.message);
+								executionContext?.enqueuePendingMessage?.({
+									text: isBackgroundTimeout
+										? BACKGROUND_TIMEOUT_TEXT
+										: `后台搜索执行失败: ${
+												backgroundError instanceof Error
+													? backgroundError.message
+													: String(backgroundError)
+										  }`,
+									sessionId: executionContext?.sessionId,
+									dedupeKey: `${dedupeBase}:error`,
+									messageKind: 'tool_async_result',
+									createdAt: Date.now(),
+								});
+							}
+						})();
+
+						result = PLACEHOLDER_TEXT;
+					}
 					break;
+				}
 				default:
 					throw new Error(`Unknown ACE tool: ${actualToolName}`);
 			}
