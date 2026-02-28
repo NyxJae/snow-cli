@@ -16,6 +16,12 @@ import {
 	pauseInfoMessageCountdown,
 	resumeInfoMessageCountdown,
 	dismissInfoMessage as dismissInfoMessageInState,
+	markRunningSession,
+	clearRunningSession,
+	markSessionTerminalUnread,
+	setTerminalReminderWindowActive,
+	getUnreadTerminalCount,
+	markTerminalReminderPopupShown,
 } from './state.js';
 import {showToolConfirmationDialog, showUserQuestionDialog} from './dialogs.js';
 import {escapeHtml} from './utils.js';
@@ -183,6 +189,39 @@ export function createSseActions(options) {
 	}
 
 	/**
+	 * 打开日志弹窗.
+	 */
+	function openLogModal() {
+		state.chat.dialogs.logModalOpen = true;
+		clearLogUnread();
+		render();
+	}
+
+	/**
+	 * 关闭日志弹窗.
+	 */
+	function closeLogModal() {
+		state.chat.dialogs.logModalOpen = false;
+		render();
+	}
+
+	/**
+	 * 打开未查看终态弹窗.
+	 */
+	function openUnreadTerminalModal() {
+		state.chat.dialogs.unreadTerminalModalOpen = true;
+		render();
+	}
+
+	/**
+	 * 关闭未查看终态弹窗.
+	 */
+	function closeUnreadTerminalModal() {
+		state.chat.dialogs.unreadTerminalModalOpen = false;
+		render();
+	}
+
+	/**
 	 * 关闭日志详情弹窗.
 	 */
 	function closeLogDetail() {
@@ -191,11 +230,11 @@ export function createSseActions(options) {
 	}
 
 	/**
-	 * 切换日志面板折叠状态.
+	 * 切换日志弹窗开关状态.
 	 */
 	function toggleLogPanel() {
-		state.chat.ui.logPanelCollapsed = !state.chat.ui.logPanelCollapsed;
-		if (!state.chat.ui.logPanelCollapsed) {
+		state.chat.dialogs.logModalOpen = !state.chat.dialogs.logModalOpen;
+		if (state.chat.dialogs.logModalOpen) {
 			clearLogUnread();
 		}
 		render();
@@ -1029,17 +1068,20 @@ export function createSseActions(options) {
 							Number(right?.updatedAt ?? 0) - Number(left?.updatedAt ?? 0),
 					)[0];
 				const compressedSessionId = String(compressedSession?.id ?? '').trim();
-				if (compressedSessionId && typeof loadSelectedSession === 'function') {
-					state.chat.currentSessionId = compressedSessionId;
-					state.chat.sessionPager.selectedSessionId = compressedSessionId;
-					syncCurrentSessionEvents(compressedSessionId);
+				if (compressedSessionId) {
 					resetCompressFlowState();
-					await loadSelectedSession(compressedSessionId);
-					pushMessage('system', '✅ 压缩完成,已切换到压缩后的新会话');
+					markSessionAttention(compressedSessionId);
+					pushInfoMessage('压缩完成,点击查看压缩后会话', {
+						tipType: 'complete',
+						serverId,
+						sessionId: compressedSessionId,
+						allowCurrentSession: true,
+					});
+					pushMessage('system', '✅ 压缩完成,已生成压缩后会话,点击提示可查看');
 					render();
 					return;
 				}
-				pushMessage('system', '✅ 压缩请求完成,等待切换到压缩后的新会话...');
+				pushMessage('system', '✅ 压缩请求完成,等待压缩后新会话生成...');
 				render();
 			} catch (error) {
 				pushMessage(
@@ -1069,6 +1111,7 @@ export function createSseActions(options) {
 	const knownEventTypes = new Set([
 		'connected',
 		'message',
+		'thinking',
 		'error',
 		'complete',
 		'tool_call',
@@ -1085,6 +1128,7 @@ export function createSseActions(options) {
 	]);
 	const sessionScopedEventTypes = new Set([
 		'message',
+		'thinking',
 		'error',
 		'complete',
 		'tool_call',
@@ -1096,10 +1140,130 @@ export function createSseActions(options) {
 	]);
 	const chatOnlyRenderEventTypes = new Set([
 		'message',
+		'thinking',
 		'tool_call',
 		'tool_result',
 		'sub_agent_message',
 	]);
+
+	/**
+	 * 判断事件是否表示会话运行中.
+	 * @param {{type?:string,data?:any}} event SSE事件.
+	 * @returns {boolean}
+	 */
+	function isRunningEvent(event) {
+		const eventType = String(event?.type ?? '');
+		if (
+			new Set(['message', 'thinking', 'tool_call', 'tool_result']).has(
+				eventType,
+			)
+		) {
+			return true;
+		}
+		const role = String(event?.data?.role ?? '').toLowerCase();
+		return eventType === 'message' && role === 'assistant';
+	}
+
+	/**
+	 * 判断事件是否表示会话终态.
+	 * @param {{type?:string,data?:any}} event SSE事件.
+	 * @returns {boolean}
+	 */
+	function isTerminalEvent(event) {
+		const eventType = String(event?.type ?? '').toLowerCase();
+		if (eventType !== 'complete' && eventType !== 'error') {
+			return false;
+		}
+		const terminal = String(
+			event?.data?.terminalState ??
+				event?.data?.status ??
+				event?.data?.state ??
+				event?.data?.result ??
+				eventType,
+		).toLowerCase();
+		if (!terminal) {
+			return eventType === 'complete';
+		}
+		return (
+			terminal.includes('complete') ||
+			terminal.includes('success') ||
+			terminal.includes('finish') ||
+			terminal.includes('abort') ||
+			terminal.includes('interrupt') ||
+			terminal.includes('fail') ||
+			terminal.includes('error') ||
+			terminal.includes('完成') ||
+			terminal.includes('中断') ||
+			terminal.includes('失败')
+		);
+	}
+
+	/**
+	 * 统一提取并归一化思考内容,兼容字符串与对象两种形态.
+	 * @param {any} data SSE事件数据.
+	 * @returns {string}
+	 */
+	function normalizeThinkingText(data) {
+		const reasoningSummary = Array.isArray(data?.reasoning?.summary)
+			? data.reasoning.summary
+					.map(item => String(item?.text ?? '').trim())
+					.filter(Boolean)
+					.join('\n')
+			: '';
+		const rawThinking =
+			typeof data?.thinking === 'string'
+				? data.thinking
+				: data?.thinking?.thinking;
+		const raw =
+			rawThinking ||
+			reasoningSummary ||
+			data?.reasoning_content ||
+			data?.reasoningContent ||
+			'';
+		return String(raw ?? '').trim();
+	}
+
+	/**
+	 * 把实时思考增量并入最后一条 assistant 消息.
+	 * @param {string} incomingThinking 新到达的思考文本.
+	 */
+	function mergeThinkingIntoLastAssistant(incomingThinking) {
+		if (!incomingThinking) {
+			return;
+		}
+		let targetIndex = -1;
+		for (let index = state.chat.messages.length - 1; index >= 0; index -= 1) {
+			const item = state.chat.messages[index];
+			if (item?.role === 'assistant' && !item?.toolMeta) {
+				targetIndex = index;
+				break;
+			}
+		}
+		if (targetIndex < 0) {
+			pushMessage('assistant', '', {thinking: incomingThinking});
+			return;
+		}
+		const target = state.chat.messages[targetIndex];
+		const existingThinking = String(target?.thinking ?? '').trim();
+		let mergedThinking = incomingThinking;
+		if (!existingThinking) {
+			mergedThinking = incomingThinking;
+		} else if (incomingThinking === existingThinking) {
+			mergedThinking = existingThinking;
+		} else if (incomingThinking.startsWith(existingThinking)) {
+			mergedThinking = incomingThinking;
+		} else if (existingThinking.startsWith(incomingThinking)) {
+			mergedThinking = existingThinking;
+		} else if (existingThinking.endsWith(incomingThinking)) {
+			mergedThinking = existingThinking;
+		} else {
+			mergedThinking = `${existingThinking}${incomingThinking}`;
+		}
+		state.chat.messages[targetIndex] = {
+			...target,
+			thinking: mergedThinking,
+		};
+	}
 
 	/**
 	 * 处理SSE事件,未知事件静默忽略.
@@ -1129,11 +1293,42 @@ export function createSseActions(options) {
 				? eventWithSession.data.sessionId
 				: '';
 		const shouldIncrementLogUnread =
-			state.chat.ui.logPanelCollapsed &&
+			!state.chat.dialogs.logModalOpen &&
 			Boolean(eventSessionId) &&
 			eventSessionId === state.chat.currentSessionId;
 		if (shouldIncrementLogUnread) {
 			incrementLogUnread();
+		}
+		if (eventSessionId && isRunningEvent(eventWithSession)) {
+			markRunningSession(eventSessionId, {
+				serverId,
+				title: String(eventWithSession.data?.sessionTitle ?? ''),
+			});
+		}
+		if (eventSessionId && isTerminalEvent(eventWithSession)) {
+			const shouldMarkUnreadTerminal =
+				state.chat.ui.terminalReminderWindowActive &&
+				eventSessionId !== state.chat.currentSessionId;
+			clearRunningSession(eventSessionId);
+			if (shouldMarkUnreadTerminal) {
+				markSessionTerminalUnread(eventSessionId, {
+					serverId,
+					title: String(eventWithSession.data?.sessionTitle ?? ''),
+					terminalState: String(
+						eventWithSession.data?.terminalState ??
+							eventWithSession.data?.status ??
+							eventWithSession.data?.state ??
+							eventWithSession.type,
+					),
+				});
+				if (
+					!state.chat.ui.terminalReminderPopupShown &&
+					getUnreadTerminalCount() > 0
+				) {
+					state.chat.dialogs.unreadTerminalModalOpen = true;
+					markTerminalReminderPopupShown();
+				}
+			}
 		}
 		switch (event.type) {
 			case 'connected': {
@@ -1144,7 +1339,18 @@ export function createSseActions(options) {
 					'system',
 					`SSE连接已建立: ${event.data?.connectionId ?? '-'}`,
 				);
-				void refreshSessionList(serverId);
+				void Promise.resolve(refreshSessionList(serverId)).then(() => {
+					withServerTabContext(serverId, () => {
+						setTerminalReminderWindowActive(false);
+						if (
+							getUnreadTerminalCount() > 0 &&
+							!state.chat.ui.terminalReminderPopupShown
+						) {
+							state.chat.dialogs.unreadTerminalModalOpen = true;
+							markTerminalReminderPopupShown();
+						}
+					});
+				});
 				break;
 			}
 			case 'agent_list': {
@@ -1184,21 +1390,8 @@ export function createSseActions(options) {
 				const content = String(
 					event.data?.content ?? event.data?.text ?? event.data?.message ?? '',
 				);
-				const reasoningSummary = Array.isArray(event.data?.reasoning?.summary)
-					? event.data.reasoning.summary
-							.map(item => String(item?.text ?? '').trim())
-							.filter(Boolean)
-							.join('\n')
-					: '';
-				const thinking = String(
-					event.data?.thinking?.thinking ||
-						reasoningSummary ||
-						event.data?.reasoning_content ||
-						event.data?.reasoningContent ||
-						'',
-				).trim();
+				const thinking = normalizeThinkingText(event.data);
 				if (typeof event.data?.sessionId === 'string') {
-					state.chat.currentSessionId = event.data.sessionId;
 					touchSession(event.data.sessionId);
 				}
 				// 服务端会回放 system/user 等角色, 仅允许 assistant 进入聊天区
@@ -1214,6 +1407,16 @@ export function createSseActions(options) {
 				pushMessage('assistant', content, {
 					thinking,
 				});
+				break;
+			}
+			case 'thinking': {
+				if (typeof event.data?.sessionId === 'string') {
+					touchSession(event.data.sessionId);
+				}
+				const thinking = normalizeThinkingText(event.data);
+				if (thinking) {
+					mergeThinkingIntoLastAssistant(thinking);
+				}
 				break;
 			}
 			case 'error': {
@@ -1445,14 +1648,18 @@ export function createSseActions(options) {
 									String(sourceSessionId ?? ''),
 						);
 					const switchToCompressedSession = () => {
-						state.chat.currentSessionId = completedSessionId;
-						state.chat.sessionPager.selectedSessionId = completedSessionId;
-						syncCurrentSessionEvents(completedSessionId);
-						pushMessage('system', '✅ 压缩完成,已自动切换到压缩后的新会话');
+						markSessionAttention(completedSessionId);
+						pushInfoMessage('压缩完成,点击查看压缩后会话', {
+							tipType: 'complete',
+							serverId,
+							sessionId: completedSessionId,
+							allowCurrentSession: true,
+						});
+						pushMessage(
+							'system',
+							'✅ 压缩完成,已生成压缩后会话,点击提示可查看',
+						);
 						resetCompressFlowState();
-						if (typeof loadSelectedSession === 'function') {
-							void loadSelectedSession(completedSessionId);
-						}
 					};
 					const shouldSwitchToCompressedSession =
 						compressFlowState.active &&
@@ -1937,6 +2144,9 @@ export function createSseActions(options) {
 			}
 
 			closeConnection('manual', serverId);
+			if (isReconnect) {
+				setTerminalReminderWindowActive(true);
+			}
 			const host = window.location.hostname || '127.0.0.1';
 			state.connection.baseUrl = `http://${host}:${server.port}`;
 			state.connection.status = 'connecting';
@@ -2088,6 +2298,10 @@ export function createSseActions(options) {
 		closeConnection,
 		reconnectNow,
 		sendChat,
+		openLogModal,
+		closeLogModal,
+		openUnreadTerminalModal,
+		closeUnreadTerminalModal,
 		openLogDetail,
 		openLogTextDetail,
 		closeLogDetail,

@@ -14,9 +14,11 @@ function createChatState() {
 		currentSessionId: '',
 		error: '',
 		dialogs: {
+			logModalOpen: false,
 			logDetailOpen: false,
 			logDetailTitle: '',
 			logDetailJson: '',
+			unreadTerminalModalOpen: false,
 		},
 		mainAgent: {
 			agents: [],
@@ -51,6 +53,10 @@ function createChatState() {
 			infoMessages: [],
 			tipMuteUntilByType: {},
 			sessionAttention: {},
+			unreadTerminalBySession: {},
+			runningSessionById: {},
+			terminalReminderWindowActive: false,
+			terminalReminderPopupShown: false,
 			subAgentExpandedById: {},
 			subAgentPopupIndex: 0,
 			pendingDraftText: '',
@@ -352,6 +358,214 @@ export function clearSessionAttention(sessionId) {
 }
 
 /**
+ * 将终态值归一化为可展示标签.
+ * @param {string} terminalState 原始终态.
+ * @returns {string}
+ */
+function normalizeTerminalStateLabel(terminalState) {
+	const normalized = String(terminalState ?? '')
+		.trim()
+		.toLowerCase();
+	if (!normalized) {
+		return '完成';
+	}
+	if (
+		normalized.includes('abort') ||
+		normalized.includes('interrupt') ||
+		normalized.includes('中断')
+	) {
+		return '中断';
+	}
+	if (
+		normalized.includes('fail') ||
+		normalized.includes('error') ||
+		normalized.includes('失败')
+	) {
+		return '失败';
+	}
+	if (
+		normalized.includes('success') ||
+		normalized.includes('complete') ||
+		normalized.includes('完成')
+	) {
+		return '完成';
+	}
+	return terminalState;
+}
+
+/**
+ * 判断会话是否处于运行中.
+ * @param {any} session 会话对象.
+ * @returns {boolean}
+ */
+function isSessionRunning(session) {
+	if (session?.isRunning === true || session?.working === true) {
+		return true;
+	}
+	const status = String(
+		session?.status ?? session?.state ?? session?.workStatus ?? '',
+	).toLowerCase();
+	if (!status) {
+		return false;
+	}
+	if (
+		status.includes('running') ||
+		status.includes('working') ||
+		status.includes('in_progress') ||
+		status.includes('进行中')
+	) {
+		return true;
+	}
+	if (
+		status.includes('done') ||
+		status.includes('stopped') ||
+		status.includes('completed') ||
+		status.includes('aborted') ||
+		status.includes('failed') ||
+		status.includes('已停止') ||
+		status.includes('完成') ||
+		status.includes('失败')
+	) {
+		return false;
+	}
+	return false;
+}
+
+/**
+ * 记录运行中会话.
+ * @param {string} sessionId 会话ID.
+ * @param {{title?:string,serverId?:string}} [options] 附加信息.
+ */
+export function markRunningSession(sessionId, options = {}) {
+	if (!sessionId) {
+		return;
+	}
+	state.chat.ui.runningSessionById[sessionId] = {
+		sessionId,
+		title: String(options.title ?? ''),
+		serverId: String(options.serverId ?? state.control.selectedServerId ?? ''),
+		updatedAt: Date.now(),
+	};
+}
+
+/**
+ * 移除运行中会话标记.
+ * @param {string} sessionId 会话ID.
+ */
+export function clearRunningSession(sessionId) {
+	if (!sessionId) {
+		return;
+	}
+	delete state.chat.ui.runningSessionById[sessionId];
+}
+
+/**
+ * 根据会话列表同步运行中会话集合.
+ * @param {Array<any>} sessions 会话列表.
+ */
+export function syncRunningSessionsFromList(sessions) {
+	const next = {};
+	for (const item of Array.isArray(sessions) ? sessions : []) {
+		const sessionId = String(item?.id ?? '');
+		if (!sessionId || !isSessionRunning(item)) {
+			continue;
+		}
+		next[sessionId] = {
+			sessionId,
+			title: String(item?.title ?? ''),
+			serverId: String(state.control.selectedServerId ?? ''),
+			updatedAt: Date.now(),
+		};
+	}
+	state.chat.ui.runningSessionById = next;
+}
+
+/**
+ * 标记会话进入终态未查看集合.
+ * @param {string} sessionId 会话ID.
+ * @param {{terminalState?:string,serverId?:string,title?:string}} [options] 附加信息.
+ */
+export function markSessionTerminalUnread(sessionId, options = {}) {
+	if (!sessionId) {
+		return;
+	}
+	const existing = state.chat.ui.unreadTerminalBySession[sessionId] ?? {};
+	const terminalState = normalizeTerminalStateLabel(
+		options.terminalState ?? '完成',
+	);
+	state.chat.ui.unreadTerminalBySession[sessionId] = {
+		sessionId,
+		serverId: String(options.serverId ?? state.control.selectedServerId ?? ''),
+		title: String(options.title ?? existing.title ?? ''),
+		terminalState,
+		updatedAt: Date.now(),
+	};
+	clearRunningSession(sessionId);
+}
+
+/**
+ * 清除会话终态未查看标记.
+ * @param {string} sessionId 会话ID.
+ */
+export function clearSessionTerminalUnread(sessionId) {
+	if (!sessionId) {
+		return;
+	}
+	delete state.chat.ui.unreadTerminalBySession[sessionId];
+}
+
+/**
+ * 获取终态未查看会话列表.
+ * @returns {Array<any>}
+ */
+export function getUnreadTerminalSessions() {
+	return Object.values(state.chat.ui.unreadTerminalBySession ?? {}).sort(
+		(left, right) =>
+			Number(right?.updatedAt ?? 0) - Number(left?.updatedAt ?? 0),
+	);
+}
+
+/**
+ * 获取终态未查看会话数量.
+ * @returns {number}
+ */
+export function getUnreadTerminalCount() {
+	return Object.keys(state.chat.ui.unreadTerminalBySession ?? {}).length;
+}
+
+/**
+ * 获取指定服务端终态未查看数量.
+ * @param {string} serverId 服务端ID.
+ * @returns {number}
+ */
+export function getServerUnreadTerminalCount(serverId) {
+	if (!serverId) {
+		return 0;
+	}
+	return getUnreadTerminalSessions().filter(
+		item => String(item?.serverId ?? '') === String(serverId),
+	).length;
+}
+
+/**
+ * 设置终态提醒断开窗口是否激活.
+ * @param {boolean} active 是否激活.
+ */
+export function setTerminalReminderWindowActive(active) {
+	state.chat.ui.terminalReminderWindowActive = Boolean(active);
+	if (active) {
+		state.chat.ui.terminalReminderPopupShown = false;
+	}
+}
+
+/**
+ * 标记终态提醒弹窗已自动提示过.
+ */
+export function markTerminalReminderPopupShown() {
+	state.chat.ui.terminalReminderPopupShown = true;
+}
+
+/**
  * 汇总所有服务端Tab的 info 提醒,用于全局 Tips 展示与到期调度.
  * @returns {Array<any>}
  */
@@ -606,9 +820,11 @@ export function resetChatForConnect() {
 	state.chat.currentSessionEvents = [];
 	state.chat.todos = [];
 	state.chat.currentSessionId = '';
+	state.chat.dialogs.logModalOpen = false;
 	state.chat.dialogs.logDetailOpen = false;
 	state.chat.dialogs.logDetailTitle = '';
 	state.chat.dialogs.logDetailJson = '';
+	state.chat.dialogs.unreadTerminalModalOpen = false;
 	state.chat.mainAgent = fresh.mainAgent;
 	state.chat.statusBar = fresh.statusBar;
 	state.chat.subAgents = [];

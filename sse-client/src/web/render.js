@@ -1,4 +1,10 @@
-import {state, getAllInfoMessages} from './state.js';
+import {
+	state,
+	getAllInfoMessages,
+	getUnreadTerminalSessions,
+	getServerUnreadTerminalCount,
+	getUnreadTerminalCount,
+} from './state.js';
 import {byId, escapeHtml} from './utils.js';
 
 /**
@@ -334,11 +340,15 @@ function getServerAttentionCount(serverId) {
  */
 function renderSessionArea() {
 	const attention = state.chat.ui.sessionAttention ?? {};
+	const unreadTerminalMap = state.chat.ui.unreadTerminalBySession ?? {};
 	const recentHtml = state.chat.recentSessions
 		.map(item => {
 			const activeClass =
 				item.id === state.chat.currentSessionId ? ' active' : '';
-			const badge = attention[item.id] ? renderBadge() : '';
+			const hasBadge = Boolean(
+				attention[item.id] || unreadTerminalMap[item.id],
+			);
+			const badge = hasBadge ? renderBadge() : '';
 			return `<button class="session-item${activeClass}" data-session-id="${escapeHtml(
 				item.id,
 			)}">${badge}${escapeHtml(item.title ?? '(无标题)')}</button>`;
@@ -351,7 +361,10 @@ function renderSessionArea() {
 				item.id === state.chat.sessionPager.selectedSessionId
 					? ' selected'
 					: '';
-			const badge = attention[item.id] ? renderBadge() : '';
+			const hasBadge = Boolean(
+				attention[item.id] || unreadTerminalMap[item.id],
+			);
+			const badge = hasBadge ? renderBadge() : '';
 			return `<div class="session-row${selectedClass}">
 				<div class="session-main">
 					<div class="session-title">${badge}${escapeHtml(item.title ?? '(无标题)')}</div>
@@ -850,7 +863,11 @@ export function renderApp(actions) {
 			return `<button type="button" class="tab-btn ${activeClass}" data-action="select-server-tab" data-server-id="${escapeHtml(
 				item.serverId,
 			)}">${externalBadge}${escapeHtml(tabLabel)}${
-				getServerAttentionCount(item.serverId) > 0 ? renderBadge() : ''
+				getServerAttentionCount(item.serverId) +
+					getServerUnreadTerminalCount(item.serverId) >
+				0
+					? renderBadge()
+					: ''
 			}</button>`;
 		})
 		.join('');
@@ -1070,39 +1087,21 @@ export function renderApp(actions) {
 				state.git.initLoading ? 'disabled' : ''
 		  }>初始化 Git</button></div>`;
 
-	const chatRoles = new Set(['user', 'assistant']);
-	const logMessageRows = state.chat.messages
-		.filter(item => !chatRoles.has(item?.role))
-		.slice(-30)
+	const logModalListHtml = eventRows || '<div class="hint">暂无日志</div>';
+	const unreadTerminalRows = getUnreadTerminalSessions()
 		.map(item => {
-			const previewText = toLogPreview(item.content ?? '');
-			const timestamp = item.timestamp
-				? `<span class="hint">${escapeHtml(item.timestamp)}</span>`
-				: '';
-			const detailButton = `<button type="button" data-action="open-log-text-detail" data-log-role="${escapeHtml(
-				item.role ?? 'system',
-			)}" data-log-content="${escapeHtml(
-				item.content ?? '',
-			)}" data-log-time="${escapeHtml(item.timestamp ?? '')}">详情</button>`;
-			return `<div class="log-item ${
-				item.role === 'error' ? 'log-error' : 'log-system'
-			}"><div class="log-item-row"><span class="log-item-text">[${escapeHtml(
-				item.role,
-			)}] ${escapeHtml(
-				previewText,
-			)}</span><span class="log-item-actions">${timestamp}${detailButton}</span></div></div>`;
+			const sessionId = String(item?.sessionId ?? '');
+			if (!sessionId) {
+				return '';
+			}
+			const title = String(item?.title ?? sessionId);
+			const terminalState = String(item?.terminalState ?? '完成');
+			return `<button type="button" class="session-item" data-action="open-unread-terminal-session" data-session-id="${escapeHtml(
+				sessionId,
+			)}">[${escapeHtml(terminalState)}] ${escapeHtml(title)}</button>`;
 		})
+		.filter(Boolean)
 		.join('');
-	const logPanelHtml = state.chat.ui.logPanelCollapsed
-		? ''
-		: `<section class="card">
-			<h4>系统日志</h4>
-			<div class="log-list">${
-				logMessageRows || eventRows
-					? (logMessageRows || '') + (eventRows || '')
-					: '<div class="hint">暂无日志</div>'
-			}</div>
-		</section>`;
 
 	const runningSubAgents = (state.chat.subAgents ?? []).filter(
 		item =>
@@ -1193,8 +1192,12 @@ export function renderApp(actions) {
 					<div class="todo-list">${todoRows || '<div class="hint">暂无 TODO</div>'}</div>
 				</div>
 			</div>
-				${logPanelHtml}
-				<div class="row chat-footer-actions"><button id="toggleLogPanelBtn" type="button">日志</button></div>`;
+				<div class="row chat-footer-actions">
+					<button id="openLogModalBtn" type="button">日志</button>
+					<button id="openUnreadTerminalModalBtn" type="button">未查看终态${renderCountBadge(
+						getUnreadTerminalCount(),
+					)}</button>
+				</div>`;
 
 	app.innerHTML = `
 		<section class="card">
@@ -1305,6 +1308,17 @@ export function renderApp(actions) {
 			</section>
 		</section>
 		${statusBarHtml}
+		<div id="logModal" class="modal ${
+			state.chat.dialogs.logModalOpen ? '' : 'hidden'
+		}" aria-hidden="${state.chat.dialogs.logModalOpen ? 'false' : 'true'}">
+			<div class="modal-card">
+				<div class="modal-header">
+					<h2>系统日志</h2>
+					<button id="closeLogModalBtn" type="button">X</button>
+				</div>
+				<div class="log-list">${logModalListHtml}</div>
+			</div>
+		</div>
 		<div id="logDetailModal" class="modal ${
 			state.chat.dialogs.logDetailOpen ? '' : 'hidden'
 		}" aria-hidden="${state.chat.dialogs.logDetailOpen ? 'false' : 'true'}">
@@ -1314,6 +1328,21 @@ export function renderApp(actions) {
 					<button id="closeLogDetailBtn" type="button">关闭</button>
 				</div>
 				<pre class="log-detail-content">${escapeHtml(logDetailJson)}</pre>
+			</div>
+		</div>
+		<div id="unreadTerminalModal" class="modal ${
+			state.chat.dialogs.unreadTerminalModalOpen ? '' : 'hidden'
+		}" aria-hidden="${
+		state.chat.dialogs.unreadTerminalModalOpen ? 'false' : 'true'
+	}">
+			<div class="modal-card">
+				<div class="modal-header">
+					<h2>未查看终态会话</h2>
+					<button id="closeUnreadTerminalModalBtn" type="button">X</button>
+				</div>
+				<div class="session-list">${
+					unreadTerminalRows || '<div class="hint">暂无未查看终态会话</div>'
+				}</div>
 			</div>
 		</div>
 	`;
@@ -1376,8 +1405,17 @@ export function renderApp(actions) {
 	byId('closeServerBtn')?.addEventListener('click', () => {
 		void actions.stopCurrentServer();
 	});
-	byId('toggleLogPanelBtn')?.addEventListener('click', () => {
-		actions.toggleLogPanel();
+	byId('openLogModalBtn')?.addEventListener('click', () => {
+		actions.openLogModal();
+	});
+	byId('closeLogModalBtn')?.addEventListener('click', () => {
+		actions.closeLogModal();
+	});
+	byId('openUnreadTerminalModalBtn')?.addEventListener('click', () => {
+		actions.openUnreadTerminalModal();
+	});
+	byId('closeUnreadTerminalModalBtn')?.addEventListener('click', () => {
+		actions.closeUnreadTerminalModal();
 	});
 	byId('mainAgentSelect')?.addEventListener('change', event => {
 		const target = /** @type {HTMLSelectElement|null} */ (event.currentTarget);
@@ -1654,6 +1692,20 @@ export function renderApp(actions) {
 			if (!sessionId) {
 				return;
 			}
+			void actions.loadSelectedSession(sessionId);
+		});
+	}
+
+	for (const item of document.querySelectorAll(
+		'[data-action="open-unread-terminal-session"]',
+	)) {
+		item.addEventListener('click', event => {
+			const target = event.currentTarget;
+			const sessionId = target?.getAttribute('data-session-id') ?? '';
+			if (!sessionId) {
+				return;
+			}
+			actions.closeUnreadTerminalModal();
 			void actions.loadSelectedSession(sessionId);
 		});
 	}

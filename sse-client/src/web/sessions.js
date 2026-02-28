@@ -7,6 +7,7 @@ import {
 	withServerTabContext,
 	clearSessionAttention,
 	clearTodoUnread,
+	clearSessionTerminalUnread,
 } from './state.js';
 
 /**
@@ -40,9 +41,9 @@ export function createSessionActions(options) {
 		pager.page = targetPage;
 		const requestKey = `${pager.page}:${pager.pageSize}`;
 		pager.requestKey = requestKey;
-		withServerTabContext(serverId, () => {
+		if (serverId === state.control.selectedServerId) {
 			render();
-		});
+		}
 		try {
 			const response = await fetch(
 				`${baseUrl}/session/list?page=${pager.page}&pageSize=${pager.pageSize}`,
@@ -70,9 +71,9 @@ export function createSessionActions(options) {
 			if (pager.requestKey === requestKey) {
 				pager.loading = false;
 			}
-			withServerTabContext(serverId, () => {
+			if (serverId === state.control.selectedServerId) {
 				render();
-			});
+			}
 		}
 	}
 
@@ -100,10 +101,13 @@ export function createSessionActions(options) {
 		state.chat.currentSessionId = sessionId;
 		state.chat.sessionPager.selectedSessionId = sessionId;
 		syncCurrentSessionEvents(sessionId);
+		state.chat.dialogs.logModalOpen = false;
 		state.chat.dialogs.logDetailOpen = false;
 		state.chat.dialogs.logDetailTitle = '';
 		state.chat.dialogs.logDetailJson = '';
+		state.chat.dialogs.unreadTerminalModalOpen = false;
 		clearSessionAttention(sessionId);
+		clearSessionTerminalUnread(sessionId);
 		clearTodoUnread();
 		render();
 	}
@@ -437,10 +441,13 @@ export function createSessionActions(options) {
 				tab.chat.currentSessionId = payload.session.id;
 				tab.chat.sessionPager.selectedSessionId = payload.session.id;
 				syncCurrentSessionEvents(payload.session.id);
+				tab.chat.dialogs.logModalOpen = false;
 				tab.chat.dialogs.logDetailOpen = false;
 				tab.chat.dialogs.logDetailTitle = '';
 				tab.chat.dialogs.logDetailJson = '';
+				tab.chat.dialogs.unreadTerminalModalOpen = false;
 				clearSessionAttention(payload.session.id);
+				clearSessionTerminalUnread(payload.session.id);
 				clearTodoUnread();
 				tab.chat.ui.assistantWorking = false;
 				tab.chat.ui.flushingQueuedMessage = false;

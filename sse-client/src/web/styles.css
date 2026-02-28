@@ -921,6 +921,7 @@ button:disabled {
 	gap: 8px;
 	max-width: 100%;
 	min-width: 0;
+	justify-content: space-between;
 }
 
 .log-item-text {
@@ -929,6 +930,12 @@ button:disabled {
 	word-break: break-word;
 	overflow-wrap: anywhere;
 	white-space: normal;
+	line-height: 1.5;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .log-item-actions {
@@ -936,6 +943,7 @@ button:disabled {
 	align-items: center;
 	gap: 6px;
 	flex-shrink: 0;
+	align-self: flex-start;
 }
 
 .log-detail-content {
