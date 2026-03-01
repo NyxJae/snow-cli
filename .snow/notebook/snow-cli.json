@@ -188,6 +188,15 @@
       "updatedAt": "2026-02-13T10:30:20.438"
     }
   ],
+  "source/mcp/aceCodeSearch.ts": [
+    {
+      "id": "notebook-1772378374080_u8nxjpmvh",
+      "filePath": "source/mcp/aceCodeSearch.ts",
+      "note": "架构约束: 所有基于spawn的grep/rg搜索调用,必须显式提供搜索根路径参数'.'并禁用stdin输入(stdio[0]='ignore'),禁止依赖工具默认stdin行为,以避免无路径时阻塞.",
+      "createdAt": "2026-03-01T23:19:34.080",
+      "updatedAt": "2026-03-01T23:19:34.080"
+    }
+  ],
   "source/mcp/filesystem.ts": [
     {
       "id": "notebook-1770864631004_fsmcp",
