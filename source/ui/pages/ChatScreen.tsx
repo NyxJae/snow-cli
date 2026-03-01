@@ -79,25 +79,11 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const {theme} = useTheme();
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [pendingMessages, setPendingMessages] = useState<
-		Array<{
-			text: string;
-			images?: Array<{data: string; mimeType: string}>;
-			sessionId?: string;
-			dedupeKey?: string;
-			messageKind?: 'user_input' | 'tool_async_result';
-			createdAt?: number;
-		}>
+		Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
 	>([]);
 
 	const pendingMessagesRef = useRef<
-		Array<{
-			text: string;
-			images?: Array<{data: string; mimeType: string}>;
-			sessionId?: string;
-			dedupeKey?: string;
-			messageKind?: 'user_input' | 'tool_async_result';
-			createdAt?: number;
-		}>
+		Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
 	>([]);
 	const hasAttemptedAutoVscodeConnect = useRef(false);
 

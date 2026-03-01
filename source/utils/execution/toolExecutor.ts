@@ -407,7 +407,6 @@ export async function executeToolCall(
 				onTokenUpdate,
 				{
 					...executionContext,
-					toolCallId: toolCall.id,
 					skipToolHooks: true,
 				},
 			);

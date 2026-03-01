@@ -68,21 +68,10 @@ interface UseChatLogicProps {
 	pendingMessages: Array<{
 		text: string;
 		images?: Array<{data: string; mimeType: string}>;
-		sessionId?: string;
-		dedupeKey?: string;
-		messageKind?: 'user_input' | 'tool_async_result';
-		createdAt?: number;
 	}>;
 	setPendingMessages: React.Dispatch<
 		React.SetStateAction<
-			Array<{
-				text: string;
-				images?: Array<{data: string; mimeType: string}>;
-				sessionId?: string;
-				dedupeKey?: string;
-				messageKind?: 'user_input' | 'tool_async_result';
-				createdAt?: number;
-			}>
+			Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
 		>
 	>;
 	streamingState: any;
@@ -110,14 +99,7 @@ interface UseChatLogicProps {
 
 	userInterruptedRef: React.MutableRefObject<boolean>;
 	pendingMessagesRef: React.MutableRefObject<
-		Array<{
-			text: string;
-			images?: Array<{data: string; mimeType: string}>;
-			sessionId?: string;
-			dedupeKey?: string;
-			messageKind?: 'user_input' | 'tool_async_result';
-			createdAt?: number;
-		}>
+		Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
 	>;
 	setBashSensitiveCommand: React.Dispatch<
 		React.SetStateAction<{
@@ -226,25 +208,6 @@ export function useChatLogic(props: UseChatLogicProps) {
 			) => Promise<void>
 		>();
 
-	const enqueuePendingMessage = (message: {
-		text: string;
-		images?: Array<{data: string; mimeType: string}>;
-		sessionId?: string;
-		dedupeKey?: string;
-		messageKind?: 'user_input' | 'tool_async_result';
-		createdAt?: number;
-	}) => {
-		setPendingMessages(prev => {
-			const nextMessage = {
-				...message,
-				sessionId: message.sessionId ?? sessionManager.getCurrentSession()?.id,
-				createdAt: message.createdAt ?? Date.now(),
-				messageKind: message.messageKind ?? 'user_input',
-			};
-			return [...prev, nextMessage];
-		});
-	};
-
 	const handleMessageSubmit = async (
 		message: string,
 		images?: Array<{data: string; mimeType: string}>,
@@ -311,11 +274,7 @@ export function useChatLogic(props: UseChatLogicProps) {
 		}
 
 		if (streamingState.streamStatus !== 'idle') {
-			enqueuePendingMessage({
-				text: message,
-				images,
-				messageKind: 'user_input',
-			});
+			setPendingMessages(prev => [...prev, {text: message, images}]);
 			return;
 		}
 
@@ -655,14 +614,7 @@ export function useChatLogic(props: UseChatLogicProps) {
 					setContextUsage: streamingState.setContextUsage,
 					useBasicModel,
 					getPendingMessages: () => pendingMessagesRef.current,
-					clearPendingMessages: (sessionId?: string) =>
-						setPendingMessages(prev => {
-							if (!sessionId) {
-								return [];
-							}
-							return prev.filter(message => message.sessionId !== sessionId);
-						}),
-					enqueuePendingMessage,
+					clearPendingMessages: () => setPendingMessages([]),
 					setIsStreaming: streamingState.setIsStreaming,
 					setIsReasoning: streamingState.setIsReasoning,
 					setRetryStatus: streamingState.setRetryStatus,
@@ -890,14 +842,7 @@ export function useChatLogic(props: UseChatLogicProps) {
 					yoloModeRef,
 					setContextUsage: streamingState.setContextUsage,
 					getPendingMessages: () => pendingMessagesRef.current,
-					clearPendingMessages: (sessionId?: string) =>
-						setPendingMessages(prev => {
-							if (!sessionId) {
-								return [];
-							}
-							return prev.filter(message => message.sessionId !== sessionId);
-						}),
-					enqueuePendingMessage,
+					clearPendingMessages: () => setPendingMessages([]),
 					setIsStreaming: streamingState.setIsStreaming,
 					setIsReasoning: streamingState.setIsReasoning,
 					setRetryStatus: streamingState.setRetryStatus,
