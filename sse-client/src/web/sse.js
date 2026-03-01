@@ -1391,8 +1391,9 @@ export function createSseActions(options) {
 					event.data?.content ?? event.data?.text ?? event.data?.message ?? '',
 				);
 				const thinking = normalizeThinkingText(event.data);
-				if (typeof event.data?.sessionId === 'string') {
-					touchSession(event.data.sessionId);
+				// 使用统一的事件会话ID,避免跨会话污染
+				if (eventSessionId) {
+					touchSession(eventSessionId);
 				}
 				// 服务端会回放 system/user 等角色, 仅允许 assistant 进入聊天区
 				if (role !== 'assistant') {
@@ -1400,6 +1401,10 @@ export function createSseActions(options) {
 				}
 				if (!content.trim() && !thinking) {
 					break;
+				}
+				// 收到当前会话增量消息事件即视为活跃,驱动状态栏进入工作中
+				if (eventSessionId === state.chat.currentSessionId) {
+					setAssistantWorking(true);
 				}
 				if (content.includes('Auto-compressing context')) {
 					pushMessage('system', '⏳ 自动压缩已触发,正在整理会话上下文');
@@ -1410,8 +1415,13 @@ export function createSseActions(options) {
 				break;
 			}
 			case 'thinking': {
-				if (typeof event.data?.sessionId === 'string') {
-					touchSession(event.data.sessionId);
+				// 使用统一的事件会话ID,避免跨会话污染
+				if (eventSessionId) {
+					touchSession(eventSessionId);
+				}
+				// 收到当前会话思考增量事件即视为活跃,驱动状态栏进入工作中
+				if (eventSessionId === state.chat.currentSessionId) {
+					setAssistantWorking(true);
 				}
 				const thinking = normalizeThinkingText(event.data);
 				if (thinking) {
@@ -1422,14 +1432,19 @@ export function createSseActions(options) {
 			case 'error': {
 				const message = event.data?.message ?? '未知错误';
 				pushMessage('error', String(message));
+				// error 事件是会话终态,需清理工作状态
+				if (eventSessionId === state.chat.currentSessionId) {
+					setAssistantWorking(false);
+				}
 				if (state.chat.mainAgent.isSwitchingAgent) {
 					state.chat.mainAgent.currentAgentId =
 						state.chat.mainAgent.lastConfirmedAgentId;
 					state.chat.mainAgent.isSwitchingAgent = false;
 					state.chat.mainAgent.requestedAgentId = '';
 				}
-				if (typeof event.data?.sessionId === 'string') {
-					touchSession(event.data.sessionId);
+				// 使用统一的事件会话ID,避免跨会话污染
+				if (eventSessionId) {
+					touchSession(eventSessionId);
 				}
 				break;
 			}
@@ -1710,9 +1725,20 @@ export function createSseActions(options) {
 				}
 
 				state.chat.statusBar.tokenUsed =
-					Number(event.data?.usage?.input_tokens ?? 0) +
-					Number(event.data?.usage?.output_tokens ?? 0);
+					Number(event.data?.usage?.prompt_tokens ?? 0) +
+					Number(event.data?.usage?.completion_tokens ?? 0);
 				state.chat.statusBar.yoloMode = Boolean(event.data?.yoloMode ?? true);
+				// 以complete的最终统计覆盖流式中间值,避免KV指标回退/不一致
+				if (event.data?.usage?.cache_read_input_tokens !== undefined) {
+					state.chat.statusBar.kvCacheRead = Number(
+						event.data.usage.cache_read_input_tokens,
+					);
+				}
+				if (event.data?.usage?.cache_creation_input_tokens !== undefined) {
+					state.chat.statusBar.kvCacheCreate = Number(
+						event.data.usage.cache_creation_input_tokens,
+					);
+				}
 				void refreshSessionList(serverId);
 				break;
 			}
@@ -1770,9 +1796,12 @@ export function createSseActions(options) {
 					event.data?.percentage ?? 0,
 				);
 				state.chat.statusBar.tokenTotal = Number(event.data?.maxTokens ?? 0);
-				state.chat.statusBar.tokenUsed = Number(event.data?.inputTokens ?? 0);
+				state.chat.statusBar.tokenUsed = Number(event.data?.prompt_tokens ?? 0);
 				state.chat.statusBar.kvCacheRead = Number(
-					event.data?.cacheReadInputTokens ?? 0,
+					event.data?.cache_read_input_tokens ?? 0,
+				);
+				state.chat.statusBar.kvCacheCreate = Number(
+					event.data?.cache_creation_input_tokens ?? 0,
 				);
 				break;
 			}

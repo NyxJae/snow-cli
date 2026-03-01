@@ -95,7 +95,7 @@ body {
 .app-shell {
 	min-height: 100vh;
 	padding: 12px;
-	max-width: 1600px;
+	max-width: 1800px;
 	margin: 0 auto;
 }
 
@@ -219,19 +219,6 @@ button:disabled {
 	animation: pulse-glow 2s infinite;
 }
 
-.external-badge {
-	display: inline-block;
-	font-size: 9px;
-	padding: 1px 5px;
-	border-radius: 3px;
-	background: var(--bg-elevated);
-	color: var(--text-muted);
-	margin-right: 4px;
-	vertical-align: middle;
-	text-transform: uppercase;
-	letter-spacing: 0.5px;
-}
-
 .badge-count {
 	display: inline-flex;
 	align-items: center;
@@ -255,6 +242,76 @@ button:disabled {
 
 .server-tabs {
 	gap: 4px;
+}
+
+/* ---- Connection Status Indicator ---- */
+
+/* ---- Custom Select Dropdown ---- */
+/* 自定义下拉组件,解决原生 datalist 在移动端浏览器的兼容性问题. */
+.custom-select-wrapper {
+	position: relative;
+	display: inline-block;
+	min-width: 150px;
+}
+
+.custom-select-dropdown {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	z-index: 100;
+	width: 100%;
+	min-width: 280px;
+	max-width: min(90vw, 500px);
+	max-height: 280px;
+	overflow-y: auto;
+	background: var(--bg-surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-md);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+	scrollbar-width: thin;
+	scrollbar-color: #3a4660 transparent;
+}
+
+.custom-select-option {
+	padding: 10px 14px;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--text);
+	cursor: pointer;
+	transition: background 0.15s var(--ease);
+	/* 优先在单词边界断开,长路径必要时才强制断开,兼顾可读性 */
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.custom-select-option:hover {
+	background: var(--bg-elevated);
+	color: var(--accent);
+}
+
+.custom-select-option:active {
+	background: var(--accent-dim);
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+	.custom-select-wrapper {
+		min-width: 200px;
+		flex: 1;
+	}
+
+	.custom-select-dropdown {
+		/* 移动端增加下拉列表宽度 */
+		min-width: 260px;
+		max-width: min(85vw, 480px);
+		max-height: 320px;
+	}
+
+	.custom-select-option {
+		/* 移动端增加选项内边距和字体大小 */
+		padding: 12px 16px;
+		font-size: 14px;
+	}
 }
 
 /* ---- Connection Status Indicator ---- */
@@ -715,13 +772,43 @@ button:disabled {
 /* ---- Git Layout ---- */
 .git-layout {
 	display: grid;
-	grid-template-columns: 300px 1fr;
+	grid-template-columns: 350px 1fr;
 	gap: 10px;
+}
+/* 防止 diff 区域被内容撑开 */
+.git-diff-card {
+	min-width: 0;
 }
 
 .git-group {
 	margin-bottom: 0;
 	border-left: 3px solid var(--accent);
+}
+
+/* 不同状态的 git 组颜色区分 */
+.git-group.staged {
+	border-left-color: #22c55e;
+}
+.git-group.staged h4 {
+	color: #22c55e;
+}
+.git-group.modified {
+	border-left-color: #f59e0b;
+}
+.git-group.modified h4 {
+	color: #f59e0b;
+}
+.git-group.untracked {
+	border-left-color: #3b82f6;
+}
+.git-group.untracked h4 {
+	color: #3b82f6;
+}
+.git-group.deleted {
+	border-left-color: #ef4444;
+}
+.git-group.deleted h4 {
+	color: #ef4444;
 }
 .git-group h4 {
 	font-size: 12px;
@@ -811,8 +898,8 @@ button:disabled {
 .diff-content {
 	max-height: calc(100vh - 280px);
 	overflow: auto;
+	overflow-x: auto;
 	white-space: pre;
-	word-break: break-all;
 	line-height: 1.45;
 	margin: 0;
 	padding: 6px 0;
@@ -822,14 +909,19 @@ button:disabled {
 	font-family: 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
 	font-size: 12.5px;
 	color: #d4d4d4;
+	min-width: 0;
 }
 
 /* Diff 行: 基础样式 */
 .diff-content > span {
 	display: block;
+	width: fit-content;
+	min-width: 100%;
 	padding: 0 12px;
 	border-left: 3px solid transparent;
 	min-height: 1.45em;
+	box-decoration-break: clone;
+	-webkit-box-decoration-break: clone;
 }
 
 /* VS Code 风格: 新增行 */

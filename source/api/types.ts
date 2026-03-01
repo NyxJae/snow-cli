@@ -67,4 +67,6 @@ export interface UsageInfo {
 	cache_creation_input_tokens?: number; // Tokens used to create cache (Anthropic)
 	cache_read_input_tokens?: number; // Tokens read from cache (Anthropic)
 	cached_tokens?: number; // Cached tokens from prompt_tokens_details (OpenAI)
+	percentage?: number; // 上下文占用百分比,用于UI显示
+	maxTokens?: number; // 最大上下文长度,用于UI显示
 }

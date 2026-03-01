@@ -503,7 +503,8 @@ function renderGitGroup(title, files, source) {
 			</div>`;
 		})
 		.join('');
-	return `<section class="card git-group"><h4>${escapeHtml(title)}</h4>${
+	const groupClass = ['card', 'git-group', source].filter(Boolean).join(' ');
+	return `<section class="${groupClass}"><h4>${escapeHtml(title)}</h4>${
 		rows || '<div class="hint">空</div>'
 	}</section>`;
 }
@@ -856,13 +857,9 @@ export function renderApp(actions) {
 					return n === folderName;
 				}).length > 1;
 			const tabLabel = hasDuplicate ? `${folderName}:${item.port}` : folderName;
-			const externalBadge =
-				item.source === 'external'
-					? '<span class="external-badge" title="外部服务(非本客户端启动)">ext</span>'
-					: '';
 			return `<button type="button" class="tab-btn ${activeClass}" data-action="select-server-tab" data-server-id="${escapeHtml(
 				item.serverId,
-			)}">${externalBadge}${escapeHtml(tabLabel)}${
+			)}">${escapeHtml(tabLabel)}${
 				getServerAttentionCount(item.serverId) +
 					getServerUnreadTerminalCount(item.serverId) >
 				0
@@ -1051,26 +1048,6 @@ export function renderApp(actions) {
 	const isWideDiff = window.innerWidth >= 1200;
 	const gitMainHtml = state.git.isInitialized
 		? `<div class="git-layout">
-			<div class="git-file-groups">${gitGroupsHtml}</div>
-			<section class="card git-diff-card">
-				<div class="row">
-					<h4>Diff Viewer</h4>
-					<button id="refreshGitBtn" type="button" ${
-						state.git.loading ? 'disabled' : ''
-					}>刷新状态</button>
-				</div>
-				<p class="hint">文件: ${escapeHtml(state.git.selectedPath || '-')}</p>
-				<div class="${isWideDiff ? 'diff-wide' : 'diff-single'}">
-				${
-					isWideDiff
-						? `<pre class="diff-content">${
-								diffColumns.left || ''
-						  }</pre><pre class="diff-content">${diffColumns.right || ''}</pre>`
-						: `<pre class="diff-content">${renderDiffHtml(
-								state.git.diffText,
-						  )}</pre>`
-				}
-			</div>
 				<div class="row">
 					<textarea id="gitCommitInput" class="chat-input" placeholder="输入提交信息">${escapeHtml(
 						state.git.commitMessage,
@@ -1081,8 +1058,30 @@ export function renderApp(actions) {
 						state.git.commitLoading || !canCommit ? 'disabled' : ''
 					}>提交</button>
 				</div>
-			</section>
-		</div>`
+				<div class="git-file-groups">${gitGroupsHtml}</div>
+				<section class="card git-diff-card">
+					<div class="row">
+						<h4>Diff Viewer</h4>
+						<button id="refreshGitBtn" type="button" ${
+							state.git.loading ? 'disabled' : ''
+						}>刷新状态</button>
+					</div>
+					<p class="hint">文件: ${escapeHtml(state.git.selectedPath || '-')}</p>
+					<div class="${isWideDiff ? 'diff-wide' : 'diff-single'}">
+					${
+						isWideDiff
+							? `<pre class="diff-content">${
+									diffColumns.left || ''
+							  }</pre><pre class="diff-content">${
+									diffColumns.right || ''
+							  }</pre>`
+							: `<pre class="diff-content">${renderDiffHtml(
+									state.git.diffText,
+							  )}</pre>`
+					}
+				</div>
+				</section>
+			</div>`
 		: `<div class="card"><p class="hint">当前目录尚未初始化 Git 仓库.</p><button id="initGitBtn" type="button" ${
 				state.git.initLoading ? 'disabled' : ''
 		  }>初始化 Git</button></div>`;
@@ -1207,12 +1206,34 @@ export function renderApp(actions) {
 			</div>
 			<div class="row server-form-row">
 				<button id="refreshServersBtn" type="button">刷新服务</button>
-				<input id="serverWorkDirInput" type="text" list="workDirPresetList" autocomplete="off" placeholder="workDir" value="${escapeHtml(
-					state.control.serverForm.workDir,
-				)}" />
-				<datalist id="workDirPresetList">${state.control.workDirPresets
-					.map(workDir => `<option value="${escapeHtml(workDir)}"></option>`)
-					.join('')}</datalist>
+				<div class="custom-select-wrapper">
+					<input 
+						id="serverWorkDirInput" 
+						type="text" 
+						autocomplete="off" 
+						placeholder="workDir" 
+						value="${escapeHtml(state.control.serverForm.workDir)}" 
+						role="combobox" 
+						aria-expanded="false" 
+						aria-controls="workDirDropdown" 
+						aria-autocomplete="list" 
+					/>
+					<div 
+						id="workDirDropdown" 
+						class="custom-select-dropdown hidden" 
+						role="listbox" 
+						aria-label="工作目录预设"
+					>
+						${state.control.workDirPresets
+							.map(
+								workDir =>
+									`<div class="custom-select-option" role="option" data-value="${escapeHtml(
+										workDir,
+									)}">${escapeHtml(workDir)}</div>`,
+							)
+							.join('')}
+					</div>
+				</div>
 				<input id="serverPortInput" type="number" placeholder="port(可选)" value="${escapeHtml(
 					state.control.serverForm.port,
 				)}" />
@@ -1382,6 +1403,174 @@ export function renderApp(actions) {
 		const target = /** @type {HTMLInputElement|null} */ (event.currentTarget);
 		actions.updateServerForm('workDir', target?.value ?? '');
 	});
+
+	(() => {
+		/**
+		 * 创建工作目录自定义下拉组件的初始化函数(工厂模式).
+		 *
+		 * @private
+		 * @returns {() => void} 初始化函数(仅首次调用生效)
+		 */
+		function initWorkDirDropdown() {
+			let initialized = false;
+
+			return function () {
+				if (initialized) return;
+				initialized = true;
+
+				const workDirInput = /** @type {HTMLInputElement|null} */ (
+					byId('serverWorkDirInput')
+				);
+				const workDirDropdown = /** @type {HTMLDivElement|null} */ (
+					byId('workDirDropdown')
+				);
+
+				if (!workDirInput || !workDirDropdown) return;
+
+				let focusedOptionIndex = -1;
+				const options = Array.from(
+					workDirDropdown.querySelectorAll('.custom-select-option'),
+				);
+
+				// aria-activedescendant 需要稳定的 id 引用
+				options.forEach((option, index) => {
+					option.id = `workDirOption-${index}`;
+					option.setAttribute('role', 'option');
+				});
+
+				// 键盘导航时需同步 aria 状态供屏幕阅读器
+				const updateAriaState = () => {
+					workDirInput.setAttribute('aria-expanded', 'true');
+					if (focusedOptionIndex >= 0 && options[focusedOptionIndex]) {
+						workDirInput.setAttribute(
+							'aria-activedescendant',
+							options[focusedOptionIndex].id,
+						);
+					} else {
+						workDirInput.removeAttribute('aria-activedescendant');
+					}
+				};
+
+				const clearAriaState = () => {
+					workDirInput.setAttribute('aria-expanded', 'false');
+					workDirInput.removeAttribute('aria-activedescendant');
+					// 清除所有 option 的 aria-selected
+					options.forEach(opt => opt.removeAttribute('aria-selected'));
+				};
+
+				// 显示下拉列表
+				const showDropdown = () => {
+					workDirDropdown.classList.remove('hidden');
+					updateAriaState();
+					focusedOptionIndex = -1;
+				};
+
+				// 隐藏下拉列表
+				const hideDropdown = () => {
+					workDirDropdown.classList.add('hidden');
+					clearAriaState();
+					focusedOptionIndex = -1;
+				};
+
+				// 输入框聚焦时显示下拉列表
+				workDirInput.addEventListener('focus', showDropdown);
+
+				// 键盘交互: Escape 关闭, ↑↓/Enter 导航
+				workDirInput.addEventListener('keydown', event => {
+					if (workDirDropdown.classList.contains('hidden')) {
+						// 下拉列表隐藏时,仅响应 Escape
+						if (event.key === 'Escape') {
+							event.preventDefault();
+							workDirInput.blur();
+						}
+						return;
+					}
+
+					switch (event.key) {
+						case 'Escape':
+							event.preventDefault();
+							hideDropdown();
+							break;
+						case 'ArrowDown':
+							event.preventDefault();
+							focusedOptionIndex = Math.min(
+								focusedOptionIndex + 1,
+								options.length - 1,
+							);
+							break;
+						case 'ArrowUp':
+							event.preventDefault();
+							focusedOptionIndex = Math.max(focusedOptionIndex - 1, 0);
+							break;
+						case 'Enter':
+							if (focusedOptionIndex >= 0 && options[focusedOptionIndex]) {
+								event.preventDefault();
+								const selectedOption = /** @type {HTMLElement} */ (
+									options[focusedOptionIndex]
+								);
+								selectedOption.click();
+							}
+							break;
+					}
+
+					// 更新 aria-selected 和 aria-activedescendant
+					if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+						options.forEach((opt, idx) => {
+							if (idx === focusedOptionIndex) {
+								opt.setAttribute('aria-selected', 'true');
+							} else {
+								opt.removeAttribute('aria-selected');
+							}
+						});
+						updateAriaState();
+					}
+				});
+
+				// 点击下拉选项填充输入框
+				options.forEach((option, index) => {
+					option.addEventListener('click', event => {
+						const target = /** @type {HTMLElement|null} */ (
+							event.currentTarget
+						);
+						const value = target?.getAttribute('data-value');
+						if (workDirInput && value) {
+							workDirInput.value = value;
+							actions.updateServerForm('workDir', value);
+							hideDropdown();
+						}
+					});
+
+					// 悬停时更新焦点索引和 aria 状态
+					option.addEventListener('mouseenter', () => {
+						focusedOptionIndex = index;
+						options.forEach((opt, idx) => {
+							if (idx === index) {
+								opt.setAttribute('aria-selected', 'true');
+							} else {
+								opt.removeAttribute('aria-selected');
+							}
+						});
+						updateAriaState();
+					});
+				});
+
+				// 点击外部区域隐藏下拉列表
+				document.addEventListener('click', event => {
+					const target = /** @type {Node|null} */ (event.target);
+					if (
+						target &&
+						!workDirInput.contains(target) &&
+						!workDirDropdown.contains(target)
+					) {
+						hideDropdown();
+					}
+				});
+			};
+		}
+		const ensureWorkDirDropdownInitialized = initWorkDirDropdown();
+		ensureWorkDirDropdownInitialized();
+	})();
+
 	byId('serverPortInput')?.addEventListener('input', event => {
 		const target = /** @type {HTMLInputElement|null} */ (event.currentTarget);
 		actions.updateServerForm('port', target?.value ?? '');

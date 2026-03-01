@@ -529,7 +529,25 @@ export function useChatLogic(props: UseChatLogicProps) {
 					clearSavedMessages();
 					setMessages(compressionResult.uiMessages);
 					setRemountKey(prev => prev + 1);
-					streamingState.setContextUsage(compressionResult.usage);
+					// 压缩后添加 percentage 和 maxTokens 字段,避免底部状态栏显示0/0
+					if (compressionResult.usage) {
+						const config = getOpenAiConfig();
+						const maxTokens =
+							config.maxContextTokens || config.maxTokens || 200000;
+						const percentage = Math.min(
+							100,
+							Math.floor(
+								(compressionResult.usage.prompt_tokens / maxTokens) * 100,
+							),
+						);
+						streamingState.setContextUsage({
+							...compressionResult.usage,
+							percentage,
+							maxTokens,
+						});
+					} else {
+						streamingState.setContextUsage(null);
+					}
 					snapshotState.setSnapshotFileCount(new Map());
 				} else {
 					setMessages(prev => prev.filter(m => m !== compressingMessage));

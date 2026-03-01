@@ -9,6 +9,7 @@ import {todoEvents} from '../../utils/events/todoEvents.js';
 import {navigateTo} from '../integration/useGlobalNavigation.js';
 import type {UsageInfo} from '../../api/chat.js';
 import {resetTerminal} from '../../utils/execution/terminal.js';
+import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
 import {
 	showSaveDialog,
 	isFileDialogSupported,
@@ -360,7 +361,20 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 
 					// Update token usage with compression result
 					if (compressionResult.usage) {
-						options.setContextUsage(compressionResult.usage);
+						const config = getOpenAiConfig();
+						const maxTokens =
+							config.maxContextTokens || config.maxTokens || 200000;
+						const percentage = Math.min(
+							100,
+							Math.floor(
+								(compressionResult.usage.prompt_tokens / maxTokens) * 100,
+							),
+						);
+						options.setContextUsage({
+							...compressionResult.usage,
+							percentage,
+							maxTokens,
+						});
 					}
 				} catch (error) {
 					// Show error message

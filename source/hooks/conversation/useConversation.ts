@@ -511,10 +511,19 @@ async function executeWithInternalRetry(
 					mcpTools.length > 0 ? mcpTools : undefined,
 					model,
 				);
+				// 计算上下文使用百分比,优先使用maxContextTokens,回退到maxTokens,默认200000
+				const maxTokens = config.maxContextTokens || config.maxTokens || 200000;
+				// 限制百分比上限为100,避免超上下文时显示异常
+				const percentage = Math.min(
+					100,
+					Math.floor((estimatedPromptTokens / maxTokens) * 100),
+				);
 				setContextUsage({
 					prompt_tokens: estimatedPromptTokens,
 					completion_tokens: 0,
 					total_tokens: estimatedPromptTokens,
+					percentage,
+					maxTokens,
 				});
 			} catch {
 				// Ignore estimation failures - keep previous contextUsage.
@@ -1793,7 +1802,19 @@ async function executeWithInternalRetry(
 
 							// Only update usage if compressionResult has usage field
 							if (compressionResult.usage) {
-								options.setContextUsage(compressionResult.usage);
+								const maxTokens =
+									config.maxContextTokens || config.maxTokens || 200000;
+								const percentage = Math.min(
+									100,
+									Math.floor(
+										(compressionResult.usage.prompt_tokens / maxTokens) * 100,
+									),
+								);
+								options.setContextUsage({
+									...compressionResult.usage,
+									percentage,
+									maxTokens,
+								});
 								// 更新累计的usage为压缩后的usage
 								accumulatedUsage = compressionResult.usage;
 							}
@@ -2189,7 +2210,21 @@ async function executeWithInternalRetry(
 
 									// Only update usage if compressionResult has usage field
 									if (compressionResult.usage) {
-										options.setContextUsage(compressionResult.usage);
+										// 压缩后添加 percentage 和 maxTokens 字段,避免底部状态栏显示0/0
+										const maxTokens =
+											config.maxContextTokens || config.maxTokens || 200000;
+										const percentage = Math.min(
+											100,
+											Math.floor(
+												(compressionResult.usage.prompt_tokens / maxTokens) *
+													100,
+											),
+										);
+										options.setContextUsage({
+											...compressionResult.usage,
+											percentage,
+											maxTokens,
+										});
 										// 更新累计的usage为压缩后的usage
 										accumulatedUsage = compressionResult.usage;
 									}
