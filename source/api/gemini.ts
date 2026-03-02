@@ -660,21 +660,7 @@ export async function* createStreamingGeminiCompletion(
 						return;
 					}
 
-					let done = false;
-					let value: Uint8Array | undefined;
-					try {
-						({done, value} = await reader.read());
-					} catch (readError) {
-						const timeoutError = guard.getTimeoutError();
-						if (timeoutError) {
-							throw timeoutError;
-						}
-						if (abortSignal?.aborted) {
-							guard.abandon();
-							return;
-						}
-						throw readError;
-					}
+					const {done, value} = await reader.read();
 
 					// 检查是否有超时错误需要在读取循环中抛出(确保被正确的 try/catch 捕获)
 					const timeoutError = guard.getTimeoutError();
