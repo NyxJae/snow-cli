@@ -11,6 +11,7 @@ import PermissionsPanel from './PermissionsPanel.js';
 import MainAgentPanel from './MainAgentPanel.js';
 import {mainAgentManager} from '../../../utils/MainAgentManager.js';
 import {BranchPanel} from './BranchPanel.js';
+import {ConnectionPanel} from './ConnectionPanel.js';
 import type {CommandLocation} from '../../../utils/commands/custom.js';
 import type {
 	GeneratedSkillContent,
@@ -36,6 +37,8 @@ type PanelsManagerProps = {
 	showPermissionsPanel: boolean;
 	showBranchPanel: boolean;
 	showDiffReviewPanel: boolean;
+	showConnectionPanel: boolean;
+	connectionPanelApiUrl?: string;
 	diffReviewMessages: Array<{
 		role: string;
 		content: string;
@@ -55,6 +58,7 @@ type PanelsManagerProps = {
 	setShowDiffReviewPanel: (show: boolean) => void;
 	mcpPanelSource?: 'chat' | 'mcpConfig';
 	setShowMcpPanel: (show: boolean) => void;
+	setShowConnectionPanel: (show: boolean) => void;
 	handleSessionPanelSelect: (sessionId: string) => Promise<void>;
 
 	onCustomCommandSave: (
@@ -79,6 +83,9 @@ type PanelsManagerProps = {
 	mainAgentSearchQuery?: string;
 };
 
+/**
+ * 面板装配器,按状态渲染各功能面板并透传所需回调.
+ */
 export default function PanelsManager({
 	terminalWidth,
 	workingDirectory,
@@ -92,6 +99,8 @@ export default function PanelsManager({
 	showPermissionsPanel,
 	showBranchPanel,
 	showDiffReviewPanel,
+	showConnectionPanel,
+	connectionPanelApiUrl,
 	diffReviewMessages,
 	diffReviewSnapshotFileCount,
 	advancedModel,
@@ -106,6 +115,7 @@ export default function PanelsManager({
 	setShowDiffReviewPanel,
 	mcpPanelSource,
 	setShowMcpPanel,
+	setShowConnectionPanel,
 	handleSessionPanelSelect,
 	onCustomCommandSave,
 	onSkillsSave,
@@ -273,6 +283,16 @@ export default function PanelsManager({
 							onClose={() => setShowDiffReviewPanel(false)}
 						/>
 					</Suspense>
+				</Box>
+			)}
+
+			{/* Show connection panel if active */}
+			{showConnectionPanel && (
+				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
+					<ConnectionPanel
+						onClose={() => setShowConnectionPanel(false)}
+						initialApiUrl={connectionPanelApiUrl}
+					/>
 				</Box>
 			)}
 		</>

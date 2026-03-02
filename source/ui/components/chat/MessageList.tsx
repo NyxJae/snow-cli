@@ -4,6 +4,12 @@ import {SelectedFile} from '../../../utils/core/fileUtils.js';
 import MarkdownRenderer from '../common/MarkdownRenderer.js';
 import {useI18n} from '../../../i18n/I18nContext.js';
 
+/**
+ * 会话消息在 UI 与会话编排层之间的统一数据结构.
+ *
+ * 该类型需要同时兼容普通对话消息,工具调用消息与子代理消息,
+ * 以避免不同渲染分支出现字段断链.
+ */
 export interface Message {
 	role: 'user' | 'assistant' | 'command' | 'subagent' | 'subagent-result';
 	content: string;

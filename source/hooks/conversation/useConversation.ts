@@ -52,7 +52,10 @@ import {buildEditorContextContent} from './core/editorContextBuilder.js';
 import {initializeConversationSession} from './core/sessionInitializer.js';
 import {handleToolRejection} from './core/toolRejectionHandler.js';
 import {processToolCallsAfterStream} from './core/toolCallProcessor.js';
-
+import {connectionManager} from '../../utils/connection/ConnectionManager.js';
+/**
+ * 交互提问结果.
+ */
 export type UserQuestionResult = {
 	selected: string | string[];
 	customInput?: string;
@@ -69,6 +72,9 @@ function formatTokenCount(tokens: number | undefined): string {
 	return String(tokens);
 }
 
+/**
+ * 会话执行处理参数.
+ */
 export type ConversationHandlerOptions = {
 	userContent: string;
 	editorContext?: {
@@ -135,8 +141,7 @@ export type ConversationHandlerOptions = {
 };
 
 /**
- * Handle conversation with streaming and tool calls
- * Returns the usage data collected during the conversation
+ * 执行带工具调用的流式会话,并返回本轮用量统计.
  */
 export async function handleConversationWithTools(
 	options: ConversationHandlerOptions,
@@ -904,6 +909,19 @@ async function executeWithInternalRetry(
 						const allTools =
 							sensitiveTools.length > 1 ? sensitiveTools : undefined;
 
+						// Notify server that tool confirmation is needed (only if connected)
+						if (connectionManager.isConnected()) {
+							await connectionManager.notifyToolConfirmationNeeded(
+								firstTool.function.name,
+								firstTool.function.arguments,
+								firstTool.id,
+								allTools?.map(t => ({
+									name: t.function.name,
+									arguments: t.function.arguments,
+								})),
+							);
+						}
+
 						const confirmation = await requestToolConfirmation(
 							firstTool,
 							undefined,
@@ -944,6 +962,19 @@ async function executeWithInternalRetry(
 						toolsNeedingConfirmation.length > 1
 							? toolsNeedingConfirmation
 							: undefined;
+
+					// Notify server that tool confirmation is needed (only if connected)
+					if (connectionManager.isConnected()) {
+						await connectionManager.notifyToolConfirmationNeeded(
+							firstTool.function.name,
+							firstTool.function.arguments,
+							firstTool.id,
+							allTools?.map(t => ({
+								name: t.function.name,
+								arguments: t.function.arguments,
+							})),
+						);
+					}
 
 					const confirmation = await requestToolConfirmation(
 						firstTool,
@@ -1630,7 +1661,22 @@ async function executeWithInternalRetry(
 							return prev;
 						});
 					},
-					requestToolConfirmation,
+					async (toolCall, batchToolNames, allTools) => {
+						// Notify server for sub-agent tool confirmations as well.
+						// Main-agent confirmations are notified earlier in the loop.
+						if (connectionManager.isConnected()) {
+							await connectionManager.notifyToolConfirmationNeeded(
+								toolCall.function.name,
+								toolCall.function.arguments,
+								toolCall.id,
+								allTools?.map(t => ({
+									name: t.function.name,
+									arguments: t.function.arguments,
+								})),
+							);
+						}
+						return requestToolConfirmation(toolCall, batchToolNames, allTools);
+					},
 					isToolAutoApproved,
 					yoloModeRef.current,
 					addToAlwaysApproved,
@@ -1640,6 +1686,16 @@ async function executeWithInternalRetry(
 						options: string[],
 						multiSelect?: boolean,
 					) => {
+						// Notify server that user interaction is needed (only if connected)
+						if (connectionManager.isConnected()) {
+							await connectionManager.notifyUserInteractionNeeded(
+								question,
+								options,
+								'fake-tool-call',
+								multiSelect,
+							);
+						}
+
 						return await requestUserQuestion(
 							question,
 							options,
@@ -1662,8 +1718,7 @@ async function executeWithInternalRetry(
 					// Need to add tool results for all pending tool calls to complete conversation history
 					// This is critical for sub-agents and any tools that were being executed
 					if (receivedToolCalls && receivedToolCalls.length > 0) {
-						// NOTE: Assistant message with tool_calls was already saved at line 588 (await saveMessage)
-						// No need to save it again here to avoid duplicate assistant messages
+						// 避免重复写入assistant工具调用消息,仅补充中断态tool结果.
 
 						// Now add aborted tool results
 						for (const toolCall of receivedToolCalls) {
@@ -1958,8 +2013,7 @@ async function executeWithInternalRetry(
 								subAgentUsage: usage,
 							});
 
-							// Tool result already saved before compression check (line 1374-1384)
-							// No need to save again here
+							// 该分支前已完成持久化,此处跳过可避免重复写入同一工具结果.
 							continue;
 						}
 
@@ -2306,9 +2360,7 @@ async function executeWithInternalRetry(
 								mimeType: img.mimeType,
 							}));
 
-						// Create snapshot before adding pending message to UI
-						// NOTE: New on-demand backup system - no longer需要 need manual snapshot creation
-						// Files will be automatically backed up when they are modified
+						// 先构造消息再写入UI,保证批量pending消息展示顺序稳定.
 
 						// Add user message to UI
 						const userMessage: Message = {
@@ -2490,15 +2542,19 @@ async function executeWithInternalRetry(
 			options.setIsStreaming(false);
 		}
 
-		// 重置停止状态 避免 ESC 后界面卡住的问题
+		// 重置停止状态,避免 ESC 后界面卡住
 		if (options.setIsStopping) {
 			options.setIsStopping(false);
 		}
 
-		// 同步提交所有待处理快照 - 确保快照保存可靠性
-		// NOTE: New on-demand backup system - snapshot management is now automatic
-		// Files are backed up when they are created/modified
-		// No need for manual commit process
+		// Notify Web that this message lifecycle has ended.
+		try {
+			await connectionManager.notifyMessageProcessingCompleted();
+		} catch {
+			// Ignore notification errors to avoid affecting local flow
+		}
+
+		// 快照备份由写入链路自动维护,这里不再执行额外提交动作.
 
 		// Clear conversation context after tool execution completes
 		try {

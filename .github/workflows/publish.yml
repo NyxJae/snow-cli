@@ -58,7 +58,7 @@ jobs:
 
             ### What's New
 
-            - Add Anthropic request signature parameter padding strategy
+            - Fix some bugs
 
             ### Installation
             ```bash

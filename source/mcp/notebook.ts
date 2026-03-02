@@ -179,7 +179,11 @@ export const mcpTools: Tool[] = [
 ];
 
 /**
- * 执行 Notebook 工具
+ * 执行 Notebook 工具并返回 MCP 标准结果.
+ *
+ * @param toolName 工具名称,例如 `notebook-add`.
+ * @param args 工具入参对象.
+ * @returns MCP CallToolResult,包含文本输出与错误标记.
  */
 export async function executeNotebookTool(
 	toolName: string,

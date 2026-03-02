@@ -58,14 +58,14 @@ import {useTerminalExecutionState} from '../../hooks/execution/useTerminalExecut
 import {useBackgroundProcesses} from '../../hooks/execution/useBackgroundProcesses.js';
 import {useChatLogic} from '../../hooks/conversation/useChatLogic.js';
 import {useCursorHide} from '../../hooks/ui/useCursorHide.js';
-import {vscodeConnection} from '../../utils/ui/vscodeConnection.js';
 import {convertSessionMessagesToUI} from '../../utils/session/sessionConverter.js';
 import {validateGitignore} from '../../utils/codebase/gitignoreValidator.js';
 import {CodebaseIndexAgent} from '../../agents/codebaseIndexAgent.js';
 import {loadCodebaseConfig} from '../../utils/config/codebaseConfig.js';
-import {codebaseSearchEvents} from '../../utils/codebase/codebaseSearchEvents.js';
 import {logger} from '../../utils/core/logger.js';
 import LoadingIndicator from '../components/chat/LoadingIndicator.js';
+import {connectionManager} from '../../utils/connection/ConnectionManager.js';
+import {updateGlobalTokenUsage} from '../../utils/connection/contextManager.js';
 
 // 命令在挂载后再加载,避免首屏阻塞
 
@@ -74,6 +74,9 @@ type Props = {
 	enableYolo?: boolean;
 };
 
+/**
+ * 聊天主页面,负责输入区,消息区与面板装配.
+ */
 export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const {t} = useI18n();
 	const {theme} = useTheme();
@@ -85,9 +88,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const pendingMessagesRef = useRef<
 		Array<{text: string; images?: Array<{data: string; mimeType: string}>}>
 	>([]);
-	const hasAttemptedAutoVscodeConnect = useRef(false);
-
-	const userInterruptedRef = useRef(false);
+	const userInterruptedRef = useRef(false); // Track if user manually interrupted via ESC
 	const [remountKey, setRemountKey] = useState(0);
 	const [currentContextPercentage, setCurrentContextPercentage] = useState(0);
 	const currentContextPercentageRef = useRef(0);
@@ -213,6 +214,12 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 
 	// Use custom hooks
 	const streamingState = useStreamingState();
+
+	// Sync CLI streaming state to ConnectionManager
+	// This allows ConnectionManager.getInFlightState() to accurately reflect CLI status
+	useEffect(() => {
+		connectionManager.setStreamingState(streamingState.streamStatus);
+	}, [streamingState.streamStatus]);
 
 	// When bash confirmation panel shows/hides, suppress the loading indicator briefly
 	// to avoid visual jitter and stale lines in some terminals.
@@ -568,7 +575,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		// 初始同步
 		syncMainAgentState();
 
-		// 定期同步状态（每秒检查一次）
+		// 定期同步状态,覆盖来自其它入口的主代理切换.
 		const interval = setInterval(syncMainAgentState, 1000);
 
 		return () => clearInterval(interval);
@@ -798,12 +805,14 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 
 	// Minimum terminal height required for proper rendering
 	const MIN_TERMINAL_HEIGHT = 10;
+	const handleCommandExecutionRef = useRef<
+		((command: string, result: any) => void) | undefined
+	>(undefined);
 
 	// Use chat logic hook to handle all AI interaction business logic
 	const {
 		handleMessageSubmit,
 		processMessage,
-		processPendingMessages,
 		handleHistorySelect,
 		handleRollbackConfirm,
 		handleUserQuestionAnswer,
@@ -812,6 +821,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		handleReindexCodebase,
 		handleToggleCodebase,
 		handleReviewCommitConfirm,
+		handleEscKey,
 	} = useChatLogic({
 		messages,
 		setMessages,
@@ -848,6 +858,20 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setFileUpdateNotification,
 		setWatcherEnabled,
 		exitingApplicationText: t.hooks.exitingApplication,
+		// New props for migrated logic
+		commandsLoaded,
+		terminalExecutionState,
+		backgroundProcesses,
+		panelState,
+		setIsExecutingTerminalCommand,
+		setHookError,
+		hasFocus,
+		setSuppressLoadingIndicator,
+		bashSensitiveCommand,
+		handleCommandExecution: (command, result) => {
+			handleCommandExecutionRef.current?.(command, result);
+		},
+		pendingToolConfirmation,
 	});
 
 	const {handleCommandExecution} = useCommandHandler({
@@ -858,6 +882,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setIsCompressing,
 		setCompressionError,
 		setShowSessionPanel: panelState.setShowSessionPanel,
+		onResumeSessionById: handleSessionPanelSelect,
 		setShowMcpPanel: panelState.setShowMcpPanel,
 		setMcpPanelSource: panelState.setMcpPanelSource,
 		setShowUsagePanel: panelState.setShowUsagePanel,
@@ -868,6 +893,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setShowWorkingDirPanel: panelState.setShowWorkingDirPanel,
 		setShowReviewCommitPanel: panelState.setShowReviewCommitPanel,
 		setShowDiffReviewPanel: panelState.setShowDiffReviewPanel,
+		setShowConnectionPanel: panelState.setShowConnectionPanel,
+		setConnectionPanelApiUrl: panelState.setConnectionPanelApiUrl,
 		setShowPermissionsPanel: panelState.setShowPermissionsPanel,
 		setShowBranchPanel: panelState.setShowBranchPanel,
 		onSwitchProfile: handleSwitchProfile,
@@ -886,110 +913,27 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	});
 
 	useEffect(() => {
-		// Wait for commands to be loaded before attempting auto-connect
-		if (!commandsLoaded) {
-			return;
-		}
+		handleCommandExecutionRef.current = handleCommandExecution;
+	}, [handleCommandExecution]);
 
-		if (hasAttemptedAutoVscodeConnect.current) {
-			return;
-		}
-
-		if (vscodeState.vscodeConnectionStatus !== 'disconnected') {
-			hasAttemptedAutoVscodeConnect.current = true;
-			return;
-		}
-
-		hasAttemptedAutoVscodeConnect.current = true;
-
-		// Auto-connect IDE in background without blocking UI
-		// Use setTimeout to defer execution and make it fully async
-		const timer = setTimeout(() => {
-			// Fire and forget - don't wait for result
-			(async () => {
-				try {
-					// Clean up any existing connection state first (like manual /ide does)
-					if (
-						vscodeConnection.isConnected() ||
-						vscodeConnection.isClientRunning()
-					) {
-						vscodeConnection.stop();
-						vscodeConnection.resetReconnectAttempts();
-						await new Promise(resolve => setTimeout(resolve, 100));
-					}
-
-					// Set connecting status after cleanup
-					vscodeState.setVscodeConnectionStatus('connecting');
-
-					// Now try to connect
-					await vscodeConnection.start();
-
-					// If we get here, connection succeeded
-					// Status will be updated by useVSCodeState hook monitoring
-				} catch (error) {
-					// Silently handle connection failure - set error status instead of throwing
-					vscodeState.setVscodeConnectionStatus('error');
-				}
-			})();
-		}, 0);
-
-		return () => clearTimeout(timer);
-	}, [commandsLoaded]);
-
-	// Pending messages are now handled inline during tool execution in useConversation
-	// Auto-send pending messages when streaming completely stops (as fallback)
+	// Sync contextUsage to global storage for Web client display
 	useEffect(() => {
-		if (streamingState.streamStatus === 'idle' && pendingMessages.length > 0) {
-			const timer = setTimeout(() => {
-				// Set isStreaming=true BEFORE processing to show LoadingIndicator
-				streamingState.setIsStreaming(true);
-				processPendingMessages();
-			}, 100);
-			return () => clearTimeout(timer);
+		if (streamingState.contextUsage) {
+			updateGlobalTokenUsage({
+				prompt_tokens: streamingState.contextUsage.prompt_tokens || 0,
+				completion_tokens: streamingState.contextUsage.completion_tokens || 0,
+				total_tokens: streamingState.contextUsage.total_tokens || 0,
+				cache_creation_input_tokens:
+					streamingState.contextUsage.cache_creation_input_tokens,
+				cache_read_input_tokens:
+					streamingState.contextUsage.cache_read_input_tokens,
+				cached_tokens: streamingState.contextUsage.cached_tokens,
+				max_tokens: getOpenAiConfig().maxContextTokens || 128000,
+			});
+		} else {
+			updateGlobalTokenUsage(null);
 		}
-		return undefined;
-	}, [streamingState.streamStatus, pendingMessages.length]);
-
-	// Listen to codebase search events
-	// NOTE: streamingState.setCodebaseSearchStatus is a stable useState setter,
-	// so we extract it to avoid depending on the entire streamingState object
-	// (which creates a new reference on every render and causes infinite re-subscriptions).
-	const setCodebaseSearchStatus = streamingState.setCodebaseSearchStatus;
-	useEffect(() => {
-		const handleSearchEvent = (event: {
-			type: 'search-start' | 'search-retry' | 'search-complete';
-			attempt: number;
-			maxAttempts: number;
-			currentTopN: number;
-			message: string;
-			query?: string;
-			originalResultsCount?: number;
-			suggestion?: string;
-		}) => {
-			if (event.type === 'search-complete') {
-				// Clear status immediately
-				setCodebaseSearchStatus(null);
-			} else {
-				// Update search status
-				setCodebaseSearchStatus({
-					isSearching: true,
-					attempt: event.attempt,
-					maxAttempts: event.maxAttempts,
-					currentTopN: event.currentTopN,
-					message: event.message,
-					query: event.query,
-					originalResultsCount: event.originalResultsCount,
-					suggestion: undefined,
-				});
-			}
-		};
-
-		codebaseSearchEvents.onSearchEvent(handleSearchEvent);
-
-		return () => {
-			codebaseSearchEvents.removeSearchEventListener(handleSearchEvent);
-		};
-	}, [setCodebaseSearchStatus]);
+	}, [streamingState.contextUsage]);
 
 	// ESC key handler to interrupt streaming or close overlays
 	useInput((input, key) => {
@@ -1123,67 +1067,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			return;
 		}
 
-		// 如果已经处于 stopping，但流已结束：允许再次按 ESC 直接解除卡死状态
-		if (
-			key.escape &&
-			streamingState.isStopping &&
-			!streamingState.isStreaming
-		) {
-			streamingState.setIsStopping(false);
+		// Delegate ESC handling to useChatLogic for interrupt logic
+		if (handleEscKey(key, input)) {
 			return;
-		}
-
-		// Only handle ESC interrupt if terminal has focus
-		if (
-			key.escape &&
-			streamingState.isStreaming &&
-			streamingState.abortController &&
-			hasFocus
-		) {
-			// 当 AI 正在生成且存在 pending 消息：优先撤回 pending，合并写回输入框。
-			// 该按键仅做撤回，不触发中断；下一次按 ESC 再进入中断流程。
-			if (pendingMessages.length > 0) {
-				const mergedText = pendingMessages
-					.map(m => (m.text || '').trim())
-					.filter(Boolean)
-					.join('\n\n');
-				const mergedImages = pendingMessages.flatMap(m => m.images ?? []);
-
-				setRestoreInputContent({
-					text: mergedText,
-					images:
-						mergedImages.length > 0
-							? mergedImages.map(img => ({
-									type: 'image' as const,
-									data: img.data,
-									mimeType: img.mimeType,
-							  }))
-							: undefined,
-				});
-				setPendingMessages([]);
-				return;
-			}
-
-			userInterruptedRef.current = true;
-
-			// 设置 stopping 状态,显示停止中的提示
-			streamingState.setIsStopping(true);
-
-			// 清理重试与搜索状态,避免闪烁
-			streamingState.setRetryStatus(null);
-			streamingState.setCodebaseSearchStatus(null);
-			// 中断 controller
-			streamingState.abortController.abort();
-
-			// 移除所有待处理的工具调用消息
-			setMessages(prev => prev.filter(msg => !msg.toolPending));
-
-			// Clear pending messages to prevent auto-send after abort
-			setPendingMessages([]);
-
-			// 注意:不要手动清空 isStopping
-			// 它会在 useConversation 的 finally 中自动清理
-			// 当 setIsStreaming(false) 被调用时,确保 "Stopping..." 提示可见
 		}
 	});
 
@@ -1472,6 +1358,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				showPermissionsPanel={panelState.showPermissionsPanel}
 				showBranchPanel={panelState.showBranchPanel}
 				showDiffReviewPanel={panelState.showDiffReviewPanel}
+				showConnectionPanel={panelState.showConnectionPanel}
+				connectionPanelApiUrl={panelState.connectionPanelApiUrl}
 				diffReviewMessages={messages}
 				diffReviewSnapshotFileCount={snapshotState.snapshotFileCount}
 				advancedModel={advancedModel}
@@ -1486,6 +1374,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				setShowBranchPanel={panelState.setShowBranchPanel}
 				setShowDiffReviewPanel={panelState.setShowDiffReviewPanel}
 				mcpPanelSource={panelState.mcpPanelSource}
+				setShowConnectionPanel={panelState.setShowConnectionPanel}
 				handleSessionPanelSelect={handleSessionPanelSelect}
 				alwaysApprovedTools={alwaysApprovedTools}
 				onRemoveTool={removeFromAlwaysApproved}
@@ -1593,7 +1482,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				/>
 			)}
 
-			{/* Hide input during tool confirmation or session panel or MCP panel or usage panel or help panel or custom command config or skills creation or working dir panel or permissions panel or rollback confirmation or user question or terminal interactive input. ProfilePanel is NOT included because it renders inside ChatInput. */}
+			{/* Hide input during tool confirmation or session panel or MCP panel or usage panel or help panel or custom command config or skills creation or working dir panel or branch panel or diff review panel or connection panel or permissions panel or rollback confirmation or user question or terminal interactive input. ProfilePanel is NOT included because it renders inside ChatInput. Compression spinner is shown inside ChatFooter, so ChatFooter is always rendered. */}
 			{!pendingToolConfirmation &&
 				!pendingUserQuestion &&
 				!bashSensitiveCommand &&
@@ -1608,7 +1497,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					panelState.showWorkingDirPanel ||
 					panelState.showPermissionsPanel ||
 					panelState.showBranchPanel ||
-					panelState.showDiffReviewPanel
+					panelState.showDiffReviewPanel ||
+					panelState.showConnectionPanel
 				) &&
 				!snapshotState.pendingRollback && (
 					<ChatFooter

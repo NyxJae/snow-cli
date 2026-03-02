@@ -1,6 +1,6 @@
 {
 	"name": "snow-ai",
-	"version": "0.6.43",
+	"version": "0.6.50",
 	"description": "Agentic coding in your terminal",
 	"license": "MIT",
 	"bin": {
@@ -48,12 +48,13 @@
 	],
 	"dependencies": {
 		"@iarna/toml": "^2.2.5",
-		"@types/markdown-it": "^14.1.2",
 		"cli-table3": "^0.6.5",
-		"ssh2": "^1.17.0"
+		"ssh2": "^1.17.0",
+		"ws": "^8.14.2"
 	},
 	"devDependencies": {
 		"@inkjs/ui": "^2.0.0",
+		"@microsoft/signalr": "^10.0.0",
 		"@modelcontextprotocol/sdk": "^1.17.3",
 		"@sindresorhus/tsconfig": "^3.0.1",
 		"@types/diff": "^7.0.2",
@@ -114,7 +115,6 @@
 		"undici": "^7.16.0",
 		"vscode-jsonrpc": "8.2.1",
 		"vscode-languageserver-protocol": "^3.17.5",
-		"ws": "^8.14.2",
 		"xlsx": "^0.18.5",
 		"xo": "^0.53.1"
 	},

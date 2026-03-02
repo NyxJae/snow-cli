@@ -26,7 +26,9 @@ export class TodoService {
 		this.todoDir = baseDir;
 		this.getCurrentSessionId = getCurrentSessionId;
 	}
-
+	/**
+	 * 初始化 TODO 存储目录.
+	 */
 	async initialize(): Promise<void> {
 		await fs.mkdir(this.todoDir, {recursive: true});
 	}
@@ -511,26 +513,17 @@ Proactively delete obsolete, redundant, or overly detailed completed subtasks to
 						parentId?: string;
 					};
 
-					// 智能解析 JSON 数组格式的字符串
-					let parsedContent: string | string[];
+					// 智能解析 content: 处理 JSON 字符串形式的数组
+					let parsedContent: string | string[] = content;
 					if (typeof content === 'string') {
-						const trimmed = content.trim();
-						if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-							try {
-								const parsed = JSON.parse(trimmed);
-								if (Array.isArray(parsed)) {
-									parsedContent = parsed;
-								} else {
-									parsedContent = content;
-								}
-							} catch {
-								parsedContent = content; // 解析失败则使用原始字符串
+						try {
+							const parsed = JSON.parse(content);
+							if (Array.isArray(parsed)) {
+								parsedContent = parsed;
 							}
-						} else {
-							parsedContent = content;
+						} catch {
+							// 解析失败,保持原字符串
 						}
-					} else {
-						parsedContent = content;
 					}
 
 					// 支持批量添加或单个添加

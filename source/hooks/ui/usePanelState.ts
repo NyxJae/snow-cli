@@ -20,6 +20,8 @@ export type PanelState = {
 	showProfilePanel: boolean;
 	showModelsPanel: boolean;
 	showDiffReviewPanel: boolean;
+	showConnectionPanel: boolean;
+	connectionPanelApiUrl?: string;
 	profileSelectedIndex: number;
 	profileSearchQuery: string;
 	currentProfileName: string;
@@ -31,6 +33,8 @@ export type PanelState = {
 
 export type PanelActions = {
 	setShowSessionPanel: Dispatch<SetStateAction<boolean>>;
+	setShowConnectionPanel: Dispatch<SetStateAction<boolean>>;
+	setConnectionPanelApiUrl: Dispatch<SetStateAction<string | undefined>>;
 	setShowMcpPanel: Dispatch<SetStateAction<boolean>>;
 	setShowUsagePanel: Dispatch<SetStateAction<boolean>>;
 	setShowCustomCommandConfig: Dispatch<SetStateAction<boolean>>;
@@ -79,6 +83,10 @@ export function usePanelState(): PanelState & PanelActions {
 	const [showProfilePanel, setShowProfilePanel] = useState(false);
 	const [showModelsPanel, setShowModelsPanel] = useState(false);
 	const [showDiffReviewPanel, setShowDiffReviewPanel] = useState(false);
+	const [showConnectionPanel, setShowConnectionPanel] = useState(false);
+	const [connectionPanelApiUrl, setConnectionPanelApiUrl] = useState<
+		string | undefined
+	>(undefined);
 	const [profileSelectedIndex, setProfileSelectedIndex] = useState(0);
 	const [profileSearchQuery, setProfileSearchQuery] = useState('');
 	const [showMainAgentPanel, setShowMainAgentPanel] = useState(false);
@@ -114,6 +122,7 @@ export function usePanelState(): PanelState & PanelActions {
 			showProfilePanel ||
 			showModelsPanel ||
 			showDiffReviewPanel ||
+			showConnectionPanel ||
 			options.hasPendingRollback ||
 			options.hasPendingToolConfirmation ||
 			options.hasPendingUserQuestion ||
@@ -245,6 +254,11 @@ export function usePanelState(): PanelState & PanelActions {
 			return true;
 		}
 
+		// ConnectionPanel handles its own ESC key logic internally
+		if (showConnectionPanel) {
+			return false; // Let ConnectionPanel handle ESC
+		}
+
 		if (showProfilePanel) {
 			setShowProfilePanel(false);
 			return true;
@@ -277,7 +291,8 @@ export function usePanelState(): PanelState & PanelActions {
 			showProfilePanel ||
 			showMainAgentPanel ||
 			showModelsPanel ||
-			showDiffReviewPanel
+			showDiffReviewPanel ||
+			showConnectionPanel
 		);
 	};
 
@@ -295,6 +310,8 @@ export function usePanelState(): PanelState & PanelActions {
 		showProfilePanel,
 		showModelsPanel,
 		showDiffReviewPanel,
+		showConnectionPanel,
+		connectionPanelApiUrl,
 		profileSelectedIndex,
 		profileSearchQuery,
 		currentProfileName,
@@ -315,6 +332,8 @@ export function usePanelState(): PanelState & PanelActions {
 		setShowProfilePanel,
 		setShowModelsPanel,
 		setShowDiffReviewPanel,
+		setShowConnectionPanel,
+		setConnectionPanelApiUrl,
 		setProfileSelectedIndex,
 		setProfileSearchQuery,
 		setShowMainAgentPanel,

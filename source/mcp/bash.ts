@@ -27,17 +27,17 @@ import {
 let shouldMoveToBackground = false;
 
 /**
- * Mark command to be moved to background
- * Called from UI when Ctrl+B is pressed
+ * 标记下一条命令转入后台执行.
+ * 由 UI 在 Ctrl+B 快捷键触发时调用.
  */
-export function markCommandAsBackgrounded() {
+export function markCommandAsBackgrounded(): void {
 	shouldMoveToBackground = true;
 }
 
 /**
- * Reset background flag
+ * 重置后台执行标记,避免影响后续命令.
  */
-export function resetBackgroundFlag() {
+export function resetBackgroundFlag(): void {
 	shouldMoveToBackground = false;
 }
 
@@ -221,7 +221,7 @@ export class TerminalCommandService {
 			// Using spawn (instead of exec) avoids relying on inherited stdio and is
 			// more resilient in some terminals where `exec` can fail with `spawn EBADF`.
 
-			// 本地分支修改:智能 shell 选择：优先使用用户当前 shell（如 Git Bash）
+			// 优先使用当前终端 shell,减少命令语法差异导致的执行失败.
 			const selectedShell = selectShellForExecution();
 
 			// 根据 shell 类型确定参数格式
@@ -644,27 +644,30 @@ export class TerminalCommandService {
 	}
 
 	/**
-	 * Get current working directory
-	 * @returns Current working directory path
+	 * 获取当前工作目录路径.
+	 * @returns 当前工作目录.
 	 */
 	getWorkingDirectory(): string {
 		return this.workingDirectory;
 	}
 
 	/**
-	 * Change working directory for future commands
-	 * @param newPath - New working directory path
-	 * @throws Error if path doesn't exist or is not a directory
+	 * 设置后续命令使用的工作目录.
+	 * @param newPath 目标工作目录路径.
 	 */
 	setWorkingDirectory(newPath: string): void {
 		this.workingDirectory = newPath;
 	}
 }
 
-// Export a default instance
+/**
+ * 默认终端命令服务实例.
+ */
 export const terminalService = new TerminalCommandService();
 
-// MCP Tool definitions
+/**
+ * 暴露给MCP的终端工具定义列表.
+ */
 export const mcpTools = [
 	{
 		name: 'terminal-execute',

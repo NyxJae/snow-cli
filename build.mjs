@@ -31,9 +31,24 @@ await esbuild.build({
 	banner: {
 		js: `import { createRequire as _createRequire } from 'module';
 import { fileURLToPath as _fileURLToPath } from 'url';
-const require = _createRequire(import.meta.url);
+const __snow_raw_require = _createRequire(import.meta.url);
+const require = Object.assign((moduleName) => {
+  const moduleValue = __snow_raw_require(moduleName);
+  if (moduleName === 'fetch-cookie' && typeof moduleValue !== 'function' && typeof moduleValue?.default === 'function') {
+    return moduleValue.default;
+  }
+  return moduleValue;
+}, __snow_raw_require);
 const __filename = _fileURLToPath(import.meta.url);
 const __dirname = _fileURLToPath(new URL('.', import.meta.url));
+
+// Polyfill for @microsoft/signalr dynamic require
+// SignalR uses: const requireFunc = typeof __webpack_require__ === "function" ? __non_webpack_require__ : require;
+// Keep __non_webpack_require__ aligned with our wrapped require for both branches.
+const __non_webpack_require__ = require;
+if (typeof globalThis.__non_webpack_require__ === 'undefined') {
+  globalThis.__non_webpack_require__ = require;
+}
 
 // Polyfill for undici's web API dependencies
 // undici uses File, Blob, etc. which are only available in Node.js 20+
@@ -123,6 +138,7 @@ if (typeof globalThis.Path2D === 'undefined') {
 		'ssh2',
 		'cpu-features',
 		// Note: katex and markdown-it-math are bundled (not external)
+		// Note: @microsoft/signalr dependencies (eventsource, fetch-cookie, tough-cookie) are now bundled
 	],
 	plugins: [stubPlugin],
 	minify: false,

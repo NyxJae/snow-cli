@@ -11,6 +11,7 @@ import TodoTree from '../special/TodoTree.js';
 import type {TodoItem} from '../../../mcp/types/todo.types.js';
 import {sessionManager} from '../../../utils/session/sessionManager.js';
 import {todoEvents} from '../../../utils/events/todoEvents.js';
+import {connectionManager} from '../../../utils/connection/ConnectionManager.js';
 
 const ReviewCommitPanel = lazy(() => import('../panels/ReviewCommitPanel.js'));
 import type {ReviewCommitSelection} from '../panels/ReviewCommitPanel.js';
@@ -144,6 +145,24 @@ const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
 		setPasteReceivingCharCount(isReceiving ? charCount : 0);
 	};
 
+	// 实例连接状态
+	const [connectionStatus, setConnectionStatus] = useState<
+		'disconnected' | 'connecting' | 'connected' | 'reconnecting'
+	>('disconnected');
+	const [connectionInstanceName, setConnectionInstanceName] =
+		useState<string>('');
+
+	// 订阅连接状态变化
+	useEffect(() => {
+		const unsubscribe = connectionManager.onStatusChange(state => {
+			setConnectionStatus(state.status);
+			if (state.instanceName) {
+				setConnectionInstanceName(state.instanceName);
+			}
+		});
+		return unsubscribe;
+	}, []);
+
 	// 使用事件监听 TODO 更新，替代轮询
 	useEffect(() => {
 		const handleTodoUpdate = (data: {sessionId: string; todos: TodoItem[]}) => {
@@ -219,6 +238,8 @@ const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
 						currentAgentName={props.currentAgentName}
 						vscodeConnectionStatus={props.vscodeConnectionStatus}
 						editorContext={props.editorContext}
+						connectionStatus={connectionStatus}
+						connectionInstanceName={connectionInstanceName}
 						contextUsage={props.contextUsage}
 						codebaseIndexing={props.codebaseIndexing}
 						codebaseProgress={props.codebaseProgress}

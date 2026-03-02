@@ -22,6 +22,7 @@ import {
 import {sessionManager} from '../session/sessionManager.js';
 import {unifiedHooksExecutor} from './unifiedHooksExecutor.js';
 import {checkYoloPermission} from './yoloPermissionChecker.js';
+import {connectionManager} from '../connection/ConnectionManager.js';
 import {
 	shouldCompressSubAgentContext,
 	getContextPercentage,
@@ -1679,6 +1680,16 @@ You have access to these collaboration tools:
 					}
 				} catch {
 					// 参数解析失败时使用默认问题与选项继续流程.
+				}
+
+				// Notify server that user interaction is needed (only if connected)
+				if (connectionManager.isConnected()) {
+					await connectionManager.notifyUserInteractionNeeded(
+						question,
+						options,
+						askUserTool.id,
+						multiSelect,
+					);
 				}
 
 				const userAnswer = await requestUserQuestion(
