@@ -260,8 +260,7 @@ async function refreshSubAgentSpecialUserMessages(
 }
 
 /**
- * Maximum spawn depth to prevent infinite recursive spawning.
- * A sub-agent at depth >= MAX_SPAWN_DEPTH cannot spawn further sub-agents.
+ * 最大 spawn 深度,用于限制递归 spawn 带来的资源消耗与死循环风险.
  */
 const MAX_SPAWN_DEPTH = 1;
 
@@ -399,7 +398,7 @@ export async function executeSubAgent(
 						target_agent_id: {
 							type: 'string',
 							description:
-								'The agent ID (type) of the target sub-agent (e.g., "agent_explore", "agent_general"). If multiple instances of the same type are running, the message is sent to the first found instance.',
+								'The agent ID (type) of the target sub-agent. If multiple instances of the same type are running, the message is sent to the first found instance.',
 						},
 						target_instance_id: {
 							type: 'string',
@@ -431,28 +430,46 @@ export async function executeSubAgent(
 			},
 		};
 
-		// 动态构建可 spawn 的子代理列表(排除自身, 并根据白名单过滤)
+		// 动态构建可 spawn 的子代理列表(运行态兜底清理无效 id,并排除自身)
 		const allSubAgents = getSubAgents();
 		const allowedSubAgentIds = agent.availableSubAgents;
-		const hasSpawnWhitelist =
-			Array.isArray(allowedSubAgentIds) && allowedSubAgentIds.length > 0;
 
-		const spawnableAgents = allSubAgents
-			.filter(a => a.id !== agent.id) // 排除自身
-			.filter(a => !hasSpawnWhitelist || allowedSubAgentIds.includes(a.id)); // 白名单过滤
+		// 运行态计算 effectiveSpawnableAgents:
+		// - allowedSubAgentIds 为 undefined 或 [] => 等价于没有任何可 spawn 的子代理
+		// - 清理不存在的 id(仅保留 getSubAgents() 返回的子代理)
+		// - 排除自身 id
+		const effectiveSpawnableAgents = (() => {
+			if (
+				!Array.isArray(allowedSubAgentIds) ||
+				allowedSubAgentIds.length === 0
+			) {
+				return [];
+			}
 
-		// 构建可用子代理描述列表
-		const agentDescriptions = spawnableAgents
-			.map(a => `- **${a.id}**: ${a.name} — ${a.description}`)
-			.join('\n');
+			const allowedIdSet = new Set(allowedSubAgentIds);
+			return allSubAgents
+				.filter(a => a.id !== agent.id)
+				.filter(a => allowedIdSet.has(a.id));
+		})();
 
-		const agentIdList = spawnableAgents.map(a => a.id).join(', ');
+		const canSpawn =
+			spawnDepth < MAX_SPAWN_DEPTH && effectiveSpawnableAgents.length > 0;
 
-		const spawnSubAgentTool: MCPTool = {
-			type: 'function' as const,
-			function: {
-				name: 'spawn_sub_agent',
-				description: `Spawn a NEW sub-agent of a DIFFERENT type to get specialized help. The spawned agent runs in parallel and results are reported back automatically.
+		allowedTools.push(sendMessageTool, queryAgentsStatusTool);
+
+		if (canSpawn) {
+			// 构建 spawn_sub_agent 工具(仅当 canSpawn 时才注入)
+			const agentDescriptions = effectiveSpawnableAgents
+				.map(a => `- **${a.id}**: ${a.name} — ${a.description}`)
+				.join('\n');
+
+			const agentIdList = effectiveSpawnableAgents.map(a => a.id).join(', ');
+
+			const spawnSubAgentTool: MCPTool = {
+				type: 'function' as const,
+				function: {
+					name: 'spawn_sub_agent',
+					description: `Spawn a NEW sub-agent of a DIFFERENT type to get specialized help. The spawned agent runs in parallel and results are reported back automatically.
 
 **WHEN TO USE** — Only spawn when you genuinely need a different agent's specialization.
 
@@ -463,29 +480,25 @@ export async function executeSubAgent(
 - If you can complete the task with your own tools, DO IT YOURSELF
 
 **Available agents you can spawn:**
-${agentDescriptions || '(none)'}`,
-				parameters: {
-					type: 'object',
-					properties: {
-						agent_id: {
-							type: 'string',
-							description: `The agent ID to spawn. Must be a DIFFERENT type from yourself. Available: ${
-								agentIdList || 'none'
-							}.`,
+${agentDescriptions}`,
+					parameters: {
+						type: 'object',
+						properties: {
+							agent_id: {
+								type: 'string',
+								description: `The agent ID to spawn. Must be a DIFFERENT type from yourself. Available: ${agentIdList}.`,
+							},
+							prompt: {
+								type: 'string',
+								description:
+									'CRITICAL: The task prompt for the spawned agent. Must include COMPLETE context since the spawned agent has NO access to your conversation history. Include all relevant file paths, findings, constraints, and requirements.',
+							},
 						},
-						prompt: {
-							type: 'string',
-							description:
-								'CRITICAL: The task prompt for the spawned agent. Must include COMPLETE context since the spawned agent has NO access to your conversation history. Include all relevant file paths, findings, constraints, and requirements.',
-						},
+						required: ['agent_id', 'prompt'],
 					},
-					required: ['agent_id', 'prompt'],
 				},
-			},
-		};
+			};
 
-		allowedTools.push(sendMessageTool, queryAgentsStatusTool);
-		if (spawnDepth < MAX_SPAWN_DEPTH) {
 			allowedTools.push(spawnSubAgentTool);
 		}
 
@@ -494,7 +507,6 @@ ${agentDescriptions || '(none)'}`,
 			.getRunningAgents()
 			.filter(a => a.instanceId !== instanceId);
 
-		const canSpawn = spawnDepth < MAX_SPAWN_DEPTH;
 		let collaborationContext = '';
 		if (otherAgents.length > 0) {
 			const agentList = otherAgents
@@ -1501,12 +1513,36 @@ You have access to these collaboration tools:
 						continue;
 					}
 
-					// 仅在白名单非空时才限制spawn目标,undefined或空数组均按不限制处理.
-					// 这样可兼容旧配置和默认行为,避免升级后意外阻断已有子代理协作流程.
-					const allowedSubAgents = agent.availableSubAgents;
-					const hasWhitelist =
-						Array.isArray(allowedSubAgents) && allowedSubAgents.length > 0;
-					if (hasWhitelist && !allowedSubAgents.includes(spawnAgentId)) {
+					// 运行态兜底校验: spawn_sub_agent 的可用目标必须严格等于有效白名单,
+					// 避免历史残留/手工编辑导致越权 spawn.
+					const allowedSubAgentIds = agent.availableSubAgents;
+					const effectiveAllowedSubAgentIds = (() => {
+						if (
+							!Array.isArray(allowedSubAgentIds) ||
+							allowedSubAgentIds.length === 0
+						) {
+							return [] as string[];
+						}
+						const allowedIdSet = new Set(allowedSubAgentIds);
+						return getSubAgents()
+							.filter(a => a.id !== agent.id)
+							.filter(a => allowedIdSet.has(a.id))
+							.map(a => a.id);
+					})();
+					if (effectiveAllowedSubAgentIds.length === 0) {
+						const toolResultMessage = {
+							role: 'tool' as const,
+							tool_call_id: spawnTool.id,
+							content: JSON.stringify({
+								success: false,
+								error:
+									'REJECTED: No spawnable sub-agents are available for this agent.',
+							}),
+						};
+						messages.push(toolResultMessage);
+						continue;
+					}
+					if (!effectiveAllowedSubAgentIds.includes(spawnAgentId)) {
 						const toolResultMessage = {
 							role: 'tool' as const,
 							tool_call_id: spawnTool.id,
@@ -1514,7 +1550,7 @@ You have access to these collaboration tools:
 								success: false,
 								error: `REJECTED: Agent "${
 									agent.name
-								}" is not allowed to spawn "${spawnAgentId}". Allowed sub-agents: ${allowedSubAgents.join(
+								}" is not allowed to spawn "${spawnAgentId}". Allowed sub-agents: ${effectiveAllowedSubAgentIds.join(
 									', ',
 								)}`,
 							}),

@@ -237,6 +237,29 @@ function saveSubAgents(agents: SubAgent[]): void {
 	}
 }
 /**
+ * Normalize `availableSubAgents` before persisting.
+ *
+ * - `undefined` keeps as `undefined`(equivalent to "no spawn targets").
+ * - Array values are filtered to:
+ *   - existing sub-agent ids(from `getSubAgents()`)
+ *   - excluding `selfId`
+ * - If input is an array, an empty result is persisted as `[]`.
+ */
+function normalizeAvailableSubAgents(
+	availableSubAgents: string[] | undefined,
+	selfId: string,
+): string[] | undefined {
+	if (!Array.isArray(availableSubAgents)) {
+		return undefined;
+	}
+
+	const validIdSet = new Set(getSubAgents().map(a => a.id));
+	return availableSubAgents
+		.filter(subId => subId !== selfId)
+		.filter(subId => validIdSet.has(subId));
+}
+
+/**
  * Create a new sub-agent (user-configured only)
  */
 export function createSubAgent(
@@ -250,9 +273,10 @@ export function createSubAgent(
 ): SubAgent {
 	const userAgents = getUserSubAgents();
 	const now = new Date().toISOString();
+	const id = generateId();
 
 	const newAgent: SubAgent = {
-		id: generateId(),
+		id,
 		name,
 		description,
 		subAgentRole,
@@ -262,7 +286,7 @@ export function createSubAgent(
 		updatedAt: now,
 		builtin: false,
 		configProfile,
-		availableSubAgents,
+		availableSubAgents: normalizeAvailableSubAgents(availableSubAgents, id),
 	};
 
 	userAgents.push(newAgent);
@@ -320,10 +344,12 @@ export function updateSubAgent(
 				updates.editableFileSuffixes ??
 				existingUserCopy?.editableFileSuffixes ??
 				agent.editableFileSuffixes,
-			availableSubAgents:
+			availableSubAgents: normalizeAvailableSubAgents(
 				updates.availableSubAgents ??
-				existingUserCopy?.availableSubAgents ??
-				agent.availableSubAgents,
+					existingUserCopy?.availableSubAgents ??
+					agent.availableSubAgents,
+				agent.id,
+			),
 			createdAt: existingUserCopy?.createdAt ?? agent.createdAt ?? now,
 			updatedAt: now,
 			builtin: true, // 保持 true,表示这是内置代理的用户副本
@@ -362,8 +388,10 @@ export function updateSubAgent(
 		tools: updates.tools ?? existingAgent.tools,
 		editableFileSuffixes:
 			updates.editableFileSuffixes ?? existingAgent.editableFileSuffixes,
-		availableSubAgents:
+		availableSubAgents: normalizeAvailableSubAgents(
 			updates.availableSubAgents ?? existingAgent.availableSubAgents,
+			existingAgent.id,
+		),
 		createdAt: existingAgent.createdAt,
 		updatedAt: now,
 		builtin: existingAgent.builtin,

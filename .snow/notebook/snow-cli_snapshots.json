@@ -733,5 +733,33 @@
       "op": "add",
       "notebookId": "notebook-1772378374080_u8nxjpmvh"
     }
+  ],
+  "afc0c1e0-911f-403b-a33b-1afa46401a03:1": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1770864631008_subexec",
+      "previousNote": "职责: 子代理运行时装配器,加载子代理配置并执行工具调用循环.\n接口摘要: getSubAgent(agentId)->agent配置,executeMCPTool 执行具体工具并回传结果.\n依赖拓扑: 上游依赖 subAgentConfig.ts,下游依赖 mcpToolsManager.ts 与 filesystem.ts.\n避坑指南:\n- 子代理运行态不应处理任何 UI 导航(source)逻辑.\n- 工具可见性由\"MCP 服务全局开关(全局总闸)\"与\"代理工具权限(代理分闸)\"共同决定;全局服务禁用由 mcpToolsManager/disabledBuiltInTools 统一裁剪,运行态只消费最终可执行工具集合.\n备注:\n- 与\"流式 API 空闲超时/断开后丢弃\"无关.该机制属于 api adapters + utils/core(streamGuards,retryUtils).子代理执行器仅负责透传 abortSignal/取消语义."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1770864631002_subcfg",
+      "previousNote": "职责: 管理子代理配置的读取,创建,更新和持久化,是子代理侧工具权限与编辑限制字段的存储入口.\n接口摘要: createSubAgent/updateSubAgent 接收 UI 字段并写入 TOML,getSubAgent 提供运行态读取.\n关键架构决策(渐进式权限模型):\n- 子代理可用工具集合 = MCP 服务开关(全局总闸) + 子代理工具权限(代理分闸).\n- 服务级禁用不写入 sub-agents.toml,由全局禁用文件统一管理,并在加载/保存时清理已禁用服务的工具.\n依赖拓扑: SubAgentConfigScreen.tsx 调用写入,subAgentExecutor.ts 通过 getSubAgent 读取执行时配置.\n避坑指南:\n- 配置层不应与 UI 面板导航状态(showMcpPanel,mcpPanelSource,source)耦合.\n- 更新/创建逻辑需复用同一套工具过滤/规范化逻辑.\n- UI 层做工具过滤后,配置持久化层仍需要二次清理,防止历史配置残留.\n- 不要在本层实现任何\"打开 MCPInfoPanel\"之类的 UI 行为,避免跨域耦合.\n- 与本需求相关: 流式 API 的空闲超时(固定3分钟)不可配置,因此不要为子代理增加 idleTimeout 等配置字段,让网络健壮性机制对主/子代理保持一致.\n备注: 之前笔记中出现 editableFileSuffixes 的单一职责描述,不够准确,已修正为通用子代理配置管理."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772560270508_n0hftm8kn"
+    }
+  ],
+  "afc0c1e0-911f-403b-a33b-1afa46401a03:278": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1770864631008_subexec",
+      "previousNote": "职责: 子代理运行时装配器,负责在执行前装配子代理的“有效可协作子代理集合”,并据此动态裁剪协作工具注入(send/query/spawn)与 spawn 白名单,再执行工具调用循环.\n\n接口摘要:\n- 输入: getSubAgent(agentId) 返回的 agent 配置(含 tools,availableSubAgents),当前 spawnDepth,运行态可用子代理列表(getSubAgents()).\n- 输出: 一次模型请求的 tools 列表(允许/隐藏协作工具),以及执行工具调用的结果回传.\n\n关键架构决策(本需求新增,必须对齐 requirements/子代理调用子代理的工具筛选.md):\n- 计算 effectiveAvailableSubAgents = 基于 agent.availableSubAgents 做运行态兜底清理(过滤不存在的 id + 排除自身).\n- 若 effectiveAvailableSubAgents 为空(包含 undefined/[]/清理后为空),则 send_message_to_agent/query_agents_status/spawn_sub_agent 这 3 个协作工具都不得注入到该子代理请求 tools 中.\n- 若 effectiveAvailableSubAgents 非空,则:\n  - send_message_to_agent/query_agents_status 可以注入.\n  - spawn_sub_agent 仅在运行时深度限制允许时注入,且其 agent_id 可选值必须严格来自 effectiveAvailableSubAgents.\n\n依赖拓扑:\n- 上游依赖: source/utils/config/subAgentConfig.ts(配置读取),source/utils/agentsPromptUtils.ts(环境信息片段).\n- 下游依赖: source/utils/mcpToolsManager.ts(工具执行),filesystem/terminal 等工具实现.\n- 需求基线: requirements/子代理调用子代理的工具筛选.md.\n\n避坑指南:\n- MUST 做运行态兜底清理,不能只依赖 UI 保存时过滤(配置可能来自历史残留或手工编辑).\n- availableSubAgents 语义已收敛: undefined/[] 不是“不限制”,而是“禁止子代理协作工具注入”.\n- 排除自身是硬约束: 任何情况下都不允许 spawn 自己,也不应把自己放入 send/query 的可协作目标语义中.\n- 深度限制与白名单是正交约束: 深度不允许时仅隐藏 spawn_sub_agent,但 send/query 仍可用(前提是 effectiveAvailableSubAgents 非空)."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1770864631002_subcfg",
+      "previousNote": "职责: 管理子代理配置的读取,创建,更新和持久化,是子代理侧工具权限与编辑限制字段的存储入口.\n\n接口摘要:\n- 输入: createSubAgent/updateSubAgent 接收 UI 字段并写入 TOML.\n- 输出: getSubAgent 提供运行态读取(供 subAgentExecutor 使用).\n\n关键架构决策(渐进式权限模型):\n- 子代理可用工具集合 = MCP 服务开关(全局总闸) + 子代理工具权限(代理分闸).\n- 服务级禁用不写入 sub-agents.toml,由全局禁用文件统一管理.\n\n关键架构决策(本需求新增):\n- 配置字段 availableSubAgents?: string[] 的语义:\n  - undefined 或 [] 视为“没有任何可调用子代理”.\n  - 非空数组表示“仅允许调用数组中的子代理”.\n- 保存时清理无效 id: availableSubAgents 必须过滤掉当前不存在的子代理 id,并排除自身 id.\n- 运行态不变性: 即使保存时已清理,运行态仍必须在构建请求前再次做兜底清理,确保 subAgentExecutor 可安全依赖 effectiveAvailableSubAgents.\n\n依赖拓扑:\n- 被依赖: source/ui/pages/SubAgentConfigScreen.tsx(编辑保存),source/utils/execution/subAgentExecutor.ts(运行态读取).\n\n避坑指南:\n- 配置层不应与 UI 面板导航状态(showMcpPanel,mcpPanelSource,source)耦合.\n- 更新/创建逻辑需复用同一套工具过滤/规范化逻辑.\n- UI 层做过滤后,配置持久化层仍需要二次清理,防止历史配置残留.\n- availableSubAgents 的“无配置/空数组”语义已收敛为“禁止协作工具注入”,不要把它实现成“不限制 spawn 白名单”.\n\n备注:\n- 与流式 API 的空闲超时(固定3分钟)无关,不要为子代理增加 idleTimeout 等字段."
+    }
   ]
 }

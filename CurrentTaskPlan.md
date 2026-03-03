@@ -1,135 +1,81 @@
-# CurrentTaskPlan: Web SSE 客户端未查看终态提醒与统一弹窗(P0)
+# CurrentTaskPlan: 子代理协作工具注入按 availableSubAgents 裁剪(P0)
 
-## 需求基线
+## 需求基线(SSoT)
 
-- 需求文档: `requirements/全平台网页版Snow SSE客户端需求.md`.
-- 关键口径: `2.17.1`,`例28A`,`例31`,`验收清单 947-953`.
-- 边界约束: 仅纳入 SSE 服务端来源的终态提醒,不纳入 TUI 本地完成来源.
+- 需求文档: `requirements/子代理调用子代理的工具筛选.md`.
+- 范围: 仅约束子代理请求的 `tools` 中协作工具的注入规则与 spawn 范围组装,不修改工具内部逻辑.
+- 相关代码:
+  - `source/utils/execution/subAgentExecutor.ts`(运行态 tools 注入与 spawn 白名单/description/参数范围组装).
+  - `source/ui/pages/SubAgentConfigScreen.tsx`(编辑态排除自身与过滤无效 id).
+  - `source/utils/config/subAgentConfig.ts`(保存/读取 availableSubAgents 的规范化入口,以及运行态兜底清理的职责归属约束).
 
-## 架构蓝图更新(长期约束)
+## 架构蓝图更新(长期约束,必须落地)
 
-1. 状态模型约束.
+1. 语义收敛.
 
-   - 未查看终态以会话粒度维护,主键必须为 `serverId + sessionId` 复合键.
-   - 至少维护三类状态: 运行中会话可见集合,会话级未查看终态集合,服务端级未查看聚合计数.
+- `availableSubAgents?: string[]` 的语义是“允许 spawn 的子代理白名单”,不是“协作工具开关”.
+- `undefined` 与 `[]` 与“清理后为空”三者等价: 表示“没有任何可 spawn 的子代理”.
 
-2. 事件来源边界约束.
+2. 运行态兜底清理是硬约束.
 
-   - 仅 SSE 服务端可确认的终态事件可进入未查看集合.
-   - 未知事件或来源不明事件必须忽略,防止伪提醒.
+- 运行态必须计算 `effectiveAvailableSubAgents`:
+  - 基于 `agent.availableSubAgents`.
+  - 过滤掉当前不存在的子代理 id.
+  - 排除自身 id.
+- 不允许只依赖 UI 保存时过滤,因为配置可能来自历史残留或手工编辑.
 
-3. 提醒生命周期约束.
+3. 协作工具注入规则(只控制 tools 列表).
 
-   - 客户端打开并连接后,自动恢复全部运行中会话的可见性.
-   - 客户端断开窗口内进入终态的会话,在重连且状态同步完成后标记为"未查看终态".
-   - 用户打开该会话后仅清除该会话标记,不影响其他会话.
+- `send_message_to_agent` 与 `query_agents_status` 是自带协作工具,始终全局可见,始终出现在子代理请求的 tools 中,不受 availableSubAgents 开关影响.
+- 仅 `spawn_sub_agent` 受 `effectiveAvailableSubAgents` 与运行时深度门禁影响:
+  - effective 为空(包含 `availableSubAgents: []`)时,tools 中不包含 spawn_sub_agent.
+  - effective 非空且运行时允许 spawn(深度门禁)时,tools 中包含 spawn_sub_agent.
+  - spawn_sub_agent.parameters.agent_id 可选范围必须严格等于 effectiveAvailableSubAgents.
+  - spawn_sub_agent.description 中展示的“Available agents you can spawn”列表必须严格等于 effectiveAvailableSubAgents(并排除自身).
 
-4. 跨会话/跨服务端隔离约束.
+## 短线开发计划(P0)
 
-   - 任何提醒写入与清除都必须走 server tab 上下文隔离,禁止跨服务端串写.
-   - 同一 `sessionId` 在不同服务端必须视为不同提醒实体.
+### 步骤 1: 运行态裁剪策略落地(subAgentExecutor.ts)
 
-5. 弹窗交互契约约束.
-   - 统一提供"未查看终态"树状弹窗入口,按服务端分组展示,覆盖最近 5 条之外会话.
-   - 关闭 `X` 仅关闭弹窗,不清除未查看状态.
-   - 点击会话执行"先关闭弹窗,再跳转会话,最后清除该会话未查看标记"的固定动作链.
-
-## 短线开发计划(P0,按层分步)
-
-### 步骤 1: 数据层(P0)
-
-- 输入: SSE 终态事件,重连后会话状态同步结果.
-- 输出: 可查询的未查看终态数据模型(会话级 + 服务端聚合).
+- 目标: send/query 始终注入; `spawn_sub_agent` 的注入与范围完全对齐 `effectiveAvailableSubAgents`.
+- 交付物:
+  - 运行态计算 effectiveAvailableSubAgents 的函数/逻辑(清理无效 id + 排除自身).
+  - tools 注入门禁: effective 为空则不注入 `spawn_sub_agent`(但 send/query 仍注入).
+  - `spawn_sub_agent.parameters.agent_id` 可选范围与 `spawn_sub_agent.description` 列表严格受 effective 约束.
 - 完成标准:
-  - 形成稳定数据结构定义与字段口径文档.
-  - 明确幂等键策略,同一终态重复到达不重复计数.
+  - 满足需求文档 4.3 的所有示例与边界情况.
+  - 新增验收点: description 中的“Available agents you can spawn”列表与 parameters.agent_id 可选范围一致,且两者都严格等于 effectiveAvailableSubAgents.
 
-### 步骤 2: 状态层(P0)
+### 步骤 2: 配置保存与读取的规范化(subAgentConfig.ts)
 
-- 输入: 数据层结构,现有 `state.chat`,`state.chat.dialogs`,`clearSessionAttention(sessionId)` 能力.
-- 输出: 状态更新 API 与清除 API 契约(标记,聚合,按会话清除).
+- 目标: 将 availableSubAgents 的“保存时清理”职责沉淀到配置层(不只在 UI).
+- 交付物:
+  - 保存/更新时过滤 invalid id,并排除自身(若传入).
+  - 明确: 即使保存时已清理,subAgentExecutor 仍必须运行态兜底清理.
 - 完成标准:
-  - 状态写入和清除均支持 `serverId + sessionId` 隔离.
-  - 清除动作只影响目标会话,不误清服务端其他会话.
+  - 历史配置/手工编辑的脏数据不会导致运行态出现不一致或越权 spawn.
 
-### 步骤 3: 动作层(P0)
+### 步骤 3: UI 编辑体验保持一致(SubAgentConfigScreen.tsx)
 
-- 输入: SSE 连接生命周期(onopen,onerror,reconnect),会话打开动作.
-- 输出: 动作链路定义(自动恢复运行中会话可见性,断开窗口终态标记,查看后清除).
+- 目标: 编辑态持续排除自身,并仅展示有效子代理.
+- 交付物:
+  - 加载既有配置时继续过滤 invalid id.
+  - 保存时传递的 availableSubAgents 不包含自身.
 - 完成标准:
-  - 明确"断开窗口结束点 = 重连成功 + 状态同步完成".
-  - 重连后可生成"未查看终态集合"且不触发重复提醒风暴.
+  - UI 显示与运行态 effective 清理后的结果语义一致(即: UI 不会展示“不可用但已保存”的幽灵 id).
 
-### 步骤 4: 渲染层(P0)
+### 步骤 4: 构建验收
 
-- 输入: 服务端聚合计数,会话级未查看状态,统一弹窗分组数据.
-- 输出: 服务端 Tab 红点,会话列表/会话管理红点,未查看终态树状弹窗,统一提示弹窗策略.
-- 完成标准:
-  - 四处展示口径一致(Tab,列表,管理弹窗,树状弹窗).
-  - 提供统一弹窗提示全部未查看会话,支持 `X` 关闭且不清状态.
-
-### 步骤 5: 验收层(P0)
-
-- 输入: 例 28A 与例 31 场景脚本.
-- 输出: 手工验收记录模板(场景,预期,结果,日志).
-- 完成标准:
-  - 关键场景全通过或有明确阻断项.
-  - `npm run build` 通过,交付用户重启应用实测.
+- 命令: `npm run build`.
+- 验收要点(手工):
+  - send_message_to_agent/query_agents_status 始终在 tools 中(不受 availableSubAgents 影响).
+  - availableSubAgents 为 `undefined`/`[]`/清理后空时,tools 中不包含 spawn_sub_agent.
+  - availableSubAgents 非空且深度门禁允许时,tools 中包含 spawn_sub_agent.
+  - spawn_sub_agent.parameters.agent_id 仅允许 effective 列表(无无效 id,无自身).
+  - spawn_sub_agent.description 的可用子代理列表严格等于 effective 列表,且与 parameters.agent_id 范围一致.
 
 ## 风险与避坑
 
-1. 重连风暴风险.
-
-   - 避坑: 提醒写入做幂等去重,重连补偿采用合并策略而非全量重复推送.
-
-2. 重复提醒风险.
-
-   - 避坑: 以复合键和终态版本号控制重复计数,统一 Tips 节流.
-
-3. 跨服务端或跨 Tab 污染风险.
-
-   - 避坑: 所有读写都必须显式绑定 `serverId` 上下文.
-
-4. 历史补偿事件缺失风险.
-
-   - 避坑: 对缺失补偿采用保守标记策略,仅对可确认终态入池,并记录待补偿来源.
-
-5. 弹窗关闭误清状态风险.
-   - 避坑: 将"关闭弹窗"与"已查看清除"解耦,仅在打开会话完成链路后清除.
-
-## MVP 验收清单(手工)
-
-- [ ] 客户端连接后,自动恢复该服务端所有运行中会话可见性.
-- [ ] 客户端断开期间进入终态的会话,重连同步后进入"未查看终态"集合.
-- [ ] TUI 本地完成来源不会进入"未查看终态"提醒.
-- [ ] 服务端 Tab,会话列表,会话管理弹窗,树状弹窗的红点状态一致.
-- [ ] 点击"未查看终态"按钮可打开树状弹窗,点击 `X` 仅关闭不清状态.
-- [ ] 点击树状弹窗内会话后,完成跳转并仅清除该会话未查看标记.
-- [ ] 统一提示弹窗可提示全部未查看会话,且不会重复刷屏.
-- [ ] `npm run build` 通过.
-
-## 防自动跳转架构沉淀(2026-02)
-
-### 1) 架构约束清单
-
-- 用户意图门禁约束: 只有明确用户点击(Tips 卡片或未查看终态弹窗会话入口)才允许触发会话跳转.
-- 非用户事件只写提醒态约束: `message`,`complete`,`compress` 完成等 SSE 事件只能做 `touchSession`,`markSessionAttention`,`pushInfoMessage`.
-- 当前会话写入约束: 禁止在 SSE 被动分支写 `state.chat.currentSessionId` 或调用会导致隐式切会话的加载动作.
-- 上下文隔离约束: 所有提醒态和会话触达都必须处于 `withServerTabContext(serverId)` 内,避免跨服务端污染.
-- 提醒与跳转解耦约束: 终态到达默认只更新红点和 Tips,跳转动作延迟到用户点击时再执行.
-
-### 2) 易错点
-
-- 旧 helper 复用隐患: 历史 `switchToCompressedSession` 一类 helper 若被复用,容易在 complete 路径重新引入自动跳转.
-- 被动事件串改会话: 在 `eventSource.onmessage` 中直接写当前会话 ID 会造成焦点劫持.
-- 提醒动作混入加载动作: 在 `markSessionAttention` 后立即 `loadSelectedSession` 会破坏防打扰契约.
-- 跨 serverId 串写: 若遗漏 `withServerTabContext` 包裹,会出现 A 服务端事件影响 B 服务端当前会话.
-- 语义回归盲区: 仅验证红点出现而未验证"未点击前不跳转",容易在后续重构中退化.
-
-### 3) 后续最小改进建议(不改代码)
-
-- 补充 ADR 文档条目: 在架构规范中固化"用户意图门禁"与"提醒-跳转解耦"两条红线.
-- 增加评审检查项: PR 模板新增"是否存在非用户触发的 currentSessionId 写入"核对项.
-- 增加回归脚本清单: 手工回归固定覆盖"断开补偿终态","压缩完成","普通 complete"三条路径的防跳转检查.
-- 建立事件分级表: 明确每类 SSE 事件可执行动作白名单(提醒,计数,渲染,禁止跳转).
-- 增加发布前验收口令: 发布前必须复核 `requirements/全平台网页版Snow SSE客户端需求.md` 中 408,728,955 三处条款.
+- “空白名单=不限制”历史语义回归风险: 必须用 explicit gate 覆盖,并补充用例覆盖 undefined/[].
+- 只在 UI 清理导致运行态漂移: 必须把运行态兜底清理视为安全边界,不可省略.
+- 自身 id 泄漏风险: 清理逻辑必须在所有路径(保存,读取,运行态)排除自身,避免死配置与潜在递归调用.

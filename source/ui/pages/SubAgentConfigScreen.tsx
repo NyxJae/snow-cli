@@ -504,9 +504,12 @@ export default function SubAgentConfigScreen({
 			const availableSubAgentIds = new Set(
 				availableSubAgents.map(sub => sub.id),
 			);
-			const validSubAgents = Array.from(selectedSubAgents).filter(subId =>
-				availableSubAgentIds.has(subId),
-			);
+			const validSubAgents = Array.from(selectedSubAgents)
+				.filter(subId => availableSubAgentIds.has(subId))
+				// 双保险: 即使历史残留/手工编辑把自身写回,UI 也不允许保存.
+				.filter(subId => !agentId || subId !== agentId);
+			const availableSubAgentsToSave =
+				validSubAgents.length > 0 ? validSubAgents : [];
 
 			if (isEditMode && agentId) {
 				const enabledTools = filterToolsByEnabledServices(
@@ -521,7 +524,7 @@ export default function SubAgentConfigScreen({
 					editableFileSuffixes: parseEditableFileSuffixesInput(
 						editableFileSuffixesInput,
 					),
-					availableSubAgents: validSubAgents,
+					availableSubAgents: availableSubAgentsToSave,
 				};
 
 				updateSubAgent(agentId, updateData);
@@ -536,7 +539,7 @@ export default function SubAgentConfigScreen({
 					subAgentRole || undefined,
 					selectedProfile || undefined,
 					parseEditableFileSuffixesInput(editableFileSuffixesInput),
-					validSubAgents,
+					availableSubAgentsToSave,
 				);
 			}
 
