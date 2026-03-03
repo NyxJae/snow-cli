@@ -122,6 +122,7 @@ export class CompactAgent {
 							model: this.modelName,
 							messages,
 							includeBuiltinSystemPrompt: false, // 不需要内置系统提示词
+							disableThinking: true, // Agents 不使用思考功能
 						},
 						abortSignal,
 					);
@@ -134,6 +135,7 @@ export class CompactAgent {
 							messages,
 							stream: true,
 							includeBuiltinSystemPrompt: false, // 不需要内置系统提示词
+							disableThinking: true, // Agents 不使用思考功能
 						},
 						abortSignal,
 					);
@@ -147,6 +149,7 @@ export class CompactAgent {
 							messages,
 							stream: true,
 							includeBuiltinSystemPrompt: false, // 不需要内置系统提示词
+							disableThinking: true, // Agents 不使用思考功能
 						},
 						abortSignal,
 					);

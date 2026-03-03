@@ -39,6 +39,7 @@ export interface ResponseOptions {
 	store?: boolean;
 	include?: string[];
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词(默认 true)
+	disableThinking?: boolean; // 禁用 Extended Thinking 功能(用于 agents 等场景,默认 false)
 	teamMode?: boolean; // 启用 Team 模式(使用 Team 模式系统提示词)
 	// 子代理配置覆盖
 	configProfile?: string; // 子代理配置文件名(覆盖模型等设置)
@@ -554,7 +555,6 @@ export async function* createStreamingResponse(
 		customSystemPromptContent,
 		!!options.customSystemPromptId || !!options.subAgentSystemPrompt, // 子代理调用的判断：只要有customSystemPromptId或subAgentSystemPrompt就认为是子代理调用
 		options.subAgentSystemPrompt,
-		// 传递 teamMode 以使用正确的系统提示词(已弃用)
 	);
 
 	// 获取配置的 reasoning 设置
@@ -570,10 +570,11 @@ export async function* createStreamingResponse(
 				tools: convertToolsForResponses(options.tools),
 				tool_choice: options.tool_choice,
 				parallel_tool_calls: true,
-				// 只有当 reasoning 启用时才添加 reasoning 字段
-				...(configuredReasoning && {
-					reasoning: configuredReasoning,
-				}),
+				// 只有当 reasoning 启用且未禁用思考功能时才添加 reasoning 字段
+				...(configuredReasoning &&
+					!options.disableThinking && {
+						reasoning: configuredReasoning,
+					}),
 				store: false,
 				stream: true,
 				include: ['reasoning.encrypted_content'],

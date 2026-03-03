@@ -224,7 +224,6 @@ export class TerminalCommandService {
 			// 优先使用当前终端 shell,减少命令语法差异导致的执行失败.
 			const selectedShell = selectShellForExecution();
 
-			// 根据 shell 类型确定参数格式
 			let shell: string;
 			let shellArgs: string[];
 

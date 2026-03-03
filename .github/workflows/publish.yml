@@ -58,7 +58,9 @@ jobs:
 
             ### What's New
 
-            - Fix some bugs
+            - Optimize the input compatibility of custom models
+            - Optimize rg search for Windows systems
+            - Unify the thinking intensity of basic models
 
             ### Installation
             ```bash

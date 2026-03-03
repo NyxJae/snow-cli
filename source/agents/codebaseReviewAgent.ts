@@ -139,6 +139,7 @@ export class CodebaseReviewAgent {
 						messages,
 						tools: [this.REVIEW_TOOL],
 						includeBuiltinSystemPrompt: false,
+						disableThinking: true, // Agents 不使用思考功能
 					},
 					abortSignal,
 				);
@@ -152,6 +153,7 @@ export class CodebaseReviewAgent {
 						tools: [this.REVIEW_TOOL],
 						stream: true,
 						includeBuiltinSystemPrompt: false,
+						disableThinking: true, // Agents 不使用思考功能
 					},
 					abortSignal,
 				);
@@ -166,6 +168,7 @@ export class CodebaseReviewAgent {
 						tools: [this.REVIEW_TOOL],
 						stream: true,
 						includeBuiltinSystemPrompt: false,
+						disableThinking: true, // Agents 不使用思考功能
 					},
 					abortSignal,
 				);

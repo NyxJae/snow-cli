@@ -26,6 +26,7 @@ export interface GeminiOptions {
 	temperature?: number;
 	tools?: ChatCompletionTool[];
 	includeBuiltinSystemPrompt?: boolean; // 控制是否添加内置系统提示词(默认 true)
+	disableThinking?: boolean; // 禁用思考功能(用于 agents 等场景,默认 false)
 	teamMode?: boolean; // 启用 Team 模式(使用 Team 模式系统提示词)
 	// 子代理配置覆盖
 	configProfile?: string; // 子代理配置文件名(覆盖模型等设置)
@@ -517,7 +518,6 @@ export async function* createStreamingGeminiCompletion(
 				customSystemPromptContent, // 传递自定义系统提示词
 				!!options.customSystemPromptId || !!options.subAgentSystemPrompt, // 子代理调用的判断：只要有customSystemPromptId或subAgentSystemPrompt就认为是子代理调用
 				options.subAgentSystemPrompt,
-				// 传递 teamMode 以使用正确的系统提示词(已弃用)
 			);
 
 			// 构建请求负载
@@ -528,9 +528,9 @@ export async function* createStreamingGeminiCompletion(
 					: undefined,
 			};
 
-			// 如果启用了 thinking 配置则添加
+			// 如果启用了 thinking 配置且未禁用,则添加
 			// 仅在 thinking 启用时包含 generationConfig
-			if (config.geminiThinking?.enabled) {
+			if (config.geminiThinking?.enabled && !options.disableThinking) {
 				requestBody.generationConfig = {
 					thinkingConfig: {
 						thinkingBudget: config.geminiThinking.budget,
