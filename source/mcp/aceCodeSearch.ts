@@ -1769,7 +1769,7 @@ export const mcpTools = [
 	{
 		name: 'ace-text_search',
 		description:
-			'ACE Code Search: Literal text/regex pattern matching (grep-style search). Best for finding exact strings: TODOs, comments, log messages, error strings, string constants. NOT recommended for code understanding or exploring functionality - use semantic search tools for that. Use when you know the exact text pattern you are looking for.',
+			'ACE代码搜索: 字面文本/正则表达式模式匹配(grep风格搜索). 最适合查找精确字符串: TODO, 注释, 日志消息, 错误字符串, 字符串常量. 基于rg但更好更快.使用此工具,NOT直接用rg命令',
 		inputSchema: {
 			type: 'object',
 			properties: {
