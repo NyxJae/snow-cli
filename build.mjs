@@ -10,6 +10,10 @@ const stubPlugin = {
 			path: 'react-devtools-core',
 			namespace: 'stub-ns',
 		}));
+		build.onResolve({filter: /^@napi-rs\/canvas$/}, () => ({
+			path: '@napi-rs/canvas',
+			namespace: 'stub-ns',
+		}));
 		build.onLoad({filter: /.*/, namespace: 'stub-ns'}, () => ({
 			contents: 'export default {}',
 		}));
@@ -41,6 +45,18 @@ const require = Object.assign((moduleName) => {
 }, __snow_raw_require);
 const __filename = _fileURLToPath(import.meta.url);
 const __dirname = _fileURLToPath(new URL('.', import.meta.url));
+
+// Pre-load @microsoft/signalr runtime dependencies into require.cache
+// SignalR uses dynamic require() which esbuild cannot bundle statically
+// We load them here so they're available when SignalR tries to require() them
+const __signalr_deps = {
+  'abort-controller': require('abort-controller'),
+  'eventsource': require('eventsource'),
+  'fetch-cookie': require('fetch-cookie'),
+  'node-fetch': require('node-fetch'),
+  'tough-cookie': require('tough-cookie'),
+  'ws': require('ws')
+};
 
 // Polyfill for @microsoft/signalr dynamic require
 // SignalR uses: const requireFunc = typeof __webpack_require__ === "function" ? __non_webpack_require__ : require;
@@ -138,7 +154,8 @@ if (typeof globalThis.Path2D === 'undefined') {
 		'ssh2',
 		'cpu-features',
 		// Note: katex and markdown-it-math are bundled (not external)
-		// Note: @microsoft/signalr dependencies (eventsource, fetch-cookie, tough-cookie) are now bundled
+		// Note: @microsoft/signalr dependencies (abort-controller, eventsource, fetch-cookie, node-fetch, tough-cookie) are NOT bundled
+		// They are dynamically required at runtime and must be in package.json dependencies
 	],
 	plugins: [stubPlugin],
 	minify: false,
