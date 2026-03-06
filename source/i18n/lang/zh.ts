@@ -175,6 +175,7 @@ export const zh: TranslationKeys = {
 		geminiThinkingBudget: 'Gemini 思考预算:',
 		responsesReasoningEnabled: '启用 Responses 推理:',
 		responsesReasoningEffort: 'Responses 推理强度:',
+		responsesFastMode: 'Responses Fast (priority):',
 		advancedModel: '高级模型(键入可搜索):',
 		basicModel: '基础模型(键入可搜索):',
 		maxContextTokens: '最大上下文令牌:',
@@ -429,6 +430,7 @@ export const zh: TranslationKeys = {
 		deleteToStart: 'Ctrl+L - 从光标删除到开头(旧版)',
 		deleteToEnd: 'Ctrl+R - 从光标删除到末尾(旧版)',
 		pasteImages: '{pasteKey} - 从剪贴板粘贴图片',
+		toggleExpandedView: 'Ctrl+T - 切换粘贴文本的展开/折叠显示',
 		readlineTitle: '🚀 Readline 快捷键:',
 		moveToLineStart: 'Ctrl+A - 移动到行首',
 		moveToLineEnd: 'Ctrl+E - 移动到行尾',
@@ -540,6 +542,7 @@ export const zh: TranslationKeys = {
 			connect: '连接到 Snow Instance 进行 AI 处理',
 			disconnect: '断开当前 Snow Instance 连接',
 			connectionStatus: '显示当前 Snow Instance 连接状态',
+			newPrompt: '根据需求使用 AI 生成精炼的提示词',
 			quit: '退出应用程序',
 		},
 		copyLastFeedback: {
@@ -772,6 +775,7 @@ export const zh: TranslationKeys = {
 		headerYolo: '按 Shift+Tab/Ctrl+Y: 切换 YOLO 模式',
 		headerShortcuts:
 			"快捷键: Ctrl+L (删除至开头) • Ctrl+R (删除至末尾) • {pasteKey} (粘贴图片) • '@' (文件) • '@@' (搜索内容) • '#' (子代理) • '/' (命令)",
+		headerExpandedView: '按 Ctrl+T: 切换粘贴文本的展开/折叠显示',
 		headerWorkingDirectory: '工作目录: {directory}',
 		// Status messages
 		statusThinking: '思考中...',
@@ -941,6 +945,7 @@ export const zh: TranslationKeys = {
 		typeToFilterCommands: '输入以过滤命令',
 		contentSearchHint: '内容搜索 • Tab/Enter 选择 • ESC 取消',
 		fileSearchHint: '输入以过滤文件 • Tab/Enter 选择 • ESC 取消',
+		expandedViewHint: '展开视图 • Ctrl+T 切换',
 		yoloModeActive: '❁ YOLO 模式已激活 - 所有工具将自动批准无需确认',
 		teamModeActive: '⚐ Team 模式已激活 - 专业规划与协调助手',
 		tokens: ' 个token',
@@ -1350,5 +1355,21 @@ export const zh: TranslationKeys = {
 		unknownError: '未知错误',
 		invalidStepsParameter:
 			'filesystem-undo 工具的参数 "steps" 无效。必须是正整数。收到: {value}',
+	},
+	newPrompt: {
+		title: '✦ 提示词生成器',
+		inputHint: '描述你的需求，AI 将生成精炼的提示词：',
+		placeholder: '输入你的需求...',
+		escHint: 'ESC 取消',
+		generating: '正在生成提示词...',
+		previewTitle: '✓ 提示词已生成：',
+		moreLines: '(还有 {count} 行)',
+		actionAccept: '写入输入框',
+		actionReject: '放弃',
+		actionRegenerate: '重新生成',
+		actionRetry: '重试',
+		actionCancel: '取消',
+		errorPrefix: '错误：',
+		scrollHint: '↑↓ 滚动浏览',
 	},
 };

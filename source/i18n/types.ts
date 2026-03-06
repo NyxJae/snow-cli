@@ -176,6 +176,7 @@ export type TranslationKeys = {
 		geminiThinkingBudget: string;
 		responsesReasoningEnabled: string;
 		responsesReasoningEffort: string;
+		responsesFastMode: string;
 		advancedModel: string;
 		basicModel: string;
 		maxContextTokens: string;
@@ -430,6 +431,7 @@ export type TranslationKeys = {
 		deleteToStart: string;
 		deleteToEnd: string;
 		pasteImages: string;
+		toggleExpandedView: string;
 		readlineTitle: string;
 		moveToLineStart: string;
 		moveToLineEnd: string;
@@ -542,6 +544,7 @@ export type TranslationKeys = {
 			connect: string;
 			disconnect: string;
 			connectionStatus: string;
+			newPrompt: string;
 			quit: string;
 		};
 		copyLastFeedback: {
@@ -780,6 +783,7 @@ export type TranslationKeys = {
 		headerInterrupt: string;
 		headerYolo: string;
 		headerShortcuts: string;
+		headerExpandedView: string;
 		headerWorkingDirectory: string;
 		// Status messages
 		statusThinking: string;
@@ -947,6 +951,7 @@ export type TranslationKeys = {
 		typeToFilterCommands: string;
 		contentSearchHint: string;
 		fileSearchHint: string;
+		expandedViewHint: string;
 		yoloModeActive: string;
 		teamModeActive: string;
 		tokens: string;
@@ -1350,6 +1355,22 @@ export type TranslationKeys = {
 		undoFailed: string;
 		unknownError: string;
 		invalidStepsParameter: string;
+	};
+	newPrompt: {
+		title: string;
+		inputHint: string;
+		placeholder: string;
+		escHint: string;
+		generating: string;
+		previewTitle: string;
+		moreLines: string;
+		actionAccept: string;
+		actionReject: string;
+		actionRegenerate: string;
+		actionRetry: string;
+		actionCancel: string;
+		errorPrefix: string;
+		scrollHint: string;
 	};
 };
 

@@ -56,6 +56,7 @@ type ConfigField =
 	| 'geminiThinkingBudget'
 	| 'responsesReasoningEnabled'
 	| 'responsesReasoningEffort'
+	| 'responsesFastMode'
 	| 'advancedModel'
 	| 'basicModel'
 	| 'maxContextTokens'
@@ -167,6 +168,7 @@ export default function ConfigScreen({
 	const [responsesReasoningEffort, setResponsesReasoningEffort] = useState<
 		'low' | 'medium' | 'high' | 'xhigh'
 	>('high');
+	const [responsesFastMode, setResponsesFastMode] = useState(false);
 
 	// Model settings
 	const [advancedModel, setAdvancedModel] = useState('');
@@ -249,6 +251,7 @@ export default function ConfigScreen({
 				? [
 						'responsesReasoningEnabled' as ConfigField,
 						'responsesReasoningEffort' as ConfigField,
+						'responsesFastMode' as ConfigField,
 				  ]
 				: []),
 			'advancedModel',
@@ -327,7 +330,8 @@ export default function ConfigScreen({
 		if (
 			requestMethod !== 'responses' &&
 			(currentField === 'responsesReasoningEnabled' ||
-				currentField === 'responsesReasoningEffort')
+				currentField === 'responsesReasoningEffort' ||
+				currentField === 'responsesFastMode')
 		) {
 			setCurrentField('advancedModel');
 		}
@@ -377,6 +381,7 @@ export default function ConfigScreen({
 		setGeminiThinkingBudget(config.geminiThinking?.budget || 1024);
 		setResponsesReasoningEnabled(config.responsesReasoning?.enabled || false);
 		setResponsesReasoningEffort(config.responsesReasoning?.effort || 'high');
+		setResponsesFastMode(config.responsesFastMode || false);
 		setAdvancedModel(config.advancedModel || '');
 		setBasicModel(config.basicModel || '');
 		setMaxContextTokens(config.maxContextTokens || 4000);
@@ -758,6 +763,8 @@ export default function ConfigScreen({
 				effort: responsesReasoningEffort,
 			};
 
+			config.responsesFastMode = responsesFastMode;
+
 			// Save to main config
 			await updateOpenAiConfig(config);
 
@@ -790,6 +797,7 @@ export default function ConfigScreen({
 							enabled: responsesReasoningEnabled,
 							effort: responsesReasoningEffort,
 						},
+						responsesFastMode,
 						advancedModel,
 						basicModel,
 						maxContextTokens,
@@ -1335,6 +1343,28 @@ export default function ConfigScreen({
 					</Box>
 				);
 
+			case 'responsesFastMode':
+				return (
+					<Box key={field} flexDirection="column">
+						<Text
+							color={
+								isActive ? theme.colors.menuSelected : theme.colors.menuNormal
+							}
+						>
+							{isActive ? '❯ ' : '  '}
+							{t.configScreen.responsesFastMode}
+						</Text>
+						<Box marginLeft={3}>
+							<Text color={theme.colors.menuSecondary}>
+								{responsesFastMode
+									? t.configScreen.enabled
+									: t.configScreen.disabled}{' '}
+								{t.configScreen.toggleHint}
+							</Text>
+						</Box>
+					</Box>
+				);
+
 			case 'advancedModel':
 				return (
 					<Box key={field} flexDirection="column">
@@ -1855,6 +1885,8 @@ export default function ConfigScreen({
 					setResponsesReasoningEnabled(!responsesReasoningEnabled);
 				} else if (currentField === 'modelSpecificPrompt') {
 					setIsEditing(true);
+				} else if (currentField === 'responsesFastMode') {
+					setResponsesFastMode(!responsesFastMode);
 				} else if (
 					currentField === 'maxContextTokens' ||
 					currentField === 'maxTokens' ||

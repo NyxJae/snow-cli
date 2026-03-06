@@ -176,6 +176,7 @@ export const zhTW: TranslationKeys = {
 		geminiThinkingBudget: 'Gemini 思考預算:',
 		responsesReasoningEnabled: '啟用 Responses 推理:',
 		responsesReasoningEffort: 'Responses 推理強度:',
+		responsesFastMode: 'Responses Fast (priority):',
 		advancedModel: '進階模型(輸入後可以搜尋):',
 		basicModel: '基礎模型(輸入後可以搜尋):',
 		maxContextTokens: '最大上下文令牌:',
@@ -430,6 +431,7 @@ export const zhTW: TranslationKeys = {
 		deleteToStart: 'Ctrl+L - 從游標刪除到開頭(舊版)',
 		deleteToEnd: 'Ctrl+R - 從游標刪除到末尾(舊版)',
 		pasteImages: '{pasteKey} - 從剪貼簿貼上圖片',
+		toggleExpandedView: 'Ctrl+T - 切換貼上文字的展開/摺疊顯示',
 		readlineTitle: '🚀 Readline 快捷鍵:',
 		moveToLineStart: 'Ctrl+A - 移動到行首',
 		moveToLineEnd: 'Ctrl+E - 移動到行尾',
@@ -541,6 +543,7 @@ export const zhTW: TranslationKeys = {
 			connect: '連接到 Snow Instance 進行 AI 處理',
 			disconnect: '斷開目前 Snow Instance 連接',
 			connectionStatus: '顯示目前 Snow Instance 連接狀態',
+			newPrompt: '根據需求使用 AI 生成精煉的提示詞',
 			quit: '退出應用程式',
 		},
 		copyLastFeedback: {
@@ -773,6 +776,7 @@ export const zhTW: TranslationKeys = {
 		headerYolo: '按 Shift+Tab/Ctrl+Y: 切換 YOLO 模式',
 		headerShortcuts:
 			"快捷鍵: Ctrl+L (刪除至開頭) • Ctrl+R (刪除至末尾) • {pasteKey} (貼上圖片) • '@' (檔案) • '@@' (搜尋內容) • '#' (子代理) • '/' (命令)",
+		headerExpandedView: '按 Ctrl+T: 切換貼上文字的展開/摺疊顯示',
 		headerWorkingDirectory: '工作目錄: {directory}',
 		// Status messages
 		statusThinking: '思考中...',
@@ -791,7 +795,7 @@ export const zhTW: TranslationKeys = {
 		statusConnecting: '連線到 IDE...',
 		statusConnected: 'IDE 已連線',
 		statusConnectionFailed:
-		'連線失敗（這不會影響任何使用） - 請確保在你的 IDE 中安裝並啟用了 Snow CLI 外掛',
+			'連線失敗（這不會影響任何使用） - 請確保在你的 IDE 中安裝並啟用了 Snow CLI 外掛',
 		statusStopping: '停止中...將不會太久,建議等至內部清理完成,再進行下步操作。',
 		// Profile switch
 		profileCurrent: '目前設定檔',
@@ -942,6 +946,7 @@ export const zhTW: TranslationKeys = {
 		typeToFilterCommands: '輸入以過濾命令',
 		contentSearchHint: '內容搜尋 • Tab/Enter 選擇 • ESC 取消',
 		fileSearchHint: '輸入以過濾檔案 • Tab/Enter 選擇 • ESC 取消',
+		expandedViewHint: '展開檢視 • Ctrl+T 切換',
 		yoloModeActive: '❁ YOLO 模式已啟用 - 所有工具將自動批准無需確認',
 		teamModeActive: '⚐ Team 模式已啟用 - 專業規劃與協調助手',
 		tokens: ' 個token',
@@ -1339,12 +1344,28 @@ export const zhTW: TranslationKeys = {
 		autoCleanupHint: '這些檔案會在下次停止操作時自動清理',
 	},
 	undoManager: {
-		undoFailedEmpty: '❌ 撤銷失敗。沒有可撤銷的編輯操作。',
+		undoFailedEmpty: '❌ 撤销失敗。沒有可撤销的編輯操作。',
 		undoSuccess:
-			'✅ 撤銷成功。已撤銷 {steps} 次編輯操作。如果想修正錯誤編輯,建議使用 filesystem-edit_search 進行單次編輯並提供更多行的辅助編輯上下文.',
-		undoFailed: '❌ 撤銷失敗。{error}',
+			'✅ 撤销成功。已撤销 {steps} 次編輯操作。如果想修正錯誤編輯,建議使用 filesystem-edit_search 進行單次編輯並提供更多行的辅助編輯上下文.',
+		undoFailed: '❌ 撤销失敗。{error}',
 		unknownError: '未知錯誤',
 		invalidStepsParameter:
 			'filesystem-undo 工具的參數 "steps" 無效。必須是正整數。收到: {value}',
+	},
+	newPrompt: {
+		title: '✦ 提示詞產生器',
+		inputHint: '描述你的需求，AI 將產生精煉的提示詞：',
+		placeholder: '輸入你的需求...',
+		escHint: 'ESC 取消',
+		generating: '正在產生提示詞...',
+		previewTitle: '✓ 提示詞已產生：',
+		moreLines: '(還有 {count} 行)',
+		actionAccept: '寫入輸入框',
+		actionReject: '放棄',
+		actionRegenerate: '重新產生',
+		actionRetry: '重試',
+		actionCancel: '取消',
+		errorPrefix: '錯誤：',
+		scrollHint: '↑↓ 捲動瀏覽',
 	},
 };

@@ -575,6 +575,9 @@ export async function* createStreamingResponse(
 					!options.disableThinking && {
 						reasoning: configuredReasoning,
 					}),
+				...(config.responsesFastMode && {
+					service_tier: 'priority',
+				}),
 				store: false,
 				stream: true,
 				include: ['reasoning.encrypted_content'],

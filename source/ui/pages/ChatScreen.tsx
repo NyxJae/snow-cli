@@ -1,5 +1,14 @@
-import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
+import React, {
+	useState,
+	useEffect,
+	useRef,
+	useMemo,
+	useCallback,
+	lazy,
+	Suspense,
+} from 'react';
 import {Box, Text, useInput, Static, useStdout} from 'ink';
+import Spinner from 'ink-spinner';
 import ansiEscapes from 'ansi-escapes';
 import {useI18n} from '../../i18n/I18nContext.js';
 import {useTheme} from '../contexts/ThemeContext.js';
@@ -27,6 +36,11 @@ import type {HookErrorDetails} from '../../utils/execution/hookResultHandler.js'
 import PanelsManager from '../components/panels/PanelsManager.js';
 import {mainAgentManager} from '../../utils/MainAgentManager.js';
 import type {MainAgentItem} from '../components/panels/MainAgentPanel.js';
+
+const NewPromptPanel = lazy(
+	() => import('../components/panels/NewPromptPanel.js'),
+);
+
 import {
 	saveCustomCommand,
 	registerCustomCommands,
@@ -313,6 +327,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			import('../../utils/commands/backend.js'),
 			import('../../utils/commands/models.js'),
 			import('../../utils/commands/worktree.js'),
+			import('../../utils/commands/newPrompt.js'),
 		])
 			.then(async () => {
 				// Load and register custom commands from user directory
@@ -897,6 +912,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		setConnectionPanelApiUrl: panelState.setConnectionPanelApiUrl,
 		setShowPermissionsPanel: panelState.setShowPermissionsPanel,
 		setShowBranchPanel: panelState.setShowBranchPanel,
+		setShowNewPromptPanel: panelState.setShowNewPromptPanel,
 		onSwitchProfile: handleSwitchProfile,
 		setShowBackgroundPanel: backgroundProcesses.enablePanel,
 		setYoloMode,
@@ -1470,6 +1486,30 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				}}
 			/>
 
+			{panelState.showNewPromptPanel && (
+				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
+					<Suspense
+						fallback={
+							<Box>
+								<Text>
+									<Spinner type="dots" /> Loading...
+								</Text>
+							</Box>
+						}
+					>
+						<NewPromptPanel
+							onAccept={(prompt: string) => {
+								panelState.setShowNewPromptPanel(false);
+								setRestoreInputContent({text: prompt});
+							}}
+							onCancel={() => {
+								panelState.setShowNewPromptPanel(false);
+							}}
+						/>
+					</Suspense>
+				</Box>
+			)}
+
 			{/* Show file rollback confirmation if pending */}
 			{snapshotState.pendingRollback && (
 				<FileRollbackConfirmation
@@ -1498,7 +1538,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					panelState.showPermissionsPanel ||
 					panelState.showBranchPanel ||
 					panelState.showDiffReviewPanel ||
-					panelState.showConnectionPanel
+					panelState.showConnectionPanel ||
+					panelState.showNewPromptPanel
 				) &&
 				!snapshotState.pendingRollback && (
 					<ChatFooter
