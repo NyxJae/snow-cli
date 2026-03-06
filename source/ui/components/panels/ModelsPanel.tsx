@@ -31,7 +31,8 @@ type ThinkingInputMode =
 	| 'anthropicBudgetTokens'
 	| 'geminiThinkingBudget';
 
-type ResponsesReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+type ResponsesReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+type ResponsesVerbosity = 'low' | 'medium' | 'high';
 
 export const ModelsPanel: React.FC<Props> = ({
 	advancedModel,
@@ -82,8 +83,11 @@ export const ModelsPanel: React.FC<Props> = ({
 		useState(false);
 	const [responsesReasoningEffort, setResponsesReasoningEffort] =
 		useState<ResponsesReasoningEffort>('high');
+	const [responsesFastMode, setResponsesFastMode] = useState(false);
+	const [responsesVerbosity, setResponsesVerbosity] =
+		useState<ResponsesVerbosity>('medium');
 
-	// 思考页的聚焦索引：0=显示思考, 1=启用思考, 2=思考模式, 3=思考强度(tokens/effort)
+	// 思考页的聚焦索引，每种请求方案有独立的索引体系
 	const [thinkingFocusIndex, setThinkingFocusIndex] = useState(0);
 	const [thinkingInputMode, setThinkingInputMode] =
 		useState<ThinkingInputMode>(null);
@@ -91,6 +95,7 @@ export const ModelsPanel: React.FC<Props> = ({
 	const [isThinkingModeSelecting, setIsThinkingModeSelecting] = useState(false);
 	const [isThinkingEffortSelecting, setIsThinkingEffortSelecting] =
 		useState(false);
+	const [isVerbositySelecting, setIsVerbositySelecting] = useState(false);
 
 	useEffect(() => {
 		if (!visible) {
@@ -113,6 +118,7 @@ export const ModelsPanel: React.FC<Props> = ({
 		setThinkingInputMode(null);
 		setThinkingInputValue('');
 		setIsThinkingEffortSelecting(false);
+		setIsVerbositySelecting(false);
 		setErrorMessage('');
 
 		// Load thinking-related config on open
@@ -135,6 +141,8 @@ export const ModelsPanel: React.FC<Props> = ({
 		setResponsesReasoningEffort(
 			(cfg as any).responsesReasoning?.effort || 'high',
 		);
+		setResponsesFastMode((cfg as any).responsesFastMode || false);
+		setResponsesVerbosity((cfg as any).responsesVerbosity || 'medium');
 	}, [visible, advancedModel, basicModel]);
 
 	// Auto-hide error message after 3 seconds
@@ -476,8 +484,48 @@ export const ModelsPanel: React.FC<Props> = ({
 		[responsesReasoningEnabled],
 	);
 
-	// 思考页的配置项，不再需要thinkingMenuItems
-	// 直接通过上下键切换聚焦索引，Enter键根据聚焦索引执行操作
+	const applyResponsesVerbosity = useCallback(
+		async (verbosity: ResponsesVerbosity) => {
+			setErrorMessage('');
+			try {
+				setResponsesVerbosity(verbosity);
+				await updateOpenAiConfig({
+					responsesVerbosity: verbosity,
+				} as any);
+			} catch (err) {
+				const message =
+					err instanceof Error ? err.message : t.modelsPanel.saveFailed;
+				setErrorMessage(message);
+			}
+		},
+		[],
+	);
+
+	const applyResponsesFastMode = useCallback(async (next: boolean) => {
+		setErrorMessage('');
+		try {
+			setResponsesFastMode(next);
+			await updateOpenAiConfig({
+				responsesFastMode: next,
+			} as any);
+		} catch (err) {
+			const message =
+				err instanceof Error ? err.message : t.modelsPanel.saveFailed;
+			setErrorMessage(message);
+		}
+	}, []);
+
+	// 每种请求方案的最大聚焦索引（各自独立）
+	// anthropic: 0=showThinking, 1=enableThinking, 2=thinkingMode, 3=thinkingStrength
+	// gemini:    0=showThinking, 1=enableThinking, 2=thinkingStrength
+	// responses: 0=showThinking, 1=enableThinking, 2=thinkingStrength, 3=verbosity, 4=fastMode
+	// chat/other: 0=showThinking, 1=enableThinking
+	const maxThinkingIndex = useMemo(() => {
+		if (requestMethod === 'anthropic') return 3;
+		if (requestMethod === 'responses') return 4;
+		if (requestMethod === 'gemini') return 2;
+		return 1;
+	}, [requestMethod]);
 
 	const selectedIndex = Math.max(
 		0,
@@ -511,6 +559,10 @@ export const ModelsPanel: React.FC<Props> = ({
 				}
 				if (isThinkingEffortSelecting) {
 					setIsThinkingEffortSelecting(false);
+					return;
+				}
+				if (isVerbositySelecting) {
+					setIsVerbositySelecting(false);
 					return;
 				}
 				if (manualInputModeRef.current || manualInputMode) {
@@ -596,7 +648,7 @@ export const ModelsPanel: React.FC<Props> = ({
 			}
 
 			// In list selection modes, avoid switching tabs or triggering other actions.
-			if (isThinkingModeSelecting || isThinkingEffortSelecting) {
+			if (isThinkingModeSelecting || isThinkingEffortSelecting || isVerbositySelecting) {
 				return;
 			}
 
@@ -614,56 +666,45 @@ export const ModelsPanel: React.FC<Props> = ({
 			// 思考页的上下键和Enter键处理
 			if (activeTab === 'thinking') {
 				if (key.upArrow) {
-					// 向上切换配置项（循环）
-					const maxIndex = requestMethod === 'anthropic' ? 3 : 2;
-					setThinkingFocusIndex(prev => (prev === 0 ? maxIndex : prev - 1));
+					setThinkingFocusIndex(prev =>
+						prev === 0 ? maxThinkingIndex : prev - 1,
+					);
 					return;
 				}
 				if (key.downArrow) {
-					// 向下切换配置项（循环）
-					const maxIndex = requestMethod === 'anthropic' ? 3 : 2;
-					setThinkingFocusIndex(prev => (prev === maxIndex ? 0 : prev + 1));
+					setThinkingFocusIndex(prev =>
+						prev === maxThinkingIndex ? 0 : prev + 1,
+					);
 					return;
 				}
 				if (key.return) {
-					// Enter键根据聚焦项执行不同操作
 					if (thinkingFocusIndex === 0) {
-						// 切换显示思考
 						void applyShowThinking(!showThinking);
 					} else if (thinkingFocusIndex === 1) {
-						// 切换启用思考
 						void applyThinkingEnabled(!thinkingEnabledValue);
-					} else if (
-						thinkingFocusIndex === 2 &&
-						requestMethod === 'anthropic'
-					) {
-						// 切换思考模式（仅 anthropic）- 使用下拉框选择
-						setIsThinkingModeSelecting(true);
-					} else if (
-						(thinkingFocusIndex === 3 && requestMethod === 'anthropic') ||
-						(thinkingFocusIndex === 2 && requestMethod !== 'anthropic')
-					) {
-						// 设置思考强度
+					} else if (thinkingFocusIndex === 2) {
 						if (requestMethod === 'anthropic') {
-							if (thinkingMode === 'tokens') {
-								setThinkingInputMode('anthropicBudgetTokens');
-								setThinkingInputValue(thinkingBudgetTokens.toString());
-							} else {
-								// adaptive mode - show effort selector
-								setIsThinkingEffortSelecting(true);
-							}
+							setIsThinkingModeSelecting(true);
 						} else if (requestMethod === 'gemini') {
 							setThinkingInputMode('geminiThinkingBudget');
 							setThinkingInputValue(geminiThinkingBudget.toString());
 						} else if (requestMethod === 'responses') {
 							setIsThinkingEffortSelecting(true);
-						} else {
-							setErrorMessage(
-								t.modelsPanel.requestMethodNotSupportedForThinkingStrength.replace(
-									'{requestMethod}',
-									requestMethod,
-								),
-							);
+						}
+					} else if (thinkingFocusIndex === 3) {
+						if (requestMethod === 'anthropic') {
+							if (thinkingMode === 'tokens') {
+								setThinkingInputMode('anthropicBudgetTokens');
+								setThinkingInputValue(thinkingBudgetTokens.toString());
+							} else {
+								setIsThinkingEffortSelecting(true);
+							}
+						} else if (requestMethod === 'responses') {
+							setIsVerbositySelecting(true);
+						}
+					} else if (thinkingFocusIndex === 4) {
+						if (requestMethod === 'responses') {
+							void applyResponsesFastMode(!responsesFastMode);
 						}
 					}
 					return;
@@ -794,22 +835,26 @@ export const ModelsPanel: React.FC<Props> = ({
 							{showThinking ? '[✓]' : '[ ]'}
 						</Text>
 					</Box>
-					<Box>
-						<Text
-							color={
-								thinkingFocusIndex === 1
-									? theme.colors.menuSelected
-									: theme.colors.menuNormal
-							}
-						>
-							{thinkingFocusIndex === 1 ? '❯ ' : '  '}
-							{t.modelsPanel.enableThinking}
-						</Text>
-						<Text color={theme.colors.menuSelected}>
-							{' '}
-							{thinkingEnabledValue ? '[✓]' : '[ ]'}
-						</Text>
-					</Box>
+					{(requestMethod === 'anthropic' ||
+						requestMethod === 'gemini' ||
+						requestMethod === 'responses') && (
+						<Box>
+							<Text
+								color={
+									thinkingFocusIndex === 1
+										? theme.colors.menuSelected
+										: theme.colors.menuNormal
+								}
+							>
+								{thinkingFocusIndex === 1 ? '❯ ' : '  '}
+								{t.modelsPanel.enableThinking}
+							</Text>
+							<Text color={theme.colors.menuSelected}>
+								{' '}
+								{thinkingEnabledValue ? '[✓]' : '[ ]'}
+							</Text>
+						</Box>
+					)}
 					{requestMethod === 'anthropic' && (
 						<Box>
 							<Text
@@ -830,22 +875,66 @@ export const ModelsPanel: React.FC<Props> = ({
 							</Text>
 						</Box>
 					)}
-					<Box>
-						<Text
-							color={
-								thinkingFocusIndex === 3
-									? theme.colors.menuSelected
-									: theme.colors.menuNormal
-							}
-						>
-							{thinkingFocusIndex === 3 ? '❯ ' : '  '}
-							{t.modelsPanel.thinkingStrength}
-						</Text>
-						<Text color={theme.colors.menuSelected}>
-							{' '}
-							{thinkingStrengthValue}
-						</Text>
-					</Box>
+					{(requestMethod === 'anthropic' ||
+						requestMethod === 'gemini' ||
+						requestMethod === 'responses') && (
+						<Box>
+							<Text
+								color={
+									thinkingFocusIndex ===
+									(requestMethod === 'anthropic' ? 3 : 2)
+										? theme.colors.menuSelected
+										: theme.colors.menuNormal
+								}
+							>
+								{thinkingFocusIndex ===
+								(requestMethod === 'anthropic' ? 3 : 2)
+									? '❯ '
+									: '  '}
+								{t.modelsPanel.thinkingStrength}
+							</Text>
+							<Text color={theme.colors.menuSelected}>
+								{' '}
+								{thinkingStrengthValue}
+							</Text>
+						</Box>
+					)}
+					{requestMethod === 'responses' && (
+						<Box>
+							<Text
+								color={
+									thinkingFocusIndex === 3
+										? theme.colors.menuSelected
+										: theme.colors.menuNormal
+								}
+							>
+								{thinkingFocusIndex === 3 ? '❯ ' : '  '}
+								{t.configScreen.responsesVerbosity}
+							</Text>
+							<Text color={theme.colors.menuSelected}>
+								{' '}
+								{responsesVerbosity.toUpperCase()}
+							</Text>
+						</Box>
+					)}
+					{requestMethod === 'responses' && (
+						<Box>
+							<Text
+								color={
+									thinkingFocusIndex === 4
+										? theme.colors.menuSelected
+										: theme.colors.menuNormal
+								}
+							>
+								{thinkingFocusIndex === 4 ? '❯ ' : '  '}
+								{t.configScreen.responsesFastMode}
+							</Text>
+							<Text color={theme.colors.menuSelected}>
+								{' '}
+								{responsesFastMode ? '[✓]' : '[ ]'}
+							</Text>
+						</Box>
+					)}
 
 					{thinkingInputMode && (
 						<Box flexDirection="column" marginTop={1}>
@@ -897,6 +986,7 @@ export const ModelsPanel: React.FC<Props> = ({
 											{label: 'max', value: 'max'},
 									  ]
 									: [
+											{label: 'none', value: 'none'},
 											{label: 'low', value: 'low'},
 											{label: 'medium', value: 'medium'},
 											{label: 'high', value: 'high'},
@@ -914,7 +1004,7 @@ export const ModelsPanel: React.FC<Props> = ({
 										? (['low', 'medium', 'high', 'max'] as const).indexOf(
 												thinkingEffort,
 										  )
-										: (['low', 'medium', 'high', 'xhigh'] as const).indexOf(
+										: (['none', 'low', 'medium', 'high', 'xhigh'] as const).indexOf(
 												responsesReasoningEffort,
 										  ),
 								)}
@@ -935,9 +1025,37 @@ export const ModelsPanel: React.FC<Props> = ({
 						</Box>
 					)}
 
+					{isVerbositySelecting && (
+						<Box marginTop={1}>
+							<ScrollableSelectInput
+								items={[
+									{label: 'low', value: 'low'},
+									{label: 'medium', value: 'medium'},
+									{label: 'high', value: 'high'},
+								]}
+								limit={6}
+								disableNumberShortcuts={true}
+								initialIndex={Math.max(
+									0,
+									(['low', 'medium', 'high'] as const).indexOf(
+										responsesVerbosity,
+									),
+								)}
+								isFocused={true}
+								onSelect={item => {
+									void applyResponsesVerbosity(
+										item.value as ResponsesVerbosity,
+									);
+									setIsVerbositySelecting(false);
+								}}
+							/>
+						</Box>
+					)}
+
 					{!thinkingInputMode &&
 						!isThinkingModeSelecting &&
-						!isThinkingEffortSelecting && (
+						!isThinkingEffortSelecting &&
+						!isVerbositySelecting && (
 							<Box marginTop={1}>
 								<Text dimColor color={theme.colors.menuSecondary}>
 									{t.modelsPanel.navigationHint}

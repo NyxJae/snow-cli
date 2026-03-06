@@ -165,6 +165,7 @@ export type TranslationKeys = {
 		anthropicCacheTTL1h: string;
 		enablePromptOptimization: string;
 		enableAutoCompress: string;
+		autoCompressThreshold: string;
 		showThinking: string;
 		thinkingEnabled: string;
 		thinkingMode: string;
@@ -176,6 +177,7 @@ export type TranslationKeys = {
 		geminiThinkingBudget: string;
 		responsesReasoningEnabled: string;
 		responsesReasoningEffort: string;
+		responsesVerbosity: string;
 		responsesFastMode: string;
 		advancedModel: string;
 		basicModel: string;

@@ -1546,11 +1546,11 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			const text = buffer.getFullText();
 			const cursorPos = buffer.getCursorPosition();
 			const isEmpty = text.trim() === '';
+			const hasMultipleVisualLines = buffer.viewportVisualLines.length > 1;
 
-			// Terminal-style history navigation:
-			// Only navigate history when cursor is at the very beginning (position 0)
-			// This allows normal cursor movement within the line
-			if (isEmpty || cursorPos === 0) {
+			// For multi-line content, always prioritize cursor movement over history navigation.
+			// Only use history navigation when the input is single-line (or empty) and cursor is at position 0.
+			if (!hasMultipleVisualLines && (isEmpty || cursorPos === 0)) {
 				const navigated = navigateHistoryUp();
 				if (navigated) {
 					updateFilePickerState(
@@ -1570,7 +1570,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				}
 			}
 
-			// Normal cursor movement
 			buffer.moveUp();
 			updateFilePickerState(buffer.getFullText(), buffer.getCursorPosition());
 			updateAgentPickerState(buffer.getFullText(), buffer.getCursorPosition());
@@ -1593,12 +1592,13 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			const text = buffer.getFullText();
 			const cursorPos = buffer.getCursorPosition();
 			const isEmpty = text.trim() === '';
+			const hasMultipleVisualLines = buffer.viewportVisualLines.length > 1;
 
-			// Terminal-style history navigation:
-			// Only navigate history when cursor is at the very end (position equals text length)
-			// and we're already in history mode (currentHistoryIndex !== -1)
-			// This allows normal cursor movement within the text
+			// For multi-line content, always prioritize cursor movement over history navigation.
+			// Only use history navigation when the input is single-line (or empty),
+			// cursor is at the end, and we're already in history mode.
 			if (
+				!hasMultipleVisualLines &&
 				(isEmpty || cursorPos === text.length) &&
 				currentHistoryIndex !== -1
 			) {
@@ -1621,7 +1621,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				}
 			}
 
-			// Normal cursor movement
 			buffer.moveDown();
 			updateFilePickerState(buffer.getFullText(), buffer.getCursorPosition());
 			updateAgentPickerState(buffer.getFullText(), buffer.getCursorPosition());
@@ -1635,7 +1634,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 
 		// Regular character input
 		if (input && !key.ctrl && !key.meta && !key.escape) {
-
 			// Reset history navigation when user starts typing
 			if (currentHistoryIndex !== -1) {
 				resetHistoryNavigation();

@@ -47,6 +47,7 @@ type ConfigField =
 	| 'anthropicBeta'
 	| 'anthropicCacheTTL'
 	| 'enableAutoCompress'
+	| 'autoCompressThreshold'
 	| 'showThinking'
 	| 'thinkingEnabled'
 	| 'thinkingMode'
@@ -56,6 +57,7 @@ type ConfigField =
 	| 'geminiThinkingBudget'
 	| 'responsesReasoningEnabled'
 	| 'responsesReasoningEffort'
+	| 'responsesVerbosity'
 	| 'responsesFastMode'
 	| 'advancedModel'
 	| 'basicModel'
@@ -152,6 +154,7 @@ export default function ConfigScreen({
 	const [anthropicBeta, setAnthropicBeta] = useState(false);
 	const [anthropicCacheTTL, setAnthropicCacheTTL] = useState<'5m' | '1h'>('5m');
 	const [enableAutoCompress, setEnableAutoCompress] = useState(true);
+	const [autoCompressThreshold, setAutoCompressThreshold] = useState(80);
 	const [showThinking, setShowThinking] = useState(true);
 	const [thinkingEnabled, setThinkingEnabled] = useState(false);
 	const [thinkingMode, setThinkingMode] = useState<'tokens' | 'adaptive'>(
@@ -166,8 +169,11 @@ export default function ConfigScreen({
 	const [responsesReasoningEnabled, setResponsesReasoningEnabled] =
 		useState(false);
 	const [responsesReasoningEffort, setResponsesReasoningEffort] = useState<
-		'low' | 'medium' | 'high' | 'xhigh'
+		'none' | 'low' | 'medium' | 'high' | 'xhigh'
 	>('high');
+	const [responsesVerbosity, setResponsesVerbosity] = useState<
+		'low' | 'medium' | 'high'
+	>('medium');
 	const [responsesFastMode, setResponsesFastMode] = useState(false);
 
 	// Model settings
@@ -228,6 +234,7 @@ export default function ConfigScreen({
 			'customHeadersSchemeId',
 			'modelSpecificPrompt',
 			'enableAutoCompress',
+			...(enableAutoCompress ? ['autoCompressThreshold' as ConfigField] : []),
 			'showThinking',
 			...(requestMethod === 'anthropic'
 				? [
@@ -251,6 +258,7 @@ export default function ConfigScreen({
 				? [
 						'responsesReasoningEnabled' as ConfigField,
 						'responsesReasoningEffort' as ConfigField,
+						'responsesVerbosity' as ConfigField,
 						'responsesFastMode' as ConfigField,
 				  ]
 				: []),
@@ -331,11 +339,19 @@ export default function ConfigScreen({
 			requestMethod !== 'responses' &&
 			(currentField === 'responsesReasoningEnabled' ||
 				currentField === 'responsesReasoningEffort' ||
+				currentField === 'responsesVerbosity' ||
 				currentField === 'responsesFastMode')
 		) {
 			setCurrentField('advancedModel');
 		}
 	}, [requestMethod, currentField]);
+
+	// Auto-adjust currentField when enableAutoCompress changes
+	useEffect(() => {
+		if (!enableAutoCompress && currentField === 'autoCompressThreshold') {
+			setCurrentField('showThinking');
+		}
+	}, [enableAutoCompress, currentField]);
 
 	// Auto-downgrade xhigh effort when unsupported (e.g., switching requestMethod or model)
 	useEffect(() => {
@@ -366,6 +382,7 @@ export default function ConfigScreen({
 		setAnthropicBeta(config.anthropicBeta || false);
 		setAnthropicCacheTTL(config.anthropicCacheTTL || '5m');
 		setEnableAutoCompress(config.enableAutoCompress !== false); // Default to true
+		setAutoCompressThreshold(config.autoCompressThreshold ?? 80);
 		setShowThinking(config.showThinking !== false); // Default to true
 		setThinkingEnabled(
 			config.thinking?.type === 'enabled' ||
@@ -381,6 +398,7 @@ export default function ConfigScreen({
 		setGeminiThinkingBudget(config.geminiThinking?.budget || 1024);
 		setResponsesReasoningEnabled(config.responsesReasoning?.enabled || false);
 		setResponsesReasoningEffort(config.responsesReasoning?.effort || 'high');
+		setResponsesVerbosity(config.responsesVerbosity || 'medium');
 		setResponsesFastMode(config.responsesFastMode || false);
 		setAdvancedModel(config.advancedModel || '');
 		setBasicModel(config.basicModel || '');
@@ -620,6 +638,7 @@ export default function ConfigScreen({
 					anthropicBeta,
 					anthropicCacheTTL,
 					enableAutoCompress,
+					autoCompressThreshold,
 					showThinking,
 					thinking: thinkingEnabled
 						? thinkingMode === 'adaptive'
@@ -720,6 +739,7 @@ export default function ConfigScreen({
 				anthropicBeta,
 				anthropicCacheTTL,
 				enableAutoCompress,
+				autoCompressThreshold,
 				showThinking,
 				advancedModel,
 				basicModel,
@@ -764,6 +784,7 @@ export default function ConfigScreen({
 			};
 
 			config.responsesFastMode = responsesFastMode;
+			config.responsesVerbosity = responsesVerbosity;
 
 			// Save to main config
 			await updateOpenAiConfig(config);
@@ -781,6 +802,7 @@ export default function ConfigScreen({
 						anthropicBeta,
 						anthropicCacheTTL,
 						enableAutoCompress,
+						autoCompressThreshold,
 						showThinking,
 						thinking: thinkingEnabled
 							? thinkingMode === 'adaptive'
@@ -793,12 +815,13 @@ export default function ConfigScreen({
 						geminiThinking: geminiThinkingEnabled
 							? {enabled: true, budget: geminiThinkingBudget}
 							: undefined,
-						responsesReasoning: {
-							enabled: responsesReasoningEnabled,
-							effort: responsesReasoningEffort,
-						},
-						responsesFastMode,
-						advancedModel,
+					responsesReasoning: {
+						enabled: responsesReasoningEnabled,
+						effort: responsesReasoningEffort,
+					},
+					responsesVerbosity,
+					responsesFastMode,
+					advancedModel,
 						basicModel,
 						maxContextTokens,
 						maxTokens,
@@ -1118,6 +1141,34 @@ export default function ConfigScreen({
 					</Box>
 				);
 
+			case 'autoCompressThreshold':
+				return (
+					<Box key={field} flexDirection="column">
+						<Text
+							color={
+								isActive ? theme.colors.menuSelected : theme.colors.menuNormal
+							}
+						>
+							{isActive ? '❯ ' : '  '}
+							{t.configScreen.autoCompressThreshold}
+						</Text>
+						{isCurrentlyEditing && (
+							<Box marginLeft={3}>
+								<Text color={theme.colors.menuInfo}>
+									{t.configScreen.enterValue} {autoCompressThreshold}
+								</Text>
+							</Box>
+						)}
+						{!isCurrentlyEditing && (
+							<Box marginLeft={3}>
+								<Text color={theme.colors.menuSecondary}>
+									{autoCompressThreshold}
+								</Text>
+							</Box>
+						)}
+					</Box>
+				);
+
 			case 'showThinking':
 				return (
 					<Box key={field} flexDirection="column">
@@ -1324,6 +1375,7 @@ export default function ConfigScreen({
 							<Box marginLeft={3}>
 								<Select
 									options={[
+										{label: 'NONE', value: 'none'},
 										{label: 'LOW', value: 'low'},
 										{label: 'MEDIUM', value: 'medium'},
 										{label: 'HIGH', value: 'high'},
@@ -1333,7 +1385,45 @@ export default function ConfigScreen({
 									]}
 									onChange={value => {
 										setResponsesReasoningEffort(
-											value as 'low' | 'medium' | 'high' | 'xhigh',
+											value as 'none' | 'low' | 'medium' | 'high' | 'xhigh',
+										);
+										setIsEditing(false);
+									}}
+								/>
+							</Box>
+						)}
+					</Box>
+				);
+
+			case 'responsesVerbosity':
+				return (
+					<Box key={field} flexDirection="column">
+						<Text
+							color={
+								isActive ? theme.colors.menuSelected : theme.colors.menuNormal
+							}
+						>
+							{isActive ? '❯ ' : '  '}
+							{t.configScreen.responsesVerbosity}
+						</Text>
+						{!isCurrentlyEditing && (
+							<Box marginLeft={3}>
+								<Text color={theme.colors.menuSecondary}>
+									{responsesVerbosity.toUpperCase()}
+								</Text>
+							</Box>
+						)}
+						{isCurrentlyEditing && (
+							<Box marginLeft={3}>
+								<Select
+									options={[
+										{label: 'LOW', value: 'low'},
+										{label: 'MEDIUM', value: 'medium'},
+										{label: 'HIGH', value: 'high'},
+									]}
+									onChange={value => {
+										setResponsesVerbosity(
+											value as 'low' | 'medium' | 'high',
 										);
 										setIsEditing(false);
 									}}
@@ -1667,7 +1757,8 @@ export default function ConfigScreen({
 				currentField === 'basicModel' ||
 				currentField === 'thinkingMode' ||
 				currentField === 'thinkingEffort' ||
-				currentField === 'responsesReasoningEffort') &&
+				currentField === 'responsesReasoningEffort' ||
+				currentField === 'responsesVerbosity') &&
 			key.escape
 		) {
 			setIsEditing(false);
@@ -1698,6 +1789,7 @@ export default function ConfigScreen({
 				currentField === 'toolResultTokenLimit' ||
 				currentField === 'thinkingBudgetTokens' ||
 				currentField === 'geminiThinkingBudget' ||
+				currentField === 'autoCompressThreshold' ||
 				currentField === 'editSimilarityThreshold'
 			) {
 				// Handle decimal numbers for editSimilarityThreshold
@@ -1752,6 +1844,8 @@ export default function ConfigScreen({
 							? toolResultTokenLimit
 							: currentField === 'thinkingBudgetTokens'
 							? thinkingBudgetTokens
+							: currentField === 'autoCompressThreshold'
+							? autoCompressThreshold
 							: geminiThinkingBudget;
 					const newValue = parseInt(currentValue.toString() + input, 10);
 					if (!isNaN(newValue)) {
@@ -1765,6 +1859,8 @@ export default function ConfigScreen({
 							setToolResultTokenLimit(newValue);
 						} else if (currentField === 'thinkingBudgetTokens') {
 							setThinkingBudgetTokens(newValue);
+						} else if (currentField === 'autoCompressThreshold') {
+							setAutoCompressThreshold(newValue);
 						} else {
 							setGeminiThinkingBudget(newValue);
 						}
@@ -1781,6 +1877,8 @@ export default function ConfigScreen({
 							? toolResultTokenLimit
 							: currentField === 'thinkingBudgetTokens'
 							? thinkingBudgetTokens
+							: currentField === 'autoCompressThreshold'
+							? autoCompressThreshold
 							: geminiThinkingBudget;
 					const currentStr = currentValue.toString();
 					const newStr = currentStr.slice(0, -1);
@@ -1795,6 +1893,8 @@ export default function ConfigScreen({
 						setToolResultTokenLimit(!isNaN(newValue) ? newValue : 0);
 					} else if (currentField === 'thinkingBudgetTokens') {
 						setThinkingBudgetTokens(!isNaN(newValue) ? newValue : 0);
+					} else if (currentField === 'autoCompressThreshold') {
+						setAutoCompressThreshold(!isNaN(newValue) ? newValue : 0);
 					} else {
 						setGeminiThinkingBudget(!isNaN(newValue) ? newValue : 0);
 					}
@@ -1810,7 +1910,10 @@ export default function ConfigScreen({
 							? 1000
 							: currentField === 'thinkingBudgetTokens'
 							? 1000
+							: currentField === 'autoCompressThreshold'
+							? 50
 							: 1;
+					const maxValue = currentField === 'autoCompressThreshold' ? 95 : Infinity;
 					const currentValue =
 						currentField === 'maxContextTokens'
 							? maxContextTokens
@@ -1822,20 +1925,24 @@ export default function ConfigScreen({
 							? toolResultTokenLimit
 							: currentField === 'thinkingBudgetTokens'
 							? thinkingBudgetTokens
+							: currentField === 'autoCompressThreshold'
+							? autoCompressThreshold
 							: geminiThinkingBudget;
-					const finalValue = currentValue < minValue ? minValue : currentValue;
+					const clampedValue = Math.min(Math.max(currentValue, minValue), maxValue);
 					if (currentField === 'maxContextTokens') {
-						setMaxContextTokens(finalValue);
+						setMaxContextTokens(clampedValue);
 					} else if (currentField === 'maxTokens') {
-						setMaxTokens(finalValue);
+						setMaxTokens(clampedValue);
 					} else if (currentField === 'streamIdleTimeoutSec') {
-						setStreamIdleTimeoutSec(finalValue);
+						setStreamIdleTimeoutSec(clampedValue);
 					} else if (currentField === 'toolResultTokenLimit') {
-						setToolResultTokenLimit(finalValue);
+						setToolResultTokenLimit(clampedValue);
 					} else if (currentField === 'thinkingBudgetTokens') {
-						setThinkingBudgetTokens(finalValue);
+						setThinkingBudgetTokens(clampedValue);
+					} else if (currentField === 'autoCompressThreshold') {
+						setAutoCompressThreshold(clampedValue);
 					} else {
-						setGeminiThinkingBudget(finalValue);
+						setGeminiThinkingBudget(clampedValue);
 					}
 					setIsEditing(false);
 				}
@@ -1893,15 +2000,18 @@ export default function ConfigScreen({
 					currentField === 'streamIdleTimeoutSec' ||
 					currentField === 'toolResultTokenLimit' ||
 					currentField === 'thinkingBudgetTokens' ||
-					currentField === 'geminiThinkingBudget'
+					currentField === 'geminiThinkingBudget' ||
+					currentField === 'autoCompressThreshold'
 				) {
 					setIsEditing(true);
 				} else if (currentField === 'editSimilarityThreshold') {
 					setEditingThresholdValue('');
 					setIsEditing(true);
-				} else if (currentField === 'responsesReasoningEffort') {
-					setIsEditing(true);
-				} else if (
+			} else if (currentField === 'responsesReasoningEffort') {
+				setIsEditing(true);
+			} else if (currentField === 'responsesVerbosity') {
+				setIsEditing(true);
+			} else if (
 					currentField === 'advancedModel' ||
 					currentField === 'basicModel'
 				) {
@@ -2207,7 +2317,8 @@ export default function ConfigScreen({
 				currentField === 'basicModel' ||
 				currentField === 'thinkingMode' ||
 				currentField === 'thinkingEffort' ||
-				currentField === 'responsesReasoningEffort') ? (
+				currentField === 'responsesReasoningEffort' ||
+				currentField === 'responsesVerbosity') ? (
 				<Box flexDirection="column">
 					<Text color={theme.colors.menuSelected}>
 						❯{' '}
@@ -2225,6 +2336,8 @@ export default function ConfigScreen({
 							t.configScreen.thinkingEffort.replace(':', '')}
 						{currentField === 'responsesReasoningEffort' &&
 							t.configScreen.responsesReasoningEffort.replace(':', '')}
+						{currentField === 'responsesVerbosity' &&
+							t.configScreen.responsesVerbosity.replace(':', '')}
 						{currentField === 'systemPromptId' && t.configScreen.systemPrompt}
 						{currentField === 'customHeadersSchemeId' &&
 							t.configScreen.customHeadersField}
@@ -2511,21 +2624,23 @@ export default function ConfigScreen({
 						{currentField === 'responsesReasoningEffort' && (
 							<ScrollableSelectInput
 								items={[
+									{label: 'NONE', value: 'none'},
 									{label: 'LOW', value: 'low'},
 									{label: 'MEDIUM', value: 'medium'},
 									{label: 'HIGH', value: 'high'},
 									...(supportsXHigh ? [{label: 'XHIGH', value: 'xhigh'}] : []),
 								]}
-								initialIndex={[
+								initialIndex={Math.max(0, [
+									{label: 'NONE', value: 'none'},
 									{label: 'LOW', value: 'low'},
 									{label: 'MEDIUM', value: 'medium'},
 									{label: 'HIGH', value: 'high'},
 									...(supportsXHigh ? [{label: 'XHIGH', value: 'xhigh'}] : []),
-								].findIndex(opt => opt.value === responsesReasoningEffort)}
+								].findIndex(opt => opt.value === responsesReasoningEffort))}
 								isFocused={true}
 								onSelect={item => {
-									// If xhigh selected but unsupported, force reset to high
 									const nextEffort = item.value as
+										| 'none'
 										| 'low'
 										| 'medium'
 										| 'high'
@@ -2534,6 +2649,27 @@ export default function ConfigScreen({
 										nextEffort === 'xhigh' && !supportsXHigh
 											? 'high'
 											: nextEffort,
+									);
+									setIsEditing(false);
+								}}
+							/>
+						)}
+						{currentField === 'responsesVerbosity' && (
+							<ScrollableSelectInput
+								items={[
+									{label: 'LOW', value: 'low'},
+									{label: 'MEDIUM', value: 'medium'},
+									{label: 'HIGH', value: 'high'},
+								]}
+								initialIndex={Math.max(0, [
+									{label: 'LOW', value: 'low'},
+									{label: 'MEDIUM', value: 'medium'},
+									{label: 'HIGH', value: 'high'},
+								].findIndex(opt => opt.value === responsesVerbosity))}
+								isFocused={true}
+								onSelect={item => {
+									setResponsesVerbosity(
+										item.value as 'low' | 'medium' | 'high',
 									);
 									setIsEditing(false);
 								}}
@@ -2572,7 +2708,8 @@ export default function ConfigScreen({
 					currentField === 'basicModel' ||
 					currentField === 'thinkingMode' ||
 					currentField === 'thinkingEffort' ||
-					currentField === 'responsesReasoningEffort')
+					currentField === 'responsesReasoningEffort' ||
+					currentField === 'responsesVerbosity')
 			) && (
 				<Box flexDirection="column" marginTop={1}>
 					<Alert variant="info">
