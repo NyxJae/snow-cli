@@ -124,8 +124,8 @@ export async function formatUsefulInfoContext(
 	lines.push('- This information is SHARED across all agents in this session');
 	lines.push('- Add useful info PRECISELY - avoid adding entire files');
 	lines.push('- MUST update useful info after editing files');
-	lines.push('- Use `useful-info-add` to add new sections');
-	lines.push('- Use `useful-info-delete` to remove outdated sections');
+	lines.push('- Use `useful_info-add` to add new sections');
+	lines.push('- Use `useful_info-delete` to remove outdated sections');
 	lines.push('');
 
 	return lines.join('\n');

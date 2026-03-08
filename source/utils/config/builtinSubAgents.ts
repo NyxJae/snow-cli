@@ -31,9 +31,9 @@ MUST NOT 任何假设.每一条审核报告都MUST有项目中文档和项目代
 			'todo-get',
 			'todo-update',
 			'ide-get_diagnostics',
-			'useful-info-add',
+			'useful_info-add',
 			'askuser-ask_question',
-			'useful-info-delete',
+			'useful_info-delete',
 			'skill-execute',
 			'context_engine-codebase-retrieval',
 		],
@@ -49,7 +49,7 @@ MUST NOT 任何假设.每一条审核报告都MUST有项目中文档和项目代
 		subAgentRole: `你是一个专门的代码探索子Agent.你的任务是根据给你的实际需求,定位特定代码并分析依赖关系.使用搜索和分析工具来探索代码,必要时可进行网络搜索.专注于代码发现和理解.
 MUST要快,快速定位和提取有用信息,MUSTNOT过度探索!专注于交给你的探索目标!快快快!
 注意一旦项目根路径中有\`DevDocs\`文件夹,MUST从中找于本次任务相关的文档.
-MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发现无用或过时的有用信息记录,则MUST使用\`useful-info-delete\`工具删除!
+MUST并行调用\`useful_info-add\`工具记录你发现的有用信息!!!若发现无用或过时的有用信息记录,则MUST使用\`useful_info-delete\`工具删除!
 你不可也无法编辑文件.你MUST将重点聚焦于寻找,而非分析或执行,MUST不带任何偏见和主观,如实客观的记录和反馈你探索到的信息和信息来源!
 最终回复探索报告.`,
 		tools: [
@@ -60,9 +60,9 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 			'websearch-fetch',
 			'todo-get',
 			'todo-update',
-			'useful-info-delete',
+			'useful_info-delete',
 			'terminal-execute',
-			'useful-info-add',
+			'useful_info-add',
 			'skill-execute',
 			'context_engine-codebase-retrieval',
 		],
@@ -78,7 +78,7 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 		subAgentRole: `你是一个通用任务执行子Agent.你可以执行各种多步骤任务,包括搜索代码、修改文件、执行命令等.在接到任务时,应系统性地将其分解并执行,并应根据需要选择合适的工具以高效完成任务.你MUSY只专注于分配给你的任务和工作范围,若私自涉及其他任务将追究你的责任!
 ### 有用信息
 - MUST 并行调用,找到的对本次任务有用的信息,MUST使用有用信息工具添加
-- 每次修改文件后,MUST并行使用\`useful-info-xx\`工具更新有用信息,同步给其他Agent.
+- 每次修改文件后,MUST并行使用\`useful_info-xx\`工具更新有用信息,同步给其他Agent.
 **搜索替换工具**:搜索块和替换块尽量多提供上下文,以作为辅助锚点更好的定位修改区域,比如,只修改一行,但上下各提供5-10行的上下文.
 **确保你编写的所有代码无报错后,再发布任务完成信息!**
 你要自行验证你所做的修改是否完成了分配给你的任务,确认无误后你可更新todo,标记任务完成.`,
@@ -92,8 +92,8 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 			'ide-get_diagnostics',
 			'todo-get',
 			'todo-update',
-			'useful-info-add',
-			'useful-info-delete',
+			'useful_info-add',
+			'useful_info-delete',
 			'askuser-ask_question',
 			'ace-file_outline',
 			'skill-execute',
@@ -112,7 +112,7 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 首先,你要根据需求,MUST在项目中探索,查看git差异等手段,分析目前任务进度,理清哪些todo已完成,哪些todo未完成.
 再使用todo管理工具,删掉已完成的详细子todo
 确保todo:1.清晰展示任务现状2.确保有详细步骤指导将来开发3.父todo尽量保留,以便简洁体现任务整体进度4.未实际完成的子任务不要删
-最后使用useful-info系列工具,合并整合有用信息,删除对任务无用的,冗余的有用信息,确保有用信息可以精准指导开发,但又不会冗余.`,
+最后使用useful_info系列工具,合并整合有用信息,删除对任务无用的,冗余的有用信息,确保有用信息可以精准指导开发,但又不会冗余.`,
 		tools: [
 			'filesystem-read',
 			'ace-find_definition',
@@ -125,9 +125,9 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 			'todo-update',
 			'todo-add',
 			'todo-delete',
-			'useful-info-add',
-			'useful-info-delete',
-			'useful-info-list',
+			'useful_info-add',
+			'useful_info-delete',
+			'useful_info-list',
 			'askuser-ask_question',
 			'skill-execute',
 			'context_engine-codebase-retrieval',
@@ -185,8 +185,8 @@ MUST并行调用\`useful-info-add\`工具记录你发现的有用信息!!!若发
 			'filesystem-undo',
 			'terminal-execute',
 			'ace-text_search',
-			'useful-info-add',
-			'useful-info-delete',
+			'useful_info-add',
+			'useful_info-delete',
 			'askuser-ask_question',
 			'ace-file_outline',
 			'notebook-query',

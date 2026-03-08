@@ -34,6 +34,7 @@ import type {MCPTool} from './mcpToolsManager.js';
 import type {ChatMessage} from '../../api/types.js';
 import {formatUsefulInfoContext} from '../core/usefulInfoPreprocessor.js';
 import {formatTodoContext} from '../core/todoPreprocessor.js';
+import {isExactToolIdentifierMatch} from '../core/toolFilterUtils.js';
 import {
 	formatFolderNotebookContext,
 	getReadFolders,
@@ -309,57 +310,12 @@ export async function executeSubAgent(
 
 		// 获取所有可用工具
 		const allTools = await collectAllMCPTools();
+		const configuredAllowedTools = agent.tools ?? [];
 
-		// 根据子代理允许的工具进行过滤
-		const allowedTools = allTools.filter((tool: MCPTool) => {
-			const toolName = tool.function.name;
-			const normalizedToolName = toolName.replace(/_/g, '-');
-			const builtInPrefixes = new Set([
-				'todo-',
-				'notebook-',
-				'filesystem-',
-				'terminal-',
-				'ace-',
-				'websearch-',
-				'ide-',
-				'codebase-',
-				'askuser-',
-				'skill-',
-				'subagent-',
-			]);
-
-			return (agent.tools ?? []).some((allowedTool: string) => {
-				// 标准化两个工具名称：将下划线替换为连字符进行比较
-				const normalizedAllowedTool = allowedTool.replace(/_/g, '-');
-				const isQualifiedAllowed =
-					normalizedAllowedTool.includes('-') ||
-					Array.from(builtInPrefixes).some(prefix =>
-						normalizedAllowedTool.startsWith(prefix),
-					);
-
-				// 支持精确匹配和前缀匹配（例如，"filesystem" 匹配 "filesystem-read"）
-				if (
-					normalizedToolName === normalizedAllowedTool ||
-					normalizedToolName.startsWith(`${normalizedAllowedTool}-`)
-				) {
-					return true;
-				}
-
-				// 向后兼容：允许非限定的外部工具名称（缺少服务前缀）
-				const isExternalTool = !Array.from(builtInPrefixes).some(prefix =>
-					normalizedToolName.startsWith(prefix),
-				);
-				if (
-					!isQualifiedAllowed &&
-					isExternalTool &&
-					normalizedToolName.endsWith(`-${normalizedAllowedTool}`)
-				) {
-					return true;
-				}
-
-				return false;
-			});
-		});
+		// 根据子代理允许的工具进行严格精确匹配过滤.
+		const allowedTools = allTools.filter((tool: MCPTool) =>
+			isExactToolIdentifierMatch(tool.function.name, configuredAllowedTools),
+		);
 
 		if (allowedTools.length === 0) {
 			return {
@@ -455,9 +411,27 @@ export async function executeSubAgent(
 		const canSpawn =
 			spawnDepth < MAX_SPAWN_DEPTH && effectiveSpawnableAgents.length > 0;
 
-		allowedTools.push(sendMessageTool, queryAgentsStatusTool);
+		if (
+			isExactToolIdentifierMatch(
+				sendMessageTool.function.name,
+				configuredAllowedTools,
+			)
+		) {
+			allowedTools.push(sendMessageTool);
+		}
+		if (
+			isExactToolIdentifierMatch(
+				queryAgentsStatusTool.function.name,
+				configuredAllowedTools,
+			)
+		) {
+			allowedTools.push(queryAgentsStatusTool);
+		}
 
-		if (canSpawn) {
+		if (
+			canSpawn &&
+			isExactToolIdentifierMatch('spawn_sub_agent', configuredAllowedTools)
+		) {
 			// 构建 spawn_sub_agent 工具(仅当 canSpawn 时才注入)
 			const agentDescriptions = effectiveSpawnableAgents
 				.map(a => `- **${a.id}**: ${a.name} — ${a.description}`)

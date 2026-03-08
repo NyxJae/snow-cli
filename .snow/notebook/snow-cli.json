@@ -44,6 +44,15 @@
       "updatedAt": "2026-02-19T17:54:33.344"
     }
   ],
+  "requirements/ToolSearch白名单与权限适配需求文档.md": [
+    {
+      "id": "notebook-1772945712085_z7doh48n0",
+      "filePath": "requirements/ToolSearch白名单与权限适配需求文档.md",
+      "note": "当前需求的核心架构原则: 先算当前代理真正允许看到的工具全集,再决定哪些首轮直出,哪些继续走 Tool Search. 两层代码内白名单默认空,采用服务名+工具名完整标识精确匹配,仅影响初始暴露,不绕过权限过滤. 子代理 3 个协作工具与普通工具同级纳入 availableTools,其中 spawn_sub_agent 继续额外受 availableSubAgents 与深度门禁约束.",
+      "createdAt": "2026-03-08T12:55:12.085",
+      "updatedAt": "2026-03-08T12:55:12.085"
+    }
+  ],
   "requirements/全平台网页版Snow SSE客户端需求.md": [
     {
       "id": "notebook-1771515649312_x6aph0c29",
@@ -154,11 +163,27 @@
   ],
   "source/hooks/conversation/useConversation.ts": [
     {
+      "id": "notebook-1772945711181_j5lhhipfz",
+      "filePath": "source/hooks/conversation/useConversation.ts",
+      "note": "主代理会话层只消费统一工具访问结果与 projectSettings 中的 Tool Search 配置事实源. 流程固定为: collect raw tools -> resolve allowedTools/initialTools -> 用 allowedTools 初始化 Tool Search registry -> 通过 getToolSearchEnabled() 决定走渐进暴露还是直接使用 allowedTools -> 由 initialTools + discovered tools 生成 activeTools. 此处已禁止硬编码 const useToolSearch = true/false,也不得再内联权限判断,白名单判断或本地开关默认值. 若主代理权限筛选异常,上游必须按 fail-closed 生效,此处不得回退到原始工具集.",
+      "createdAt": "2026-03-08T12:55:11.181",
+      "updatedAt": "2026-03-08T16:35:35.330"
+    },
+    {
       "id": "notebook-1772107272120_8ae464f6q",
       "filePath": "source/hooks/conversation/useConversation.ts",
       "note": "职责: 会话执行编排层,统一接入四类流式适配器并管理重试状态提示.\n接口摘要:\n- 根据 requestMethod 选择 streaming generator.\n- onRetry 回调负责 UI 重试状态更新,文案必须走 i18n key(retryResending).\n依赖拓扑:\n- 依赖 source/api/{chat,anthropic,gemini,responses}.ts.\n- 依赖 source/i18n/lang/* 的 retry 文案.\n避坑指南:\n- 用户主动中断(Request aborted by user)必须短路退出,不得进入重试提示循环.\n- 不得在此硬编码任意语言重试文案,避免多语言漂移.",
       "createdAt": "2026-02-26T20:01:12.120",
       "updatedAt": "2026-02-26T20:01:12.120"
+    }
+  ],
+  "source/hooks/ui/useCommandPanel.ts": [
+    {
+      "id": "notebook-1772946167507_w20gdc5uj",
+      "filePath": "source/hooks/ui/useCommandPanel.ts",
+      "note": "职责: 命令面板展示层. 只负责暴露 `/tool-search` 等命令入口与描述,不负责工具权限判定,Tool Search registry 构建或白名单决策.\n\n接口摘要:\n- 输入: i18n 文案与命令注册结果.\n- 输出: 面板可见命令项.\n\n依赖拓扑:\n- 依赖: source/utils/commands/toolsearch.ts 等命令注册层.\n- 被依赖: TUI 命令面板 UI.\n\n避坑指南:\n- 是否存在 `tool-search` 入口,不等于任意工具都可被搜索到.\n- 面板层不得内联 availableTools,availableSubAgents 或白名单判断,避免 UI 与执行边界漂移.\n- 保持与旧模式解绑,只展示独立 Tool Search 能力入口.",
+      "createdAt": "2026-03-08T13:02:47.507",
+      "updatedAt": "2026-03-08T13:02:47.507"
     }
   ],
   "source/hooks/ui/usePanelState.ts": [
@@ -204,6 +229,15 @@
       "note": "职责: 文件编辑真实执行层,承载 editableFileSuffixes 拦截规则的统一落点.\n接口摘要: editFile/editFileBySearch 支持单文件与批量,输出 diff,diagnostics 与统计结果.\n依赖拓扑: 上游由 mcpToolsManager.ts 调用,批量聚合依赖 batch-operations.utils.ts.\n避坑指南:\n- 本层保持纯执行语义,不参与任何 UI 导航(showMcpPanel,mcpPanelSource,source)决策.\n- 拒绝项在批量中落成 success:false + 固定文案,保留部分成功.\n- 工具执行前应同时受\"MCP 服务开关(全局总闸)\"与\"代理工具权限(代理分闸)\"影响.\n- 服务级禁用应在 mcpToolsManager/disabledBuiltInTools 形成不可路由的最终集合,本层只对已授权且已启用的工具执行,不负责读取/写入全局禁用文件.\n- 与本需求相关: 流式 API idle timeout/断开丢弃属于网络请求层与 utils/core 的职责,不得在工具执行层实现任何与 HTTP/stream 相关的超时或重试,避免跨域耦合.",
       "createdAt": "2026-02-12T10:50:31.000",
       "updatedAt": "2026-02-13T10:33:36.781"
+    }
+  ],
+  "source/mcp/usefulInfo.ts": [
+    {
+      "id": "notebook-1772951880576_k0hrbn7cl",
+      "filePath": "source/mcp/usefulInfo.ts",
+      "note": "正在推进 useful_info 命名收敛. 最新约束: 服务名和工具名内部不能出现短横线,短横线只用于连接 serviceName-toolName. 该模块对外暴露的内置工具命名需统一从 useful-info-* 收敛为 useful_info-*,并与 mcpToolsManager,配置白名单,UI 展示文案,内置子代理配置保持一致,避免 serviceName/toolName 解析与权限匹配口径分裂.",
+      "createdAt": "2026-03-08T14:38:00.576",
+      "updatedAt": "2026-03-08T14:38:00.576"
     }
   ],
   "source/prompt/": [
@@ -305,6 +339,15 @@
       "updatedAt": "2026-02-26T18:48:11.936"
     }
   ],
+  "source/ui/pages/ChatScreen.tsx": [
+    {
+      "id": "notebook-1772958935650_lu0j6o03c",
+      "filePath": "source/ui/pages/ChatScreen.tsx",
+      "note": "ChatScreen 对 Tool Search 的职责仅限展示与交互同步. UI 层读取 getToolSearchEnabled() 初始化显示状态,并通过 persistToolSearchEnabled(setToolSearchEnabled) 回写 .snow/settings.json. 后续禁止在本文件硬编码 Tool Search 默认开关或单独维护一套独立真值,避免 UI 展示状态与 projectSettings 持久化状态,会话执行状态漂移. 该页面不负责权限判断,白名单判断或执行层兜底.",
+      "createdAt": "2026-03-08T16:35:35.650",
+      "updatedAt": "2026-03-08T16:35:35.650"
+    }
+  ],
   "source/ui/pages/ConfigScreen.tsx": [
     {
       "id": "notebook-1772102891717_hflmmzua9",
@@ -334,11 +377,27 @@
   ],
   "source/utils/": [
     {
+      "id": "notebook-1772948460730_cw40iwx6y",
+      "filePath": "source/utils/",
+      "note": "Tool Search 白名单与权限适配已完成落地并经 reviewer 通过. 目录级架构原则: 权限过滤必须先于暴露策略,统一以 allowedTools 作为授权事实源; searchableTools 和 initialTools 都只能从 allowedTools 派生. 后续若新增工具暴露策略,只能在统一决策核心扩展,禁止在会话层,搜索层,子代理执行层各自再实现一套权限或匹配逻辑.",
+      "createdAt": "2026-03-08T13:41:00.730",
+      "updatedAt": "2026-03-08T13:41:00.730"
+    },
+    {
       "id": "notebook-1771735837045_ax74drms8",
       "filePath": "source/utils/",
       "note": "职责: 核心业务与通用能力层.包含对话执行(execution),会话(session),SSE(sse),模型调用与流控制(core),配置读写(config),命令(commands),事件(events)等.\n\n接口摘要:\n- 输入: UI/CLI 层传入的用户指令与上下文.\n- 输出: 对话结果,状态变更事件,以及对外协议输出(SSE 事件等).\n\n依赖拓扑:\n- 依赖: source/api/ 作为模型渠道适配器.\n- 被依赖: source/ui/ 与 CLI 入口.\n\n避坑指南:\n- 任何跨会话的可变状态必须显式按 sessionId/connectionId 分片,禁止隐式单例导致串扰.\n- 流式输出必须统一使用 streamGuards/idle timeout/abandoned 丢弃策略,避免 abort 后 chunk 外泄.\n- 主/子代理提示词隔离是硬约束: 角色定义提示词只来自各自 profile,自定义 system prompt 仅影响本次调用且不得跨注入.",
       "createdAt": "2026-02-22T12:50:37.045",
       "updatedAt": "2026-02-22T12:50:37.045"
+    }
+  ],
+  "source/utils/commands/toolsearch.ts": [
+    {
+      "id": "notebook-1772945711902_2nlp3jjob",
+      "filePath": "source/utils/commands/toolsearch.ts",
+      "note": "tool-search 命令层只负责触发 Tool Search 能力入口,不得掺入权限判断或旧模式状态语义. 当前命令执行时必须调用 setToolSearchEnabled(true),确保 /tool-search 可把 .snow/settings.json 写回 true,并与 UI 切换,会话执行链路共享同一配置事实源. Tool Search 是否能搜到某工具,完全取决于统一工具访问结果,而不是命令层分支.",
+      "createdAt": "2026-03-08T12:55:11.902",
+      "updatedAt": "2026-03-08T16:35:35.451"
     }
   ],
   "source/utils/config/": [
@@ -386,13 +445,29 @@
       "updatedAt": "2026-02-13T11:35:33.986"
     }
   ],
+  "source/utils/config/projectSettings.ts": [
+    {
+      "id": "notebook-1772945711724_eazl8bek4",
+      "filePath": "source/utils/config/projectSettings.ts",
+      "note": "projectSettings 是 Tool Search 开关的唯一持久化事实源. getToolSearchEnabled() 默认值为 true,setToolSearchEnabled(enabled) 是唯一写入口,统一负责 .snow/settings.json 中 toolSearchEnabled 的读写与默认回退. TOOL_SEARCH_INITIAL_TOOL_WHITELIST 与 MAIN_AGENT_SKIP_TOOL_SEARCH_SUBAGENT_WHITELIST 仍只承担首轮直出策略,不承载权限来源,不得扩权. 后续严禁在 UI,命令层,会话执行层再次硬编码 Tool Search 开关默认值或绕过 setToolSearchEnabled 直接写状态,避免出现 UI 状态,持久化状态,执行状态三套事实源分裂.",
+      "createdAt": "2026-03-08T12:55:11.724",
+      "updatedAt": "2026-03-08T16:35:35.175"
+    }
+  ],
   "source/utils/config/subAgentConfig.ts": [
+    {
+      "id": "notebook-1772945711523_p8putsey1",
+      "filePath": "source/utils/config/subAgentConfig.ts",
+      "note": "子代理配置层只维护 availableTools,availableSubAgents 等权限来源与规范化. 不应承载 Tool Search 暴露策略. 对 spawn_sub_agent 的额外限制来源于 availableSubAgents,但 send_message_to_agent/query_agents_status 不再被视为天然全局可见,而应作为普通工具权限项管理.",
+      "createdAt": "2026-03-08T12:55:11.523",
+      "updatedAt": "2026-03-08T12:55:11.523"
+    },
     {
       "id": "notebook-1770864631002_subcfg",
       "filePath": "source/utils/config/subAgentConfig.ts",
-      "note": "职责: 管理子代理配置的读取,创建,更新和持久化,是子代理侧工具权限与编辑限制字段的存储入口.\n\n接口摘要:\n- 输入: createSubAgent/updateSubAgent 接收 UI 字段并写入 TOML.\n- 输出: getSubAgent 提供运行态读取(供 subAgentExecutor 使用).\n\n关键架构决策(渐进式权限模型):\n- 子代理可用工具集合 = MCP 服务开关(全局总闸) + 子代理工具权限(代理分闸).\n- 服务级禁用不写入 sub-agents.toml,由全局禁用文件统一管理.\n\n关键架构决策(本需求最新口径):\n- 配置字段 availableSubAgents?: string[] 的语义:\n  - undefined 或 [] 视为“没有任何可 spawn 的子代理”.\n  - 非空数组表示“仅允许 spawn 数组中的子代理”(仍需按运行态 effectiveAvailableSubAgents 做无效 id 清理与排除自身).\n- 保存时清理无效 id: availableSubAgents 必须过滤掉当前不存在的子代理 id,并排除自身 id.\n- 运行态不变性: 即使保存时已清理,运行态仍必须在构建请求前再次做兜底清理,确保 subAgentExecutor 可安全依赖 effectiveAvailableSubAgents.\n- 工具注入边界: availableSubAgents 仅影响 spawn_sub_agent 是否注入以及其 agent_id/description 的目标范围,不影响 send_message_to_agent/query_agents_status 的全局可见性.\n\n依赖拓扑:\n- 被依赖: source/ui/pages/SubAgentConfigScreen.tsx(编辑保存),source/utils/execution/subAgentExecutor.ts(运行态读取).\n\n避坑指南:\n- 配置层不应与 UI 面板导航状态(showMcpPanel,mcpPanelSource,source)耦合.\n- 更新/创建逻辑需复用同一套工具过滤/规范化逻辑.\n- UI 层做过滤后,配置持久化层仍需要二次清理,防止历史配置残留.\n- availableSubAgents 的“无配置/空数组”语义已收敛为“无可 spawn 目标”,不要把它实现成“不限制 spawn 白名单”.\n\n备注:\n- 与流式 API 的空闲超时(固定3分钟)无关,不要为子代理增加 idleTimeout 等字段.",
+      "note": "职责: 管理子代理配置的读取,创建,更新和持久化,是子代理侧 availableTools,availableSubAgents 与编辑限制字段的存储入口.\n\n接口摘要:\n- 输入: createSubAgent/updateSubAgent 接收 UI 字段并写入 TOML.\n- 输出: getSubAgent 提供运行态读取,供 subAgentExecutor 与统一工具访问决策层消费.\n\n关键架构决策:\n- 子代理可用工具集合 = MCP 服务开关(全局总闸) + 子代理 availableTools(代理分闸).\n- 服务级禁用不写入 sub-agents.toml,由全局禁用文件统一管理.\n- availableSubAgents 的语义:\n  - undefined 或 [] 视为没有任何可 spawn 的子代理.\n  - 非空数组表示仅允许 spawn 数组中的子代理,仍需运行态做无效 id 清理与排除自身.\n- availableSubAgents 仅为 spawn_sub_agent 提供额外目标范围约束,不为 send_message_to_agent 或 query_agents_status 提供可见性授权.\n- Tool Search 白名单不是配置层职责,不得写入子代理配置语义.\n\n依赖拓扑:\n- 被依赖: source/ui/pages/SubAgentConfigScreen.tsx,source/utils/execution/subAgentExecutor.ts,统一工具过滤核心.\n\n避坑指南:\n- 配置层不应与 UI 面板状态耦合.\n- 更新/创建逻辑需复用同一套规范化逻辑.\n- 保存时已清理不代表运行时可省略兜底,执行层仍必须再次校验.",
       "createdAt": "2026-02-12T10:50:31.000",
-      "updatedAt": "2026-03-04T02:13:32.429"
+      "updatedAt": "2026-03-08T13:02:47.372"
     }
   ],
   "source/utils/core/": [
@@ -422,6 +497,24 @@
       "updatedAt": "2026-02-26T18:48:09.593"
     }
   ],
+  "source/utils/core/toolFilterUtils.ts": [
+    {
+      "id": "notebook-1772945710609_q2vxhbpz7",
+      "filePath": "source/utils/core/toolFilterUtils.ts",
+      "note": "Tool Search 权限收敛核心. 该文件作为统一工具访问决策核心,固定输出 allowedTools/searchableTools/initialTools,并提供 getToolIdentifier 与 isExactToolIdentifierMatch 作为完整标识精确匹配基线. 所有链路必须遵循 rawTools -> allowedTools -> searchableTools -> initialTools. 主代理异常时必须 fail-closed 返回空授权集合,禁止退回 rawTools 扩权. shouldExposeToolInitially 对主代理子代理白名单需兼容 main-agents.toml 的 availableSubAgents 风格: 配置允许写 agent_xxx,运行时统一规范化为 subagent-agent_xxx 后再做严格匹配,避免配置口径漂移.",
+      "createdAt": "2026-03-08T12:55:10.609",
+      "updatedAt": "2026-03-08T14:38:00.274"
+    }
+  ],
+  "source/utils/execution/": [
+    {
+      "id": "notebook-1772946167645_tmk0dkd4n",
+      "filePath": "source/utils/execution/",
+      "note": "Tool Search 与工具权限的长期架构约束: 本目录下所有执行相关模块必须遵循同一流水线 `rawTools -> allowedTools -> searchableTools -> initialTools -> execution fallback`. 其中 toolSearchService 只处理已授权 registry,subAgentExecutor 只做子代理上下文装配与执行期兜底,不得各自扩散权限/白名单决策. spawn_sub_agent 虽与普通工具同级受 availableTools 控制,但仍保留 availableSubAgents 与深度门禁的额外约束.",
+      "createdAt": "2026-03-08T13:02:47.645",
+      "updatedAt": "2026-03-08T13:02:47.645"
+    }
+  ],
   "source/utils/execution/mcpToolsManager.ts": [
     {
       "id": "notebook-1771993976867_1m6jwnx2a",
@@ -440,11 +533,18 @@
   ],
   "source/utils/execution/subAgentExecutor.ts": [
     {
+      "id": "notebook-1772945711040_8ytrr9cog",
+      "filePath": "source/utils/execution/subAgentExecutor.ts",
+      "note": "子代理执行侧职责收敛为执行上下文组装与执行期兜底. 普通 MCP 工具以及 send_message_to_agent/query_agents_status/spawn_sub_agent 均必须使用完整标识精确匹配 availableTools. 其中 spawn_sub_agent 仍额外受 availableSubAgents 非空,深度门禁与目标校验约束. 不得再保留短名,前缀或模糊匹配兼容.",
+      "createdAt": "2026-03-08T12:55:11.040",
+      "updatedAt": "2026-03-08T13:41:00.458"
+    },
+    {
       "id": "notebook-1770864631008_subexec",
       "filePath": "source/utils/execution/subAgentExecutor.ts",
-      "note": "职责: 子代理运行时装配器,负责在执行前装配子代理的“有效可协作子代理集合”,并据此动态裁剪协作工具注入与 spawn 白名单,再执行工具调用循环.\n\n接口摘要:\n- 输入: getSubAgent(agentId) 返回的 agent 配置(含 tools,availableSubAgents),当前 spawnDepth,运行态可用子代理列表(getSubAgents()).\n- 输出: 一次模型请求的 tools 列表(按规则决定是否注入 spawn_sub_agent,以及其参数/描述范围),以及执行工具调用的结果回传.\n\n关键架构决策(本需求最新口径,必须对齐 requirements/子代理调用子代理的工具筛选.md):\n- send_message_to_agent 与 query_agents_status 是自带协作工具,始终全局可见,始终出现在子代理请求的 tools 中,不受 availableSubAgents 开关影响.\n- availableSubAgents?: string[] 仅用于控制 spawn_sub_agent:\n  - 运行态必须计算 effectiveAvailableSubAgents = 清理无效 id + 排除自身.\n  - 若 effectiveAvailableSubAgents 为空(包含 undefined/[]/清理后为空),则 spawn_sub_agent 不出现在 tools 中.\n  - 若 effectiveAvailableSubAgents 非空,且运行时允许 spawn(深度门禁),则 spawn_sub_agent 出现在 tools 中.\n  - spawn_sub_agent.parameters.agent_id 可选范围必须严格等于 effectiveAvailableSubAgents.\n  - spawn_sub_agent.description 中展示的“Available agents you can spawn”列表也必须严格等于 effectiveAvailableSubAgents(并排除自身),不得出现配置之外的子代理.\n\n依赖拓扑:\n- 上游依赖: source/utils/config/subAgentConfig.ts(配置读取),source/utils/agentsPromptUtils.ts(环境信息片段).\n- 下游依赖: source/utils/mcpToolsManager.ts(工具执行),filesystem/terminal 等工具实现.\n- 需求基线: requirements/子代理调用子代理的工具筛选.md.\n\n避坑指南:\n- MUST 做运行态兜底清理,不能只依赖 UI 保存时过滤(配置可能来自历史残留或手工编辑).\n- availableSubAgents 语义已收敛: undefined/[] 不是“不限制”,而是“无可 spawn 目标”,因此必须隐藏 spawn_sub_agent.\n- 排除自身是硬约束: 任何情况下都不允许 spawn 自己.\n- 深度限制与白名单是正交约束: 深度不允许时仅隐藏 spawn_sub_agent,但 send/query 仍保持注入.",
+      "note": "职责: 子代理运行时装配器.负责基于子代理配置与运行态约束构建子代理可见工具集,再执行工具调用循环. 该模块必须消费统一工具访问结果,不能自行维护另一套 Tool Search 可见性规则.\n\n接口摘要:\n- 输入: getSubAgent(agentId) 的 availableTools,availableSubAgents,当前 spawnDepth,运行态可用子代理列表.\n- 输出: 子代理本轮 allowedTools,initialTools/searchableTools 的消费结果,以及执行期工具调用结果.\n\n关键架构决策(本需求最新口径):\n- send_message_to_agent,query_agents_status,spawn_sub_agent 与普通工具同级,统一受 availableTools 精确匹配控制.\n- Tool Search 与初始暴露都必须先经过 availableTools 权限过滤,再决定 initial/searchable.\n- availableSubAgents 仅是 spawn_sub_agent 的额外约束来源,不再决定 send/query 是否可见.\n- spawn_sub_agent 只有在同时满足以下条件时才可见且可执行:\n  - availableTools 允许 spawn_sub_agent.\n  - availableSubAgents 过滤清理后非空.\n  - 深度门禁允许.\n  - 执行期 agent_id 命中有效 allowed sub-agent id.\n\n依赖拓扑:\n- 上游依赖: source/utils/config/subAgentConfig.ts,统一工具过滤核心.\n- 下游依赖: toolExecutor/mcpToolsManager 等执行层.\n\n避坑指南:\n- 不得再把 send/query 视为天然全局可见.\n- 不得基于 raw tools 直接构建 Tool Search registry.\n- 运行态必须保留 spawn agent_id 的最终兜底校验,避免历史配置或手工构造调用导致越权.",
       "createdAt": "2026-02-12T10:50:31.000",
-      "updatedAt": "2026-03-04T02:13:32.315"
+      "updatedAt": "2026-03-08T13:02:47.239"
     }
   ],
   "source/utils/execution/toolExecutor.ts": [
@@ -454,6 +554,15 @@
       "note": "职责: 工具执行编排层,负责单个工具调用的完整生命周期管理,包括前置钩子/实际执行/后置钩子.\n接口摘要: executeToolCall(ToolCall,executionContext) -> ToolResult.透传 executionContext 给 mcpToolsManager.executeMCPTool.\n依赖拓扑: 上游被 useConversation.ts 和 subAgentExecutor.ts 调用,下游依赖 mcpToolsManager.ts.\n避坑指南:\n- 本层必须保持通用,不得引入 UI 面板状态(showMcpPanel,mcpPanelSource)或 screen 路由概念.\n- 工具可见性由\"MCP 服务全局开关(全局总闸)\"与\"代理工具权限(代理分闸)\"共同决定;服务级禁用应在 mcpToolsManager/disabledBuiltInTools 过滤,本层只执行上游已筛选后的调用.\n备注:\n- 与\"流式 API 空闲超时/断开后丢弃\"无关.该机制属于 api adapters + utils/core(streamGuards,retryUtils),这里仅保留边界说明,不记录实现细节.",
       "createdAt": "2026-02-12T15:30:00.000",
       "updatedAt": "2026-02-13T11:52:29.700"
+    }
+  ],
+  "source/utils/execution/toolSearchService.ts": [
+    {
+      "id": "notebook-1772945710860_v4c4aufdf",
+      "filePath": "source/utils/execution/toolSearchService.ts",
+      "note": "Tool Search 只负责基于已授权 registry 做搜索与已发现工具管理,不负责自行推导权限. updateRegistry 仅接受 allowedTools,externalServices 也必须按 allowedTools 同步过滤,避免未授权服务信息泄露. 提示词中的内置类别不得再硬编码示例,必须由 getBuiltInCategoryCounts/getSortedBuiltInCategories/getBuiltInCategoryExamples 基于当前已授权 registry 动态统计,并继续通过 getThirdPartyServiceNames 分离第三方 MCP services 提示,确保不泄露无权限内置工具类别. buildActiveTools 负责合并 tool_search + initialTools + discovered tools,白名单只影响首轮直出,不改变权限边界.",
+      "createdAt": "2026-03-08T12:55:10.860",
+      "updatedAt": "2026-03-08T14:38:00.126"
     }
   ],
   "source/utils/session/sessionManager.ts": [
@@ -491,6 +600,13 @@
     }
   ],
   "source/utils/MainAgentManager.ts": [
+    {
+      "id": "notebook-1772945711335_mf41t729l",
+      "filePath": "source/utils/MainAgentManager.ts",
+      "note": "主代理配置来源层. 仅负责暴露 availableTools,availableSubAgents,systemPrompt 等原始配置,不负责 Tool Search 暴露策略. availableSubAgents 映射到 subagent-xxx 后,应由统一工具过滤层消费,避免 Manager 与执行链路重复决策.",
+      "createdAt": "2026-03-08T12:55:11.335",
+      "updatedAt": "2026-03-08T12:55:11.335"
+    },
     {
       "id": "notebook-1770979050933_fpsuyvh74",
       "filePath": "source/utils/MainAgentManager.ts",

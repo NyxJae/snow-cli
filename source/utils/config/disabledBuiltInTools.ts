@@ -76,7 +76,7 @@ export function getServiceNameFromTool(toolName: string): string {
 		todo: 'todo',
 		notebook: 'notebook',
 		ace: 'ace',
-		useful: 'usefulInfo', // useful-info-*
+		useful_info: 'useful_info',
 		websearch: 'websearch',
 		ide: 'ide',
 		codebase: 'codebase',
@@ -110,7 +110,7 @@ export function getEnabledBuiltInServices(): string[] {
 		'todo',
 		'notebook',
 		'ace',
-		'usefulInfo',
+		'useful_info',
 		'websearch',
 		'ide',
 		'codebase',

@@ -319,13 +319,13 @@ async function refreshToolsCache(): Promise<void> {
 	await usefulInfoSvc.initialize();
 	const usefulInfoTools = usefulInfoSvc.getTools();
 	addBuiltInService(
-		'usefulInfo',
+		'useful_info',
 		usefulInfoTools.map(t => ({
 			name: t.name,
 			description: t.description || '',
 			inputSchema: t.inputSchema,
 		})),
-		'useful-info',
+		'useful_info',
 	);
 
 	// Add built-in Web Search tools
@@ -1149,9 +1149,9 @@ export async function executeMCPTool(
 		if (toolName.startsWith('todo-')) {
 			serviceName = 'todo';
 			actualToolName = toolName.substring('todo-'.length);
-		} else if (toolName.startsWith('useful-info-')) {
-			serviceName = 'usefulInfo';
-			actualToolName = toolName.substring('useful-info-'.length);
+		} else if (toolName.startsWith('useful_info-')) {
+			serviceName = 'useful_info';
+			actualToolName = toolName.substring('useful_info-'.length);
 		} else if (toolName.startsWith('notebook-')) {
 			serviceName = 'notebook';
 			actualToolName = toolName.substring('notebook-'.length);
@@ -1236,7 +1236,7 @@ export async function executeMCPTool(
 		if (serviceName === 'todo') {
 			// Handle built-in TODO tools (no connection needed)
 			result = await getTodoService().executeTool(actualToolName, args);
-		} else if (serviceName === 'usefulInfo') {
+		} else if (serviceName === 'useful_info') {
 			// Handle built-in UsefulInfo tools (no connection needed)
 			result = await getUsefulInfoService().executeTool(actualToolName, args);
 		} else if (serviceName === 'notebook') {

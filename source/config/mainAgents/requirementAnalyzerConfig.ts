@@ -23,8 +23,8 @@ const REQUIREMENT_ANALYZER_TOOLS: string[] = [
 	'filesystem-undo',
 	'terminal-execute',
 	'ace-text_search',
-	'useful-info-add',
-	'useful-info-delete',
+	'useful_info-add',
+	'useful_info-delete',
 	'askuser-ask_question',
 	'ace-file_outline',
 ];

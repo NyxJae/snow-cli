@@ -441,7 +441,7 @@ export class UsefulInfoService {
 	getTools(): Tool[] {
 		return [
 			{
-				name: 'useful-info-add',
+				name: 'useful_info-add',
 				description: `📚 Add file content to useful information list - SHARED ACROSS ALL AGENTS
 
 ⚠️ CRITICAL USAGE RULES:
@@ -502,7 +502,7 @@ export class UsefulInfoService {
 				},
 			},
 			{
-				name: 'useful-info-delete',
+				name: 'useful_info-delete',
 				description: `🗑️ Remove items from useful information list
 
 ## 📋 DELETION OPTIONS:
@@ -549,7 +549,7 @@ export class UsefulInfoService {
 				},
 			},
 			{
-				name: 'useful-info-list',
+				name: 'useful_info-list',
 				description: `📋 List all useful information items for current session
 
 Shows all file sections currently tracked as useful information.

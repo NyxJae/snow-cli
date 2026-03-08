@@ -761,5 +761,98 @@
       "notebookId": "notebook-1770864631002_subcfg",
       "previousNote": "职责: 管理子代理配置的读取,创建,更新和持久化,是子代理侧工具权限与编辑限制字段的存储入口.\n\n接口摘要:\n- 输入: createSubAgent/updateSubAgent 接收 UI 字段并写入 TOML.\n- 输出: getSubAgent 提供运行态读取(供 subAgentExecutor 使用).\n\n关键架构决策(渐进式权限模型):\n- 子代理可用工具集合 = MCP 服务开关(全局总闸) + 子代理工具权限(代理分闸).\n- 服务级禁用不写入 sub-agents.toml,由全局禁用文件统一管理.\n\n关键架构决策(本需求新增):\n- 配置字段 availableSubAgents?: string[] 的语义:\n  - undefined 或 [] 视为“没有任何可调用子代理”.\n  - 非空数组表示“仅允许调用数组中的子代理”.\n- 保存时清理无效 id: availableSubAgents 必须过滤掉当前不存在的子代理 id,并排除自身 id.\n- 运行态不变性: 即使保存时已清理,运行态仍必须在构建请求前再次做兜底清理,确保 subAgentExecutor 可安全依赖 effectiveAvailableSubAgents.\n\n依赖拓扑:\n- 被依赖: source/ui/pages/SubAgentConfigScreen.tsx(编辑保存),source/utils/execution/subAgentExecutor.ts(运行态读取).\n\n避坑指南:\n- 配置层不应与 UI 面板导航状态(showMcpPanel,mcpPanelSource,source)耦合.\n- 更新/创建逻辑需复用同一套工具过滤/规范化逻辑.\n- UI 层做过滤后,配置持久化层仍需要二次清理,防止历史配置残留.\n- availableSubAgents 的“无配置/空数组”语义已收敛为“禁止协作工具注入”,不要把它实现成“不限制 spawn 白名单”.\n\n备注:\n- 与流式 API 的空闲超时(固定3分钟)无关,不要为子代理增加 idleTimeout 等字段."
     }
+  ],
+  "332155de-1d76-403d-ad47-d991556c53eb:1057": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1770864631008_subexec",
+      "previousNote": "职责: 子代理运行时装配器,负责在执行前装配子代理的“有效可协作子代理集合”,并据此动态裁剪协作工具注入与 spawn 白名单,再执行工具调用循环.\n\n接口摘要:\n- 输入: getSubAgent(agentId) 返回的 agent 配置(含 tools,availableSubAgents),当前 spawnDepth,运行态可用子代理列表(getSubAgents()).\n- 输出: 一次模型请求的 tools 列表(按规则决定是否注入 spawn_sub_agent,以及其参数/描述范围),以及执行工具调用的结果回传.\n\n关键架构决策(本需求最新口径,必须对齐 requirements/子代理调用子代理的工具筛选.md):\n- send_message_to_agent 与 query_agents_status 是自带协作工具,始终全局可见,始终出现在子代理请求的 tools 中,不受 availableSubAgents 开关影响.\n- availableSubAgents?: string[] 仅用于控制 spawn_sub_agent:\n  - 运行态必须计算 effectiveAvailableSubAgents = 清理无效 id + 排除自身.\n  - 若 effectiveAvailableSubAgents 为空(包含 undefined/[]/清理后为空),则 spawn_sub_agent 不出现在 tools 中.\n  - 若 effectiveAvailableSubAgents 非空,且运行时允许 spawn(深度门禁),则 spawn_sub_agent 出现在 tools 中.\n  - spawn_sub_agent.parameters.agent_id 可选范围必须严格等于 effectiveAvailableSubAgents.\n  - spawn_sub_agent.description 中展示的“Available agents you can spawn”列表也必须严格等于 effectiveAvailableSubAgents(并排除自身),不得出现配置之外的子代理.\n\n依赖拓扑:\n- 上游依赖: source/utils/config/subAgentConfig.ts(配置读取),source/utils/agentsPromptUtils.ts(环境信息片段).\n- 下游依赖: source/utils/mcpToolsManager.ts(工具执行),filesystem/terminal 等工具实现.\n- 需求基线: requirements/子代理调用子代理的工具筛选.md.\n\n避坑指南:\n- MUST 做运行态兜底清理,不能只依赖 UI 保存时过滤(配置可能来自历史残留或手工编辑).\n- availableSubAgents 语义已收敛: undefined/[] 不是“不限制”,而是“无可 spawn 目标”,因此必须隐藏 spawn_sub_agent.\n- 排除自身是硬约束: 任何情况下都不允许 spawn 自己.\n- 深度限制与白名单是正交约束: 深度不允许时仅隐藏 spawn_sub_agent,但 send/query 仍保持注入."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1770864631002_subcfg",
+      "previousNote": "职责: 管理子代理配置的读取,创建,更新和持久化,是子代理侧工具权限与编辑限制字段的存储入口.\n\n接口摘要:\n- 输入: createSubAgent/updateSubAgent 接收 UI 字段并写入 TOML.\n- 输出: getSubAgent 提供运行态读取(供 subAgentExecutor 使用).\n\n关键架构决策(渐进式权限模型):\n- 子代理可用工具集合 = MCP 服务开关(全局总闸) + 子代理工具权限(代理分闸).\n- 服务级禁用不写入 sub-agents.toml,由全局禁用文件统一管理.\n\n关键架构决策(本需求最新口径):\n- 配置字段 availableSubAgents?: string[] 的语义:\n  - undefined 或 [] 视为“没有任何可 spawn 的子代理”.\n  - 非空数组表示“仅允许 spawn 数组中的子代理”(仍需按运行态 effectiveAvailableSubAgents 做无效 id 清理与排除自身).\n- 保存时清理无效 id: availableSubAgents 必须过滤掉当前不存在的子代理 id,并排除自身 id.\n- 运行态不变性: 即使保存时已清理,运行态仍必须在构建请求前再次做兜底清理,确保 subAgentExecutor 可安全依赖 effectiveAvailableSubAgents.\n- 工具注入边界: availableSubAgents 仅影响 spawn_sub_agent 是否注入以及其 agent_id/description 的目标范围,不影响 send_message_to_agent/query_agents_status 的全局可见性.\n\n依赖拓扑:\n- 被依赖: source/ui/pages/SubAgentConfigScreen.tsx(编辑保存),source/utils/execution/subAgentExecutor.ts(运行态读取).\n\n避坑指南:\n- 配置层不应与 UI 面板导航状态(showMcpPanel,mcpPanelSource,source)耦合.\n- 更新/创建逻辑需复用同一套工具过滤/规范化逻辑.\n- UI 层做过滤后,配置持久化层仍需要二次清理,防止历史配置残留.\n- availableSubAgents 的“无配置/空数组”语义已收敛为“无可 spawn 目标”,不要把它实现成“不限制 spawn 白名单”.\n\n备注:\n- 与流式 API 的空闲超时(固定3分钟)无关,不要为子代理增加 idleTimeout 等字段."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772946167507_w20gdc5uj"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772946167645_tmk0dkd4n"
+    }
+  ],
+  "04519148-2fd5-4e4e-840e-401d725cbfb9:2": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945710609_q2vxhbpz7",
+      "previousNote": "Tool Search 权限收敛核心. 该文件应成为主代理/子代理统一工具可见性裁剪入口,先算 allowedTools,再划分 initialTools/searchableTools. MUST 将权限过滤与白名单直出策略分层,禁止散落到 useConversation,toolSearchService,subAgentExecutor 各自重复计算. 所有匹配统一使用完整工具标识精确匹配."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945710860_v4c4aufdf",
+      "previousNote": "Tool Search 只负责基于已授权 registry 做搜索与已发现工具管理,不负责自行推导权限. registry MUST 来自 allowedTools,绝不能基于原始工具全集构建,否则会把无权限工具暴露进搜索结果. 白名单只影响首轮直出,不改变 searchableTools 的权限边界."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945711181_j5lhhipfz",
+      "previousNote": "主代理会话层只消费统一工具访问结果,不应内联权限判断或白名单判断. 流程应固定为: collect raw tools -> resolve allowedTools -> 用 allowedTools 初始化 Tool Search registry -> 由暴露策略生成 initial tools. 主代理 subagent-xxx 是否首轮直出,只由主代理子代理白名单决定,但前提仍是 availableSubAgents 已授权."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945711040_8ytrr9cog",
+      "previousNote": "子代理执行侧职责应收敛为: 组装 sub-agent agentContext,消费统一工具访问结果,并做执行期兜底. send_message_to_agent/query_agents_status/spawn_sub_agent 与普通工具同级受 availableTools 控制. 仅 spawn_sub_agent 继续保留额外 rule: availableSubAgents 过滤后非空 + 深度门禁允许 + 执行期目标校验."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945711724_eazl8bek4",
+      "previousNote": "若后续需要放置代码内 Tool Search 白名单常量或全局开关,必须明确其语义仅为'跳过渐进暴露',不能承载权限来源. 白名单默认空,完整标识精确匹配,且不得绕过主代理/子代理现有 availableTools/availableSubAgents 过滤."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772948460730_cw40iwx6y"
+    }
+  ],
+  "04519148-2fd5-4e4e-840e-401d725cbfb9:325": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945710860_v4c4aufdf",
+      "previousNote": "Tool Search 只负责基于已授权 registry 做搜索与已发现工具管理,不负责自行推导权限. updateRegistry 仅接受 allowedTools,并且 externalServices 也必须按 allowedTools 同步过滤,避免未授权服务信息泄露. buildActiveTools 负责合并 tool_search + initialTools + discovered tools,白名单只影响首轮直出,不改变权限边界."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945710609_q2vxhbpz7",
+      "previousNote": "Tool Search 权限收敛核心. 该文件现作为统一工具访问决策核心,固定输出 allowedTools/searchableTools/initialTools,并提供 getToolIdentifier 与 isExactToolIdentifierMatch 作为完整标识精确匹配基线. 所有链路必须遵循 rawTools -> allowedTools -> searchableTools -> initialTools. 主代理异常时必须 fail-closed 返回空授权集合,禁止退回 rawTools 扩权."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945711724_eazl8bek4",
+      "previousNote": "projectSettings 中 TOOL_SEARCH_INITIAL_TOOL_WHITELIST 与 MAIN_AGENT_SKIP_TOOL_SEARCH_SUBAGENT_WHITELIST 现作为两层代码内默认空白名单常量. 其语义仅为 Tool Search 首轮直出策略来源,不承载权限来源,不得扩权. 所有条目必须使用完整工具标识并严格精确匹配."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772951880576_k0hrbn7cl"
+    }
+  ],
+  "dcaf34c6-c17a-4583-ada8-45be25ccc836:9": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945711724_eazl8bek4",
+      "previousNote": "projectSettings 中 TOOL_SEARCH_INITIAL_TOOL_WHITELIST 与 MAIN_AGENT_SKIP_TOOL_SEARCH_SUBAGENT_WHITELIST 作为 Tool Search 首轮直出策略来源,不承载权限来源,不得扩权. 所有条目必须使用完整工具标识并严格精确匹配. 其中主代理跳过 Tool Search 的子代理白名单现兼容 main-agents.toml 的 availableSubAgents 风格,允许直接写 agent_xxx,运行时再规范化为 subagent-agent_xxx 匹配. 同时新增最新架构约束: 服务名和工具名内部不能出现短横线,短横线只用于连接服务名和工具名. 当前正推进 useful_info 命名收敛,需将内置服务 useful-info 统一改为 useful_info,相关工具名与配置引用也必须同步收敛."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945711181_j5lhhipfz",
+      "previousNote": "主代理会话层只消费统一工具访问结果,不应内联权限判断或白名单判断. 流程固定为: collect raw tools -> resolve allowedTools/initialTools -> 用 allowedTools 初始化 Tool Search registry -> 由 initialTools + discovered tools 生成 activeTools. 若主代理权限筛选异常,上游必须按 fail-closed 生效,此处不得回退到原始工具集."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945711902_2nlp3jjob",
+      "previousNote": "tool-search 命令层只负责触发 Tool Search 能力入口,不得掺入权限判断或旧模式状态语义. Tool Search 是否能搜到某工具,完全取决于统一工具访问结果,而不是命令层分支."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1772958935650_lu0j6o03c"
+    }
   ]
 }

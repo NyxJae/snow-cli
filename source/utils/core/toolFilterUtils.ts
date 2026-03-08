@@ -1,15 +1,19 @@
 /**
- * 工具筛选通用函数
+ * 工具访问决策核心.
  *
- * 提供统一的工具权限筛选逻辑，消除各API渠道中的重复代码。
- * 使用主代理管理器进行工具权限控制，确保4状态循环下的完整权限控制。
+ * 统一收敛主代理工具权限过滤与 Tool Search 暴露分层,确保所有链路遵循:
+ * rawTools -> allowedTools -> searchableTools -> initialTools.
  */
 
 import {mainAgentManager} from '../MainAgentManager.js';
 import type {ChatCompletionTool} from '../../api/types.js';
+import {
+	MAIN_AGENT_SKIP_TOOL_SEARCH_SUBAGENT_WHITELIST,
+	TOOL_SEARCH_INITIAL_TOOL_WHITELIST,
+} from '../config/projectSettings.js';
 
 /**
- * 工具筛选选项接口
+ * 工具访问决策选项.
  */
 export interface ToolFilterOptions {
 	/** 原始工具列表 */
@@ -19,117 +23,208 @@ export interface ToolFilterOptions {
 }
 
 /**
- * 工具筛选结果接口
+ * 工具访问调试信息.
  */
-export interface ToolFilterResult {
-	/** 筛选后的工具列表 */
-	filteredTools: ChatCompletionTool[];
-	/** 原始工具列表（用于回退） */
-	originalTools: ChatCompletionTool[];
-	/** 调试信息 */
-	debugInfo?: {
-		availableTools: string[];
-		availableSubAgents: string[];
-		allowedToolNames: string[];
-		filteredCount: number;
-		originalCount: number;
-	};
+export interface ToolAccessDebugInfo {
+	availableTools: string[];
+	availableSubAgents: string[];
+	allowedToolNames: string[];
+	globalWhitelistedToolNames: string[];
+	mainAgentSubagentWhitelistedToolNames: string[];
+	filteredCount: number;
+	originalCount: number;
 }
 
 /**
- * 使用主代理管理器筛选工具权限
+ * 工具访问决策结果.
+ */
+export interface ToolFilterResult {
+	/** 原始工具列表 */
+	originalTools: ChatCompletionTool[];
+	/** 已授权工具全集 */
+	allowedTools: ChatCompletionTool[];
+	/** 可通过 Tool Search 发现的工具 */
+	searchableTools: ChatCompletionTool[];
+	/** 首轮直接暴露给模型的工具 */
+	initialTools: ChatCompletionTool[];
+	/** 向后兼容字段,等价于 allowedTools */
+	filteredTools: ChatCompletionTool[];
+	/** 已授权工具名称 */
+	allowedToolNames: string[];
+	/** 可搜索工具名称 */
+	searchableToolNames: string[];
+	/** 首轮直出工具名称 */
+	initialToolNames: string[];
+	/** 调试信息 */
+	debugInfo?: ToolAccessDebugInfo;
+}
+
+/**
+ * 将 serviceName + toolName 组装为完整工具标识.
  *
- * 该函数会从主代理管理器获取当前允许的工具和子代理列表，
- * 并对输入的工具进行筛选，只保留在允许列表中的工具。
- * 如果主代理管理器不可用或发生错误，会回退到原始工具列表。
+ * 对 `tool_search` 与 `subagent-*` 等无服务前缀工具,保留其运行时名称.
+ */
+export function getToolIdentifier(toolName: string): string {
+	if (toolName === 'tool_search' || toolName.startsWith('subagent-')) {
+		return toolName;
+	}
+
+	const splitIndex = toolName.indexOf('-');
+	if (splitIndex <= 0) {
+		return toolName;
+	}
+
+	const serviceName = toolName.slice(0, splitIndex);
+	return `${serviceName}.${toolName}`;
+}
+
+/**
+ * 使用完整工具标识进行严格精确匹配.
+ */
+export function isExactToolIdentifierMatch(
+	toolName: string,
+	allowedIdentifiers: Iterable<string>,
+): boolean {
+	const toolIdentifier = getToolIdentifier(toolName);
+	for (const identifier of allowedIdentifiers) {
+		if (identifier === toolIdentifier) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * 判断工具是否应在首轮直接暴露.
+ */
+export function shouldExposeToolInitially(toolName: string): boolean {
+	const normalizedGlobalWhitelist = TOOL_SEARCH_INITIAL_TOOL_WHITELIST.map(
+		identifier =>
+			identifier.includes('.') ? identifier : getToolIdentifier(identifier),
+	);
+	if (isExactToolIdentifierMatch(toolName, normalizedGlobalWhitelist)) {
+		return true;
+	}
+
+	if (toolName.startsWith('subagent-')) {
+		const normalizedMainAgentSubagentWhitelist =
+			MAIN_AGENT_SKIP_TOOL_SEARCH_SUBAGENT_WHITELIST.map(identifier =>
+				identifier.startsWith('subagent-')
+					? identifier
+					: `subagent-${identifier}`,
+			);
+		return isExactToolIdentifierMatch(
+			toolName,
+			normalizedMainAgentSubagentWhitelist,
+		);
+	}
+
+	return false;
+}
+
+/**
+ * 计算主代理的统一工具访问结果.
  *
- * @param options 筛选选项
- * @returns 筛选结果
+ * 权限过滤永远先于白名单暴露策略. 白名单只决定 initialTools,不扩权.
  */
 export function filterToolsByMainAgent(
 	options: ToolFilterOptions,
 ): ToolFilterResult {
 	const {tools, enableDebug = false} = options;
+	const originalTools = tools ? [...tools] : [];
 
-	// 如果没有工具输入，返回空结果
-	if (!tools || tools.length === 0) {
+	if (originalTools.length === 0) {
 		return {
-			filteredTools: [],
 			originalTools: [],
+			allowedTools: [],
+			searchableTools: [],
+			initialTools: [],
+			filteredTools: [],
+			allowedToolNames: [],
+			searchableToolNames: [],
+			initialToolNames: [],
 		};
 	}
 
-	// 原始工具列表（用于回退）
-	const originalTools = [...tools];
-
 	try {
-		// 从主代理管理器获取可用的工具和子代理列表
 		const availableTools = mainAgentManager.getAvailableTools();
-		// 获取可用子代理全称
-		const availableSubAgents = mainAgentManager.getAvailableSubAgents()
-
-		// 如果没有可用工具或子代理，返回原始列表
-		if (availableTools.length === 0 && availableSubAgents.length === 0) {
-			return {
-				filteredTools: originalTools,
-				originalTools,
-				debugInfo: enableDebug
-					? {
-							availableTools,
-							availableSubAgents,
-							allowedToolNames: [],
-							filteredCount: originalTools.length,
-							originalCount: originalTools.length,
-					  }
-					: undefined,
-			};
-		}
-
-		// 合并允许的工具和子代理列表
+		const availableSubAgents = mainAgentManager.getAvailableSubAgents();
 		const allowedToolNames = [...availableTools, ...availableSubAgents];
-		// 支持精确匹配
-		const filteredTools = originalTools.filter(tool => {
-			const toolName = tool.function.name;
-			return allowedToolNames.some((allowedTool: string) => {
-				// 精确匹配
-				if (toolName === allowedTool) {
-					return true;
-				}
-				return false;
-			});
-		});
-
-		// 返回筛选结果
+		const allowedNameSet = new Set(allowedToolNames);
+		const allowedTools = originalTools.filter(tool =>
+			allowedNameSet.has(tool.function.name),
+		);
+		const initialTools = allowedTools.filter(tool =>
+			shouldExposeToolInitially(tool.function.name),
+		);
+		const initialToolNameSet = new Set(
+			initialTools.map(tool => tool.function.name),
+		);
+		const searchableTools = allowedTools.filter(
+			tool => !initialToolNameSet.has(tool.function.name),
+		);
 		const result: ToolFilterResult = {
-			filteredTools,
 			originalTools,
+			allowedTools,
+			searchableTools,
+			initialTools,
+			filteredTools: allowedTools,
+			allowedToolNames: allowedTools.map(tool => tool.function.name),
+			searchableToolNames: searchableTools.map(tool => tool.function.name),
+			initialToolNames: initialTools.map(tool => tool.function.name),
 		};
 
-		// 如果启用了调试信息，添加调试数据
 		if (enableDebug) {
 			result.debugInfo = {
 				availableTools,
 				availableSubAgents,
 				allowedToolNames,
-				filteredCount: filteredTools.length,
+				globalWhitelistedToolNames: allowedTools
+					.filter(tool =>
+						isExactToolIdentifierMatch(
+							tool.function.name,
+							TOOL_SEARCH_INITIAL_TOOL_WHITELIST,
+						),
+					)
+					.map(tool => tool.function.name),
+				mainAgentSubagentWhitelistedToolNames: allowedTools
+					.filter(
+						tool =>
+							tool.function.name.startsWith('subagent-') &&
+							isExactToolIdentifierMatch(
+								tool.function.name,
+								MAIN_AGENT_SKIP_TOOL_SEARCH_SUBAGENT_WHITELIST,
+							),
+					)
+					.map(tool => tool.function.name),
+				filteredCount: allowedTools.length,
 				originalCount: originalTools.length,
 			};
 		}
 
 		return result;
 	} catch (error) {
-		// 错误处理：主代理管理器工具筛选失败，使用原始工具列表
-		console.warn('主代理管理器工具筛选失败，使用原始工具列表:', error);
-
+		console.warn(
+			'主代理管理器工具筛选失败，按 fail-closed 返回空授权集合:',
+			error,
+		);
 		return {
-			filteredTools: originalTools,
 			originalTools,
+			allowedTools: [],
+			searchableTools: [],
+			initialTools: [],
+			filteredTools: [],
+			allowedToolNames: [],
+			searchableToolNames: [],
+			initialToolNames: [],
 			debugInfo: enableDebug
 				? {
 						availableTools: [],
 						availableSubAgents: [],
 						allowedToolNames: [],
-						filteredCount: originalTools.length,
+						globalWhitelistedToolNames: [],
+						mainAgentSubagentWhitelistedToolNames: [],
+						filteredCount: 0,
 						originalCount: originalTools.length,
 				  }
 				: undefined,
@@ -138,32 +233,27 @@ export function filterToolsByMainAgent(
 }
 
 /**
- * 简化的工具筛选函数（向后兼容）
- *
- * @param tools 原始工具列表
- * @returns 筛选后的工具列表
+ * 简化的工具筛选函数(向后兼容).
  */
 export function filterTools(
 	tools?: ChatCompletionTool[],
 ): ChatCompletionTool[] {
-	return filterToolsByMainAgent({tools}).filteredTools;
+	return filterToolsByMainAgent({tools}).allowedTools;
 }
 
 /**
- * 获取工具筛选统计信息
- *
- * @param tools 原始工具列表
- * @returns 统计信息
+ * 获取工具筛选统计信息.
  */
 export function getToolFilterStats(tools?: ChatCompletionTool[]) {
 	const result = filterToolsByMainAgent({tools, enableDebug: true});
-
 	return {
 		originalCount: result.originalTools.length,
-		filteredCount: result.filteredTools.length,
-		filteredOutCount: result.originalTools.length - result.filteredTools.length,
+		filteredCount: result.allowedTools.length,
+		filteredOutCount: result.originalTools.length - result.allowedTools.length,
 		availableTools: result.debugInfo?.availableTools || [],
 		availableSubAgents: result.debugInfo?.availableSubAgents || [],
 		allowedToolNames: result.debugInfo?.allowedToolNames || [],
+		initialToolNames: result.initialToolNames,
+		searchableToolNames: result.searchableToolNames,
 	};
 }

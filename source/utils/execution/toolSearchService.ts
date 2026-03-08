@@ -22,14 +22,25 @@ interface ExternalServiceMeta {
 	toolDescriptions: string[];
 }
 
+interface ToolSearchBuildOptions {
+	discoveredToolNames: Set<string>;
+	initialTools?: MCPTool[];
+}
+
+interface BuiltInCategorySummary {
+	category: string;
+	count: number;
+}
+
 class ToolSearchService {
 	private registry: MCPTool[] = [];
 	private toolMap: Map<string, MCPTool> = new Map();
 	private externalServices: ExternalServiceMeta[] = [];
 
 	/**
-	 * Update the tool registry with all available tools.
-	 * Called once per conversation turn with the full tool set.
+	 * Update the tool registry with already-authorized tools only.
+	 *
+	 * Tool Search registry 必须基于 allowedTools 构建,绝不能回流 rawTools.
 	 */
 	updateRegistry(tools: MCPTool[], servicesInfo?: MCPServiceTools[]): void {
 		this.registry = tools;
@@ -38,14 +49,20 @@ class ToolSearchService {
 			this.toolMap.set(tool.function.name, tool);
 		}
 
+		const allowedToolNames = new Set(tools.map(tool => tool.function.name));
 		this.externalServices = [];
 		if (servicesInfo) {
 			for (const svc of servicesInfo) {
-				if (!svc.isBuiltIn && svc.connected && svc.tools.length > 0) {
+				const allowedServiceTools = svc.tools.filter(tool =>
+					allowedToolNames.has(`${svc.serviceName}-${tool.name}`),
+				);
+				if (!svc.isBuiltIn && svc.connected && allowedServiceTools.length > 0) {
 					this.externalServices.push({
 						serviceName: svc.serviceName,
-						toolNames: svc.tools.map(t => t.name),
-						toolDescriptions: svc.tools.map(t => t.description || t.name),
+						toolNames: allowedServiceTools.map(t => t.name),
+						toolDescriptions: allowedServiceTools.map(
+							t => t.description || t.name,
+						),
 					});
 				}
 			}
@@ -141,10 +158,55 @@ class ToolSearchService {
 			(r, i) => `${i + 1}. **${r.toolName}** - ${r.description}`,
 		);
 
-		const textResult = `Found ${results.length} tool(s) matching "${query}" (now available for use):\n\n${lines.join('\n\n')}\n\nThese tools are now loaded and ready to call directly.`;
+		const textResult = `Found ${
+			results.length
+		} tool(s) matching "${query}" (now available for use):\n\n${lines.join(
+			'\n\n',
+		)}\n\nThese tools are now loaded and ready to call directly.`;
 		const matchedToolNames = results.map(r => r.toolName);
 
 		return {textResult, matchedToolNames};
+	}
+
+	private getBuiltInCategoryCounts(): Map<string, number> {
+		const externalNames = new Set(
+			this.externalServices.map(s => s.serviceName.toLowerCase()),
+		);
+		const categories = new Map<string, number>();
+		for (const tool of this.registry) {
+			const prefix =
+				tool.function.name.split('-')[0]?.toLowerCase() ||
+				tool.function.name.toLowerCase();
+			if (externalNames.has(prefix)) {
+				continue;
+			}
+			categories.set(prefix, (categories.get(prefix) || 0) + 1);
+		}
+		return categories;
+	}
+
+	private getSortedBuiltInCategories(limit?: number): BuiltInCategorySummary[] {
+		const categories = Array.from(this.getBuiltInCategoryCounts()).map(
+			([category, count]) => ({category, count}),
+		);
+		categories.sort((a, b) => {
+			if (b.count !== a.count) {
+				return b.count - a.count;
+			}
+			return a.category.localeCompare(b.category);
+		});
+		return typeof limit === 'number' ? categories.slice(0, limit) : categories;
+	}
+
+	private getBuiltInCategoryExamples(limit = 5): string[] {
+		return this.getSortedBuiltInCategories(limit).map(item => item.category);
+	}
+
+	private getThirdPartyServiceNames(limit?: number): string[] {
+		const serviceNames = this.externalServices.map(s => s.serviceName).sort();
+		return typeof limit === 'number'
+			? serviceNames.slice(0, limit)
+			: serviceNames;
 	}
 
 	/**
@@ -152,31 +214,23 @@ class ToolSearchService {
 	 * Separates built-in and third-party services for clarity.
 	 */
 	getCategorySummary(): string {
-		const categories = new Map<string, number>();
-		for (const tool of this.registry) {
-			const prefix = tool.function.name.split('-')[0] || tool.function.name;
-			categories.set(prefix, (categories.get(prefix) || 0) + 1);
-		}
-
-		const externalNames = new Set(
-			this.externalServices.map(s => s.serviceName),
+		const builtInLines = this.getSortedBuiltInCategories().map(
+			item =>
+				`- ${item.category} (${item.count} tool${item.count > 1 ? 's' : ''})`,
 		);
-
-		const builtInLines: string[] = [];
-		const externalLines: string[] = [];
-
-		for (const [prefix, count] of categories) {
-			const line = `- ${prefix} (${count} tool${count > 1 ? 's' : ''})`;
-			if (externalNames.has(prefix)) {
-				externalLines.push(line);
-			} else {
-				builtInLines.push(line);
-			}
-		}
+		const externalLines = this.externalServices.map(
+			svc =>
+				`- ${svc.serviceName} (${svc.toolNames.length} tool${
+					svc.toolNames.length > 1 ? 's' : ''
+				})`,
+		);
 
 		let result = builtInLines.join('\n');
 		if (externalLines.length > 0) {
-			result += '\n\nThird-party MCP services:\n' + externalLines.join('\n');
+			result +=
+				(result ? '\n\n' : '') +
+				'Third-party MCP services:\n' +
+				externalLines.join('\n');
 		}
 		return result;
 	}
@@ -225,14 +279,28 @@ class ToolSearchService {
 
 	/**
 	 * Build the active tools array for an API request.
-	 * Includes tool_search + any previously discovered/used tools.
+	 * Includes tool_search,首轮直出工具,以及已发现/已使用工具.
 	 */
-	buildActiveTools(discoveredToolNames: Set<string>): MCPTool[] {
+	buildActiveTools(options: ToolSearchBuildOptions): MCPTool[] {
+		const {discoveredToolNames, initialTools = []} = options;
 		const active: MCPTool[] = [this.getToolSearchDefinition()];
+		const addedToolNames = new Set<string>();
+
+		for (const tool of initialTools) {
+			if (!addedToolNames.has(tool.function.name)) {
+				active.push(tool);
+				addedToolNames.add(tool.function.name);
+			}
+		}
+
 		for (const name of discoveredToolNames) {
+			if (addedToolNames.has(name)) {
+				continue;
+			}
 			const tool = this.toolMap.get(name);
 			if (tool) {
 				active.push(tool);
+				addedToolNames.add(name);
 			}
 		}
 		return active;
@@ -240,12 +308,17 @@ class ToolSearchService {
 
 	/**
 	 * Get the tool_search meta-tool definition.
-	 * Dynamically includes third-party MCP service info so the AI knows they exist.
+	 * Dynamically includes authorized built-in categories and third-party MCP service info.
 	 */
 	getToolSearchDefinition(): MCPTool {
+		const builtInCategoryExamples = this.getBuiltInCategoryExamples(5);
+		const builtInCategoryText =
+			builtInCategoryExamples.length > 0
+				? builtInCategoryExamples.map(category => `"${category}"`).join(', ')
+				: 'authorized categories from the current tool registry';
 		let description =
 			'Search for available tools by keyword or description. Call this FIRST to discover tools you need. Found tools become immediately available. ' +
-			'Search by category (e.g., "filesystem", "terminal", "todo", "ace", "websearch") or by action (e.g., "edit file", "search code", "run command"). ' +
+			`Search by authorized built-in category (e.g., ${builtInCategoryText}) or by action (e.g., "edit file", "search code", "run command"). ` +
 			'You can call this multiple times to discover different tool categories.';
 
 		if (this.externalServices.length > 0) {
@@ -257,20 +330,24 @@ class ToolSearchService {
 						return short;
 					})
 					.join('; ');
-				const extra = svc.toolNames.length > 3 ? ` +${svc.toolNames.length - 3} more` : '';
+				const extra =
+					svc.toolNames.length > 3 ? ` +${svc.toolNames.length - 3} more` : '';
 				return `"${svc.serviceName}" (${toolBrief}${extra})`;
 			});
 			description +=
-				` Additionally, the following third-party MCP services are loaded and searchable: ${externalSummaries.join(', ')}. ` +
-				`Search by their service name to discover their tools.`;
+				` Additionally, the following third-party MCP services are loaded and searchable: ${externalSummaries.join(
+					', ',
+				)}. ` + `Search by their service name to discover their tools.`;
 		}
 
 		let queryDescription =
 			'Search query - tool name, keyword, or description of what you want to do. ' +
-			'Examples: "filesystem", "code search", "edit file", "terminal execute", "todo", "websearch"';
+			`Examples: ${builtInCategoryText}, "edit file", "search code", "run command"`;
 
 		if (this.externalServices.length > 0) {
-			const extNames = this.externalServices.map(s => `"${s.serviceName}"`).join(', ');
+			const extNames = this.getThirdPartyServiceNames(5)
+				.map(name => `"${name}"`)
+				.join(', ');
 			queryDescription += `. Third-party services: ${extNames}`;
 		}
 

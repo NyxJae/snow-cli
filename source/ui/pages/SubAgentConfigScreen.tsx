@@ -162,7 +162,7 @@ export default function SubAgentConfigScreen({
 		},
 		{
 			name: t.subAgentConfig.usefulInfoTools || 'Useful Information',
-			tools: ['useful-info-add', 'useful-info-delete', 'useful-info-list'],
+			tools: ['useful_info-add', 'useful_info-delete', 'useful_info-list'],
 		},
 		{
 			name: t.subAgentConfig.notebookTools || 'Notebook',
@@ -360,9 +360,9 @@ export default function SubAgentConfigScreen({
 						'todo-update',
 						'todo-add',
 						'todo-delete',
-						'useful-info-add',
-						'useful-info-delete',
-						'useful-info-list',
+						'useful_info-add',
+						'useful_info-delete',
+						'useful_info-list',
 						'notebook-add',
 						'notebook-query',
 						'notebook-update',

@@ -26,6 +26,7 @@ import {
 	getOpenAiConfig,
 	DEFAULT_AUTO_COMPRESS_THRESHOLD,
 } from '../../utils/config/apiConfig.js';
+import {getToolSearchEnabled} from '../../utils/config/projectSettings.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
 import {unifiedHooksExecutor} from '../../utils/execution/unifiedHooksExecutor.js';
 import {formatTodoContext} from '../../utils/core/todoPreprocessor.js';
@@ -351,25 +352,31 @@ async function executeWithInternalRetry(
 	let {conversationMessages, existingTodoList} =
 		await initializeConversationSession();
 
-	// Collect all MCP tools,按主代理权限过滤后再作为 Tool Search registry 基础.
+	// Collect all MCP tools,按主代理权限过滤并划分初始暴露/可搜索集合后再接入 Tool Search.
 	const allMcpTools = await collectAllMCPTools();
-	const {filteredTools} = filterToolsByMainAgent({tools: allMcpTools});
-	const filteredMcpTools = filteredTools as MCPTool[];
+	const {allowedTools, initialTools} = filterToolsByMainAgent({
+		tools: allMcpTools,
+	});
+	const allowedMcpTools = allowedTools as MCPTool[];
+	const initialMcpTools = initialTools as MCPTool[];
 	const servicesInfo = await getMCPServicesInfo();
-	toolSearchService.updateRegistry(filteredMcpTools, servicesInfo);
+	toolSearchService.updateRegistry(allowedMcpTools, servicesInfo);
 
 	let activeTools: MCPTool[];
 	let discoveredToolNames: Set<string>;
-	const useToolSearch = true;
+	const useToolSearch = getToolSearchEnabled();
 
 	if (useToolSearch) {
 		discoveredToolNames = toolSearchService.extractUsedToolNames(
 			conversationMessages as any[],
 		);
-		activeTools = toolSearchService.buildActiveTools(discoveredToolNames);
+		activeTools = toolSearchService.buildActiveTools({
+			discoveredToolNames,
+			initialTools: initialMcpTools,
+		});
 	} else {
 		discoveredToolNames = new Set<string>();
-		activeTools = filteredMcpTools;
+		activeTools = allowedMcpTools;
 	}
 
 	// LAYER 3 PROTECTION: Clean orphaned tool_calls before sending to API
