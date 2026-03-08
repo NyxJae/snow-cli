@@ -97,6 +97,10 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 					t.commandPanel.commands.permissions || 'Manage tool permissions',
 			},
 			{
+				name: 'tool-search',
+				description: t.commandPanel.commands.toolSearch || 'Tool Search',
+			},
+			{
 				name: 'worktree',
 				description:
 					t.commandPanel.commands.worktree ||

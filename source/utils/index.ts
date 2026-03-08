@@ -27,7 +27,7 @@ import './commands/backend.js';
 import './commands/models.js';
 import './commands/usage.js';
 import './commands/permissions.js';
-// Vulnerability Hunting Mode 已整合为 Debugger 主代理，不再需要独立命令
+import './commands/toolsearch.js';
 import './commands/yolo.js';
 
 // Export logger

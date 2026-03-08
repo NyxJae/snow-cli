@@ -51,6 +51,10 @@ import {
 	createSkillTemplate,
 } from '../../utils/commands/skills.js';
 import {getOpenAiConfig} from '../../utils/config/apiConfig.js';
+import {
+	getToolSearchEnabled,
+	setToolSearchEnabled as persistToolSearchEnabled,
+} from '../../utils/config/projectSettings.js';
 import {getSimpleMode} from '../../utils/config/themeConfig.js';
 import {getAllProfiles} from '../../utils/config/configManager.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
@@ -146,7 +150,6 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		try {
 			const {mainAgentManager} = require('../../utils/MainAgentManager.js');
 			const agentId = mainAgentManager.getCurrentAgentId();
-			// 将agentId转换为显示名称
 			switch (agentId) {
 				case 'general':
 					return 'General';
@@ -160,6 +163,9 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		} catch {
 			return 'General';
 		}
+	});
+	const [toolSearchDisabled] = useState(() => {
+		return !getToolSearchEnabled();
 	});
 	const [simpleMode, setSimpleMode] = useState(() => {
 		// Load simple mode from config
@@ -328,6 +334,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			import('../../utils/commands/models.js'),
 			import('../../utils/commands/worktree.js'),
 			import('../../utils/commands/newPrompt.js'),
+			import('../../utils/commands/toolsearch.js'),
 		])
 			.then(async () => {
 				// Load and register custom commands from user directory
@@ -605,6 +612,12 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		}
 	}, [yoloMode]);
 
+	// Persist tool search state to project .snow/settings.json
+	useEffect(() => {
+		persistToolSearchEnabled(!toolSearchDisabled);
+	}, [toolSearchDisabled]);
+
+	// Sync simple mode from config periodically to reflect theme settings changes
 	useEffect(() => {
 		const interval = setInterval(() => {
 			const currentSimpleMode = getSimpleMode();
@@ -1566,6 +1579,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 						chatHistory={messages}
 						yoloMode={yoloMode}
 						setYoloMode={setYoloMode}
+						toolSearchDisabled={toolSearchDisabled}
 						contextUsage={
 							streamingState.contextUsage
 								? {

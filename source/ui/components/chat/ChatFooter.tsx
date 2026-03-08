@@ -50,6 +50,7 @@ type ChatFooterProps = {
 	yoloMode: boolean;
 	setYoloMode: (value: boolean) => void;
 	currentAgentName: string;
+	toolSearchDisabled?: boolean;
 	contextUsage?: {
 		inputTokens: number;
 		maxContextTokens: number;
@@ -236,6 +237,7 @@ const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
 					<StatusLine
 						yoloMode={props.yoloMode}
 						currentAgentName={props.currentAgentName}
+						toolSearchDisabled={props.toolSearchDisabled}
 						vscodeConnectionStatus={props.vscodeConnectionStatus}
 						editorContext={props.editorContext}
 						connectionStatus={connectionStatus}

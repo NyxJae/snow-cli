@@ -1068,8 +1068,8 @@ export function normalizeToolArgs(args: any): any {
 }
 
 /**
- * Execute an MCP tool by parsing the prefixed tool name
- * Only connects to the service when actually needed
+ * Execute an MCP tool by parsing the prefixed tool name.
+ * Only connects to the service when actually needed.
  */
 export async function executeMCPTool(
 	toolName: string,
@@ -1092,9 +1092,7 @@ export async function executeMCPTool(
 				},
 			);
 
-			// Handle hook exit codes: 0=continue, 1=continue, 2+=throw
 			if (hookResult && !hookResult.success) {
-				// Find failed command hook
 				const commandError = hookResult.results.find(
 					(r: any) => r.type === 'command' && !r.success,
 				);
@@ -1102,8 +1100,13 @@ export async function executeMCPTool(
 				if (commandError && commandError.type === 'command') {
 					const {exitCode, command, output, error} = commandError;
 
-					// Exit code 2+: Throw error to stop AI conversation
-					if (exitCode >= 2 || exitCode < 0) {
+					if (exitCode === 1) {
+						return (
+							error ||
+							output ||
+							`[beforeToolCall Hook Warning] Command: ${command} exited with code 1`
+						);
+					} else if (exitCode >= 2 || exitCode < 0) {
 						const combinedOutput =
 							[output, error].filter(Boolean).join('\n\n') || '(no output)';
 						const hookError = new Error(
@@ -1113,25 +1116,13 @@ export async function executeMCPTool(
 						) as HookError;
 						hookError.isHookFailure = true;
 						throw hookError;
-					} else if (exitCode === 1) {
-						// Exit code 1: Warning, log and continue execution
-						console.warn(
-							`[WARN] beforeToolCall hook warning (exitCode: ${exitCode}):
-` +
-								`output: ${output || '(empty)'}
-` +
-								`error: ${error || '(empty)'}`,
-						);
 					}
-					// Exit code 0: Success, continue silently
 				}
 			}
 		} catch (error) {
-			// Re-throw hook errors to stop AI conversation
 			if ((error as HookError)?.isHookFailure) {
 				throw error;
 			}
-			// Otherwise log and continue - don't block on unexpected errors
 			console.warn('Failed to execute beforeToolCall hook:', error);
 		}
 	}
@@ -1140,6 +1131,16 @@ export async function executeMCPTool(
 	let executionError: Error | null = null;
 
 	try {
+		// Handle tool_search meta-tool (progressive tool discovery)
+		if (toolName === 'tool_search') {
+			const {toolSearchService} = await import('./toolSearchService.js');
+			const {textResult} = toolSearchService.search(
+				args.query || '',
+				args.maxResults,
+			);
+			return textResult;
+		}
+
 		// Find the service name by checking against known services
 		let serviceName: string | null = null;
 		let actualToolName: string | null = null;
@@ -1774,11 +1775,9 @@ Command: ${command}
 Output:
 ${combinedOutput}`;
 
-							// Append warning to result
 							if (typeof result === 'string') {
 								result = result + warningMessage;
 							} else if (result && typeof result === 'object') {
-								// For object results, try to append to content field or convert to string
 								if ('content' in result && typeof result.content === 'string') {
 									result.content = result.content + warningMessage;
 								} else {

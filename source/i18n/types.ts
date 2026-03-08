@@ -541,6 +541,7 @@ export type TranslationKeys = {
 			codebase: string;
 			permissions: string;
 			vulnerabilityHunting: string;
+			toolSearch: string;
 			worktree: string; // Git branch management panel
 			diff: string;
 			connect: string;
@@ -956,6 +957,7 @@ export type TranslationKeys = {
 		expandedViewHint: string;
 		yoloModeActive: string;
 		teamModeActive: string;
+		toolSearchEnabled: string;
 		tokens: string;
 		cached: string;
 		newCache: string;
@@ -1123,8 +1125,9 @@ export type TranslationKeys = {
 		filesCountWithSelection: string;
 		notebookCount: string;
 		question: string;
-		yesRollbackFiles: string;
-		noConversationOnly: string;
+		conversationOnly: string;
+		conversationAndFiles: string;
+		filesOnly: string;
 		moreAbove: string;
 		moreBelow: string;
 		andMoreFiles: string;

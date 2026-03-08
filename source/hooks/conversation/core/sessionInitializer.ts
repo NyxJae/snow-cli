@@ -15,9 +15,8 @@ import {getCustomSystemPrompt} from '../../../utils/config/apiConfig.js';
 /**
  * 初始化会话和TODO上下文
  *
- * @returns 初始化后的对话消息和会话信息
- * @deprecated planMode 和 vulnerabilityHuntingMode 参数已移除.
- * 现在由 mainAgentManager 管理代理状态.
+ * @returns 初始化后的对话消息和会话信息.
+ * @deprecated 旧模式参数已移除,现在由 mainAgentManager 管理代理状态.
  */
 export async function initializeConversationSession(): Promise<{
 	conversationMessages: ChatMessage[];

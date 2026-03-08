@@ -9,17 +9,23 @@ import {createStreamingAnthropicCompletion} from '../../api/anthropic.js';
 import {mainAgentManager} from '../../utils/MainAgentManager.js';
 import {
 	collectAllMCPTools,
+	getMCPServicesInfo,
 	getTodoService,
 	getUsefulInfoService,
+	type MCPTool,
 } from '../../utils/execution/mcpToolsManager.js';
 import {filterToolsByMainAgent} from '../../utils/core/toolFilterUtils.js';
+import {toolSearchService} from '../../utils/execution/toolSearchService.js';
 import {
 	executeToolCalls,
 	type ToolCall,
 	type MCPExecutionContext,
 } from '../../utils/execution/toolExecutor.js';
 import type {SubAgentMessage} from '../../utils/execution/subAgentExecutor.js';
-import {getOpenAiConfig, DEFAULT_AUTO_COMPRESS_THRESHOLD} from '../../utils/config/apiConfig.js';
+import {
+	getOpenAiConfig,
+	DEFAULT_AUTO_COMPRESS_THRESHOLD,
+} from '../../utils/config/apiConfig.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
 import {unifiedHooksExecutor} from '../../utils/execution/unifiedHooksExecutor.js';
 import {formatTodoContext} from '../../utils/core/todoPreprocessor.js';
@@ -345,10 +351,26 @@ async function executeWithInternalRetry(
 	let {conversationMessages, existingTodoList} =
 		await initializeConversationSession();
 
-	// Collect all MCP tools and filter based on main agent configuration
+	// Collect all MCP tools,按主代理权限过滤后再作为 Tool Search registry 基础.
 	const allMcpTools = await collectAllMCPTools();
 	const {filteredTools} = filterToolsByMainAgent({tools: allMcpTools});
-	const mcpTools = filteredTools;
+	const filteredMcpTools = filteredTools as MCPTool[];
+	const servicesInfo = await getMCPServicesInfo();
+	toolSearchService.updateRegistry(filteredMcpTools, servicesInfo);
+
+	let activeTools: MCPTool[];
+	let discoveredToolNames: Set<string>;
+	const useToolSearch = true;
+
+	if (useToolSearch) {
+		discoveredToolNames = toolSearchService.extractUsedToolNames(
+			conversationMessages as any[],
+		);
+		activeTools = toolSearchService.buildActiveTools(discoveredToolNames);
+	} else {
+		discoveredToolNames = new Set<string>();
+		activeTools = filteredMcpTools;
+	}
 
 	// LAYER 3 PROTECTION: Clean orphaned tool_calls before sending to API
 	// This prevents API errors if session has incomplete tool_calls due to force quit
@@ -501,7 +523,7 @@ async function executeWithInternalRetry(
 			try {
 				const estimatedPromptTokens = await estimateFullRequestTokens(
 					conversationMessages,
-					mcpTools.length > 0 ? mcpTools : undefined,
+					activeTools.length > 0 ? activeTools : undefined,
 					model,
 				);
 				// 计算上下文使用百分比,优先使用maxContextTokens,回退到maxTokens,默认200000
@@ -530,7 +552,7 @@ async function executeWithInternalRetry(
 								messages: conversationMessages,
 								temperature: 0,
 								max_tokens: config.maxTokens || 4096,
-								tools: mcpTools.length > 0 ? mcpTools : undefined,
+								tools: activeTools.length > 0 ? activeTools : undefined,
 								sessionId: currentSession?.id,
 								// Disable thinking for basicModel (e.g., init command)
 								disableThinking: options.useBasicModel,
@@ -544,7 +566,7 @@ async function executeWithInternalRetry(
 								model,
 								messages: conversationMessages,
 								temperature: 0,
-								tools: mcpTools.length > 0 ? mcpTools : undefined,
+								tools: activeTools.length > 0 ? activeTools : undefined,
 							},
 							controller.signal,
 							onRetry,
@@ -555,9 +577,12 @@ async function executeWithInternalRetry(
 								model,
 								messages: conversationMessages,
 								temperature: 0,
-								tools: mcpTools.length > 0 ? mcpTools : undefined,
+								tools: activeTools.length > 0 ? activeTools : undefined,
 								tool_choice: 'auto',
 								prompt_cache_key: cacheKey, // Use session ID as cache key
+								// Don't pass reasoning for basicModel (small models may not support it)
+								// Pass null to explicitly disable reasoning in API call
+								reasoning: options.useBasicModel ? null : undefined,
 							},
 							controller.signal,
 							onRetry,
@@ -567,7 +592,7 @@ async function executeWithInternalRetry(
 								model,
 								messages: conversationMessages,
 								temperature: 0,
-								tools: mcpTools.length > 0 ? mcpTools : undefined,
+								tools: activeTools.length > 0 ? activeTools : undefined,
 							},
 							controller.signal,
 							onRetry,
@@ -797,7 +822,7 @@ async function executeWithInternalRetry(
 				try {
 					const estimatedPromptTokens = await estimateFullRequestTokens(
 						conversationMessages,
-						mcpTools.length > 0 ? mcpTools : undefined,
+						activeTools.length > 0 ? activeTools : undefined,
 						model,
 					);
 
@@ -1771,6 +1796,31 @@ async function executeWithInternalRetry(
 					break;
 				}
 
+				// Progressive tool loading: expand activeTools when tool_search was called
+				if (useToolSearch && receivedToolCalls) {
+					for (const tc of receivedToolCalls) {
+						if (tc.function.name === 'tool_search') {
+							try {
+								const searchArgs = JSON.parse(tc.function.arguments || '{}');
+								const {matchedToolNames} = toolSearchService.search(
+									searchArgs.query || '',
+								);
+								for (const name of matchedToolNames) {
+									if (!discoveredToolNames.has(name)) {
+										discoveredToolNames.add(name);
+										const tool = toolSearchService.getToolByName(name);
+										if (tool) {
+											activeTools.push(tool);
+										}
+									}
+								}
+							} catch {
+								// Ignore parse errors
+							}
+						}
+					}
+				}
+
 				// CRITICAL: 在压缩前，必须先将 toolResults 保存到 conversationMessages 和会话文件
 				// 这样压缩时读取的会话才包含完整的工具调用和结果
 				// 否则新会话只有 tool_calls 没有对应的 tool results
@@ -1796,7 +1846,10 @@ async function executeWithInternalRetry(
 				if (
 					config.enableAutoCompress !== false &&
 					options.getCurrentContextPercentage &&
-					shouldAutoCompress(options.getCurrentContextPercentage(), config.autoCompressThreshold ?? DEFAULT_AUTO_COMPRESS_THRESHOLD)
+					shouldAutoCompress(
+						options.getCurrentContextPercentage(),
+						config.autoCompressThreshold ?? DEFAULT_AUTO_COMPRESS_THRESHOLD,
+					)
 				) {
 					try {
 						// 显示压缩提示消息
@@ -2176,7 +2229,10 @@ async function executeWithInternalRetry(
 						if (
 							config.enableAutoCompress !== false &&
 							options.getCurrentContextPercentage &&
-							shouldAutoCompress(options.getCurrentContextPercentage(), config.autoCompressThreshold ?? DEFAULT_AUTO_COMPRESS_THRESHOLD)
+							shouldAutoCompress(
+								options.getCurrentContextPercentage(),
+								config.autoCompressThreshold ?? DEFAULT_AUTO_COMPRESS_THRESHOLD,
+							)
 						) {
 							try {
 								// 显示压缩提示消息

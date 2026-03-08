@@ -35,8 +35,9 @@ type ContextUsage = {
 type Props = {
 	// 模式信息
 	yoloMode?: boolean;
-	currentAgentName?: string; // 新增：当前主代理名称
-	yoloEnabled?: boolean; // 新增：YOLO开启状态
+	currentAgentName?: string;
+	yoloEnabled?: boolean;
+	toolSearchDisabled?: boolean;
 
 	// IDE连接信息
 	vscodeConnectionStatus?: VSCodeConnectionStatus;
@@ -79,6 +80,7 @@ export default function StatusLine({
 	yoloMode = false,
 	currentAgentName,
 	yoloEnabled,
+	toolSearchDisabled = true,
 	vscodeConnectionStatus,
 	editorContext,
 	connectionStatus,
@@ -99,6 +101,7 @@ export default function StatusLine({
 		yoloMode ||
 		yoloEnabled ||
 		currentAgentName ||
+		!toolSearchDisabled ||
 		(vscodeConnectionStatus && vscodeConnectionStatus !== 'disconnected') ||
 		(connectionStatus && connectionStatus !== 'disconnected') ||
 		contextUsage ||
@@ -133,6 +136,14 @@ export default function StatusLine({
 		// 主代理名称（始终显示）
 		if (currentAgentName) {
 			statusItems.push({text: currentAgentName, color: '#60A5FA'});
+		}
+
+		// Tool Search 开启提示
+		if (!toolSearchDisabled) {
+			statusItems.push({
+				text: '♾︎ ToolSearch ON',
+				color: theme.colors.menuInfo,
+			});
 		}
 
 		// IDE连接状态
@@ -424,6 +435,15 @@ export default function StatusLine({
 				<Box>
 					<Text color="#60A5FA" dimColor>
 						当前主代理: {currentAgentName}
+					</Text>
+				</Box>
+			)}
+
+			{/* Tool Search 开启提示 */}
+			{!toolSearchDisabled && (
+				<Box>
+					<Text color={theme.colors.menuInfo} dimColor>
+						{t.chatScreen.toolSearchEnabled}
 					</Text>
 				</Box>
 			)}

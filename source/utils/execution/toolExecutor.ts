@@ -267,7 +267,6 @@ export async function executeToolCall(
 					args: normalizedArgsForHooks,
 				},
 			);
-
 			if (hookResult && !hookResult.success) {
 				// Find failed command hook
 				const commandError = hookResult.results.find(
@@ -277,8 +276,18 @@ export async function executeToolCall(
 				if (commandError && commandError.type === 'command') {
 					const {exitCode, command, output, error} = commandError;
 
-					// Exit code 2+: Set hookFailed flag and return result immediately
-					if (exitCode >= 2 || exitCode < 0) {
+					if (exitCode === 1) {
+						// Exit code 1: Block tool execution, return stderr/stdout as tool result
+						return {
+							tool_call_id: toolCall.id,
+							role: 'tool',
+							content:
+								error ||
+								output ||
+								`[beforeToolCall Hook Warning] Command: ${command} exited with code 1`,
+						};
+					} else if (exitCode >= 2 || exitCode < 0) {
+						// Exit code 2+: Set hookFailed flag and return result immediately
 						return {
 							tool_call_id: toolCall.id,
 							role: 'tool',
@@ -293,7 +302,6 @@ export async function executeToolCall(
 							},
 						};
 					}
-					// Exit code 1: Warning, continue execution (logged but not thrown)
 					// Exit code 0: Success, continue
 				}
 			}
@@ -518,14 +526,14 @@ export async function executeToolCall(
 					const {exitCode, command, output, error} = commandError;
 
 					if (exitCode === 1) {
-						// Exit code 1: Warning - append to tool result
-						const combinedOutput =
-							[output, error].filter(Boolean).join('\n\n') || '(no output)';
-						const warningMessage = `\n\n[afterToolCall Hook Warning]\nCommand: ${command}\nOutput:\n${combinedOutput}`;
+						// Exit code 1: Warning - stderr/stdout replaces tool result content
+						const replacedContent =
+							error ||
+							output ||
+							`[afterToolCall Hook Warning] Command: ${command} exited with code 1`;
 
-						// Append warning to result content
 						if (result && typeof result.content === 'string') {
-							result.content = result.content + warningMessage;
+							result.content = replacedContent;
 						}
 					} else if (exitCode >= 2 || exitCode < 0) {
 						// Exit code 2+: Set hookFailed flag on result

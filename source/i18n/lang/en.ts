@@ -577,6 +577,8 @@ export const en: TranslationKeys = {
 			models: 'Open model switching panel',
 			vulnerabilityHunting:
 				'Toggle vulnerability hunting mode for security-focused code analysis',
+			toolSearch:
+				'Toggle Tool Search (progressive tool loading). Enabled by default to save context',
 			worktree:
 				'Open Git branch management panel for switching, creating and deleting branches',
 			diff: 'Review file changes from a conversation in IDE diff view',
@@ -1003,6 +1005,7 @@ export const en: TranslationKeys = {
 			'❁ YOLO MODE ACTIVE - All tools will be auto-approved without confirmation',
 		teamModeActive:
 			'⚐ Team mode active - Specialized planning and coordination agent',
+		toolSearchEnabled: '♾︎ Tool Search ON - Tools loaded on demand',
 		tokens: ' tokens',
 		cached: 'cached',
 		newCache: 'new cache',
@@ -1188,9 +1191,10 @@ export const en: TranslationKeys = {
 		filesCountWithSelection:
 			'{count} file(s) will be rolled back ({selected}/{total} selected)',
 		notebookCount: '{count} notebook(s) will also be rolled back',
-		question: 'Do you want to rollback the files as well?',
-		yesRollbackFiles: 'Yes, rollback files and conversation',
-		noConversationOnly: 'No, rollback conversation only',
+		question: 'Choose rollback mode:',
+		conversationOnly: 'Rollback conversation only',
+		conversationAndFiles: 'Rollback conversation + files',
+		filesOnly: 'Rollback files only',
 		moreAbove: 'more above...',
 		moreBelow: 'more below...',
 		andMoreFiles: 'and',

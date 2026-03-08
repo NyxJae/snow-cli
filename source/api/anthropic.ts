@@ -691,7 +691,6 @@ export async function* createStreamingAnthropicCompletion(
 				options.subAgentSystemPrompt,
 				config.anthropicCacheTTL || '5m', // 使用配置的 TTL,默认 5m
 				options.disableThinking || false, // 当 thinking 被禁用时移除 thinking 块
-				// 如果启用,使用 Team 模式系统提示词(已弃用)
 			);
 
 			// 使用持久化 userId,在应用重启前保持不变
@@ -937,15 +936,18 @@ export async function* createStreamingAnthropicCompletion(
 					}
 				} else if (event.type === 'message_start') {
 					if (event.message.usage) {
-						const cacheCreation = (event.message.usage as any).cache_creation_input_tokens || 0;
-						const cacheRead = (event.message.usage as any).cache_read_input_tokens || 0;
+						const cacheCreation =
+							(event.message.usage as any).cache_creation_input_tokens || 0;
+						const cacheRead =
+							(event.message.usage as any).cache_read_input_tokens || 0;
 						usageData = {
 							prompt_tokens: event.message.usage.input_tokens || 0,
 							completion_tokens: event.message.usage.output_tokens || 0,
 							total_tokens:
 								(event.message.usage.input_tokens || 0) +
 								(event.message.usage.output_tokens || 0) +
-								cacheCreation + cacheRead,
+								cacheCreation +
+								cacheRead,
 							cache_creation_input_tokens: cacheCreation || undefined,
 							cache_read_input_tokens: cacheRead || undefined,
 						};
