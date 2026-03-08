@@ -449,9 +449,9 @@
     {
       "id": "notebook-1772945711724_eazl8bek4",
       "filePath": "source/utils/config/projectSettings.ts",
-      "note": "projectSettings 是 Tool Search 开关的唯一持久化事实源. getToolSearchEnabled() 默认值为 true,setToolSearchEnabled(enabled) 是唯一写入口,统一负责 .snow/settings.json 中 toolSearchEnabled 的读写与默认回退. TOOL_SEARCH_INITIAL_TOOL_WHITELIST 与 MAIN_AGENT_SKIP_TOOL_SEARCH_SUBAGENT_WHITELIST 仍只承担首轮直出策略,不承载权限来源,不得扩权. 后续严禁在 UI,命令层,会话执行层再次硬编码 Tool Search 开关默认值或绕过 setToolSearchEnabled 直接写状态,避免出现 UI 状态,持久化状态,执行状态三套事实源分裂.",
+      "note": "projectSettings 是 Tool Search 开关的唯一持久化事实源. getToolSearchEnabled() 默认值为 true,setToolSearchEnabled(enabled) 是唯一写入口,统一负责 .snow/settings.json 中 toolSearchEnabled 的读写与默认回退. TOOL_SEARCH_INITIAL_TOOL_WHITELIST 与 MAIN_AGENT_SKIP_TOOL_SEARCH_SUBAGENT_WHITELIST 仍只承担首轮直出策略,不承载权限来源,不得扩权. 白名单条目的唯一合法命名口径是运行时工具全称 `service-tool` 或内建特殊名称本身,例如 `filesystem-read`,`todo-update`,`send_message_to_agent`,不得写成 `filesystem.filesystem-read` 之类二次拼装形式. 后续严禁在 UI,命令层,会话执行层再次硬编码 Tool Search 开关默认值或绕过 setToolSearchEnabled 直接写状态,也严禁引入第二套工具命名规范,避免出现 UI 状态,持久化状态,执行状态与权限匹配规则多事实源分裂.",
       "createdAt": "2026-03-08T12:55:11.724",
-      "updatedAt": "2026-03-08T16:35:35.175"
+      "updatedAt": "2026-03-09T04:17:56.351"
     }
   ],
   "source/utils/config/subAgentConfig.ts": [
@@ -465,9 +465,9 @@
     {
       "id": "notebook-1770864631002_subcfg",
       "filePath": "source/utils/config/subAgentConfig.ts",
-      "note": "职责: 管理子代理配置的读取,创建,更新和持久化,是子代理侧 availableTools,availableSubAgents 与编辑限制字段的存储入口.\n\n接口摘要:\n- 输入: createSubAgent/updateSubAgent 接收 UI 字段并写入 TOML.\n- 输出: getSubAgent 提供运行态读取,供 subAgentExecutor 与统一工具访问决策层消费.\n\n关键架构决策:\n- 子代理可用工具集合 = MCP 服务开关(全局总闸) + 子代理 availableTools(代理分闸).\n- 服务级禁用不写入 sub-agents.toml,由全局禁用文件统一管理.\n- availableSubAgents 的语义:\n  - undefined 或 [] 视为没有任何可 spawn 的子代理.\n  - 非空数组表示仅允许 spawn 数组中的子代理,仍需运行态做无效 id 清理与排除自身.\n- availableSubAgents 仅为 spawn_sub_agent 提供额外目标范围约束,不为 send_message_to_agent 或 query_agents_status 提供可见性授权.\n- Tool Search 白名单不是配置层职责,不得写入子代理配置语义.\n\n依赖拓扑:\n- 被依赖: source/ui/pages/SubAgentConfigScreen.tsx,source/utils/execution/subAgentExecutor.ts,统一工具过滤核心.\n\n避坑指南:\n- 配置层不应与 UI 面板状态耦合.\n- 更新/创建逻辑需复用同一套规范化逻辑.\n- 保存时已清理不代表运行时可省略兜底,执行层仍必须再次校验.",
+      "note": "职责: 管理子代理配置的读取,创建,更新和持久化,是子代理侧 availableTools,availableSubAgents 与编辑限制字段的存储入口.\n\n接口摘要:\n- 输入: createSubAgent/updateSubAgent 接收 UI 字段并写入 TOML.\n- 输出: getSubAgent 提供运行态读取,供 subAgentExecutor 与统一工具访问决策层消费.\n\n关键架构决策:\n- 子代理可用工具集合 = MCP 服务开关(全局总闸) + 子代理 availableTools(代理分闸).\n- 服务级禁用不写入 sub-agents.toml,由全局禁用文件统一管理.\n- availableTools 的持久化与读取口径必须直接使用运行时工具全称 `service-tool` 或内建特殊名称本身,这是唯一合法标识. 例如 `filesystem-read`,`todo-update`,`ace-text_search`,`send_message_to_agent`. 不得在配置层保存或输出 `service.tool` 一类中间标识.\n- availableSubAgents 的语义:\n  - undefined 或 [] 视为没有任何可 spawn 的子代理.\n  - 非空数组表示仅允许 spawn 数组中的子代理,仍需运行态做无效 id 清理与排除自身.\n- availableSubAgents 仅为 spawn_sub_agent 提供额外目标范围约束,不为 send_message_to_agent 或 query_agents_status 提供可见性授权.\n- Tool Search 白名单不是配置层职责,不得写入子代理配置语义.\n\n依赖拓扑:\n- 被依赖: source/ui/pages/SubAgentConfigScreen.tsx,source/utils/execution/subAgentExecutor.ts,统一工具过滤核心.\n\n避坑指南:\n- 配置层不应与 UI 面板状态耦合.\n- 更新/创建逻辑需复用同一套规范化逻辑,且规范化结果必须回到运行时工具全称,不能生成新的匹配方言.\n- 保存时已清理不代表运行时可省略兜底,执行层仍必须再次校验.",
       "createdAt": "2026-02-12T10:50:31.000",
-      "updatedAt": "2026-03-08T13:02:47.372"
+      "updatedAt": "2026-03-09T04:17:56.488"
     }
   ],
   "source/utils/core/": [
@@ -501,9 +501,9 @@
     {
       "id": "notebook-1772945710609_q2vxhbpz7",
       "filePath": "source/utils/core/toolFilterUtils.ts",
-      "note": "Tool Search 权限收敛核心. 该文件作为统一工具访问决策核心,固定输出 allowedTools/searchableTools/initialTools,并提供 getToolIdentifier 与 isExactToolIdentifierMatch 作为完整标识精确匹配基线. 所有链路必须遵循 rawTools -> allowedTools -> searchableTools -> initialTools. 主代理异常时必须 fail-closed 返回空授权集合,禁止退回 rawTools 扩权. shouldExposeToolInitially 对主代理子代理白名单需兼容 main-agents.toml 的 availableSubAgents 风格: 配置允许写 agent_xxx,运行时统一规范化为 subagent-agent_xxx 后再做严格匹配,避免配置口径漂移.",
+      "note": "Tool Search 权限收敛核心. 该文件作为统一工具访问决策核心,固定输出 allowedTools/searchableTools/initialTools,并提供 getToolIdentifier 与 isExactToolIdentifierMatch 作为完整标识精确匹配基线. 所有链路必须遵循 rawTools -> allowedTools -> searchableTools -> initialTools. 主代理异常时必须 fail-closed 返回空授权集合,禁止退回 rawTools 扩权. shouldExposeToolInitially 对主代理子代理白名单需兼容 main-agents.toml 的 availableSubAgents 风格: 配置允许写 agent_xxx,运行时统一规范化为 subagent-agent_xxx 后再做严格匹配,避免配置口径漂移. 本次修复后的长期约束: 工具权限匹配的唯一口径是运行时工具全称,即 `service-tool` 或内建特殊名称本身,不得再发明 `service.tool`,`service_tool` 或其他中间标识. Tool Search,主代理,子代理,白名单判定都必须复用同一套标识生成与精确匹配规则,禁止各链路自行二次拼装或再规范化,否则会再次出现 `Sub-agent has no valid tools configured` 一类口径分裂故障.",
       "createdAt": "2026-03-08T12:55:10.609",
-      "updatedAt": "2026-03-08T14:38:00.274"
+      "updatedAt": "2026-03-09T04:17:55.945"
     }
   ],
   "source/utils/execution/": [
@@ -542,9 +542,9 @@
     {
       "id": "notebook-1770864631008_subexec",
       "filePath": "source/utils/execution/subAgentExecutor.ts",
-      "note": "职责: 子代理运行时装配器.负责基于子代理配置与运行态约束构建子代理可见工具集,再执行工具调用循环. 该模块必须消费统一工具访问结果,不能自行维护另一套 Tool Search 可见性规则.\n\n接口摘要:\n- 输入: getSubAgent(agentId) 的 availableTools,availableSubAgents,当前 spawnDepth,运行态可用子代理列表.\n- 输出: 子代理本轮 allowedTools,initialTools/searchableTools 的消费结果,以及执行期工具调用结果.\n\n关键架构决策(本需求最新口径):\n- send_message_to_agent,query_agents_status,spawn_sub_agent 与普通工具同级,统一受 availableTools 精确匹配控制.\n- Tool Search 与初始暴露都必须先经过 availableTools 权限过滤,再决定 initial/searchable.\n- availableSubAgents 仅是 spawn_sub_agent 的额外约束来源,不再决定 send/query 是否可见.\n- spawn_sub_agent 只有在同时满足以下条件时才可见且可执行:\n  - availableTools 允许 spawn_sub_agent.\n  - availableSubAgents 过滤清理后非空.\n  - 深度门禁允许.\n  - 执行期 agent_id 命中有效 allowed sub-agent id.\n\n依赖拓扑:\n- 上游依赖: source/utils/config/subAgentConfig.ts,统一工具过滤核心.\n- 下游依赖: toolExecutor/mcpToolsManager 等执行层.\n\n避坑指南:\n- 不得再把 send/query 视为天然全局可见.\n- 不得基于 raw tools 直接构建 Tool Search registry.\n- 运行态必须保留 spawn agent_id 的最终兜底校验,避免历史配置或手工构造调用导致越权.",
+      "note": "职责: 子代理运行时装配器.负责基于子代理配置与运行态约束构建子代理可见工具集,再执行工具调用循环. 该模块必须消费统一工具访问结果,不能自行维护另一套 Tool Search 可见性规则.\n\n接口摘要:\n- 输入: getSubAgent(agentId) 的 availableTools,availableSubAgents,当前 spawnDepth,运行态可用子代理列表.\n- 输出: 子代理本轮 allowedTools,initialTools/searchableTools 的消费结果,以及执行期工具调用结果.\n\n关键架构决策(本需求最新口径):\n- send_message_to_agent,query_agents_status,spawn_sub_agent 与普通工具同级,统一受 availableTools 精确匹配控制.\n- Tool Search 与初始暴露都必须先经过 availableTools 权限过滤,再决定 initial/searchable.\n- availableSubAgents 仅是 spawn_sub_agent 的额外约束来源,不再决定 send/query 是否可见.\n- 工具匹配唯一口径是运行时工具全称 `service-tool` 或内建特殊名称本身,例如 `filesystem-read`,`todo-update`,`ace-text_search`,`send_message_to_agent`. 不得在子代理执行侧再把 `service-tool` 改拼成 `service.tool` 后参与权限判断.\n- spawn_sub_agent 只有在同时满足以下条件时才可见且可执行:\n  - availableTools 允许 spawn_sub_agent.\n  - availableSubAgents 过滤清理后非空.\n  - 深度门禁允许.\n  - 执行期 agent_id 命中有效 allowed sub-agent id.\n\n依赖拓扑:\n- 上游依赖: source/utils/config/subAgentConfig.ts,统一工具过滤核心.\n- 下游依赖: toolExecutor/mcpToolsManager 等执行层.\n\n避坑指南:\n- 不得再把 send/query 视为天然全局可见.\n- 不得基于 raw tools 直接构建 Tool Search registry.\n- 不得自行发明 `service.tool` 形式做匹配,否则会与 TOML 中 `service-tool` 口径分裂.\n- 运行态必须保留 spawn agent_id 的最终兜底校验,避免历史配置或手工构造调用导致越权.",
       "createdAt": "2026-02-12T10:50:31.000",
-      "updatedAt": "2026-03-08T13:02:47.239"
+      "updatedAt": "2026-03-09T04:17:56.085"
     }
   ],
   "source/utils/execution/toolExecutor.ts": [
@@ -560,9 +560,9 @@
     {
       "id": "notebook-1772945710860_v4c4aufdf",
       "filePath": "source/utils/execution/toolSearchService.ts",
-      "note": "Tool Search 只负责基于已授权 registry 做搜索与已发现工具管理,不负责自行推导权限. updateRegistry 仅接受 allowedTools,externalServices 也必须按 allowedTools 同步过滤,避免未授权服务信息泄露. 提示词中的内置类别不得再硬编码示例,必须由 getBuiltInCategoryCounts/getSortedBuiltInCategories/getBuiltInCategoryExamples 基于当前已授权 registry 动态统计,并继续通过 getThirdPartyServiceNames 分离第三方 MCP services 提示,确保不泄露无权限内置工具类别. buildActiveTools 负责合并 tool_search + initialTools + discovered tools,白名单只影响首轮直出,不改变权限边界.",
+      "note": "Tool Search 只负责基于已授权 registry 做搜索与已发现工具管理,不负责自行推导权限. updateRegistry 仅接受 allowedTools,externalServices 也必须按 allowedTools 同步过滤,避免未授权服务信息泄露. 提示词中的内置类别不得再硬编码示例,必须由 getBuiltInCategoryCounts/getSortedBuiltInCategories/getBuiltInCategoryExamples 基于当前已授权 registry 动态统计,并继续通过 getThirdPartyServiceNames 分离第三方 MCP services 提示,确保不泄露无权限内置工具类别. buildActiveTools 负责合并 tool_search + initialTools + discovered tools,白名单只影响首轮直出,不改变权限边界. 本次修复后新增硬约束: Tool Search 白名单与 registry 匹配必须共享统一工具标识口径,唯一允许的名称是运行时工具全称 `service-tool` 或内建特殊名称本身. Tool Search 不得再把 `filesystem-read` 之类工具转换为 `filesystem.filesystem-read` 后再参与白名单或权限匹配,否则会与主代理/子代理 TOML 配置事实源分裂.",
       "createdAt": "2026-03-08T12:55:10.860",
-      "updatedAt": "2026-03-08T14:38:00.126"
+      "updatedAt": "2026-03-09T04:17:56.222"
     }
   ],
   "source/utils/session/sessionManager.ts": [
@@ -603,9 +603,9 @@
     {
       "id": "notebook-1772945711335_mf41t729l",
       "filePath": "source/utils/MainAgentManager.ts",
-      "note": "主代理配置来源层. 仅负责暴露 availableTools,availableSubAgents,systemPrompt 等原始配置,不负责 Tool Search 暴露策略. availableSubAgents 映射到 subagent-xxx 后,应由统一工具过滤层消费,避免 Manager 与执行链路重复决策.",
+      "note": "主代理配置来源层. 仅负责暴露 availableTools,availableSubAgents,systemPrompt 等原始配置,不负责 Tool Search 暴露策略. availableSubAgents 映射到 subagent-xxx 后,应由统一工具过滤层消费,避免 Manager 与执行链路重复决策. 本次修复后的约束是: 主代理侧 availableTools 的唯一命名口径就是运行时工具全称 `service-tool` 或内建特殊名称本身. MainAgentManager 不得再把已有工具名二次拼装成 `service.tool` 等中间格式提供给 Tool Search 或执行链路,否则会与 sub-agents.toml,Tool Search 白名单和执行期精确匹配口径分裂.",
       "createdAt": "2026-03-08T12:55:11.335",
-      "updatedAt": "2026-03-08T12:55:11.335"
+      "updatedAt": "2026-03-09T04:17:56.645"
     },
     {
       "id": "notebook-1770979050933_fpsuyvh74",

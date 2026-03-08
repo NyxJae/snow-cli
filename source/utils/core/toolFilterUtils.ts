@@ -60,34 +60,24 @@ export interface ToolFilterResult {
 }
 
 /**
- * 将 serviceName + toolName 组装为完整工具标识.
+ * 规范化工具标识.
  *
- * 对 `tool_search` 与 `subagent-*` 等无服务前缀工具,保留其运行时名称.
+ * 运行时工具全称统一使用 `service-tool` 或内建特殊名称本身,不再引入 `.` 形式的二次拼装.
  */
-export function getToolIdentifier(toolName: string): string {
-	if (toolName === 'tool_search' || toolName.startsWith('subagent-')) {
-		return toolName;
-	}
-
-	const splitIndex = toolName.indexOf('-');
-	if (splitIndex <= 0) {
-		return toolName;
-	}
-
-	const serviceName = toolName.slice(0, splitIndex);
-	return `${serviceName}.${toolName}`;
+export function normalizeToolIdentifier(toolName: string): string {
+	return toolName.trim();
 }
 
 /**
- * 使用完整工具标识进行严格精确匹配.
+ * 使用规范化后的运行时工具全称进行严格精确匹配.
  */
 export function isExactToolIdentifierMatch(
 	toolName: string,
 	allowedIdentifiers: Iterable<string>,
 ): boolean {
-	const toolIdentifier = getToolIdentifier(toolName);
+	const normalizedToolName = normalizeToolIdentifier(toolName);
 	for (const identifier of allowedIdentifiers) {
-		if (identifier === toolIdentifier) {
+		if (normalizeToolIdentifier(identifier) === normalizedToolName) {
 			return true;
 		}
 	}
@@ -99,8 +89,7 @@ export function isExactToolIdentifierMatch(
  */
 export function shouldExposeToolInitially(toolName: string): boolean {
 	const normalizedGlobalWhitelist = TOOL_SEARCH_INITIAL_TOOL_WHITELIST.map(
-		identifier =>
-			identifier.includes('.') ? identifier : getToolIdentifier(identifier),
+		identifier => normalizeToolIdentifier(identifier),
 	);
 	if (isExactToolIdentifierMatch(toolName, normalizedGlobalWhitelist)) {
 		return true;

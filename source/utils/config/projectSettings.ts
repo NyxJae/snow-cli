@@ -5,7 +5,7 @@ import * as path from 'path';
  * Tool Search 全局首轮直出白名单.
  *
  * 仅影响 allowedTools 中哪些工具进入 initialTools,不承担权限来源职责.
- * 条目必须使用完整工具标识并严格精确匹配,例如: `filesystem.filesystem-read`.
+ * 条目必须使用运行时工具全称并严格精确匹配,例如: `filesystem-read`.
  */
 export const TOOL_SEARCH_INITIAL_TOOL_WHITELIST: readonly string[] = [
 	'filesystem-read',
