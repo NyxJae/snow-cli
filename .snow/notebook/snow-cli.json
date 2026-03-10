@@ -161,6 +161,15 @@
       "updatedAt": "2026-02-22T12:50:00.708"
     }
   ],
+  "source/hooks/conversation/core/": [
+    {
+      "id": "notebook-1773143726642_v0ba6j1vm",
+      "filePath": "source/hooks/conversation/core/",
+      "note": "职责: 会话执行核心拆分目录. 承载 streamFactory,toolCallRound,toolConfirmationFlow 等稳定内核,用于把 useConversation 主循环拆成可维护的轮次级能力.\\n接口摘要:\\n- streamFactory: 统一根据 requestMethod 选择流式适配器.\\n- toolCallRound/toolConfirmationFlow: 统一处理 tool calls,审批流与 round usage 续传.\\n依赖拓扑:\\n- 被依赖: source/hooks/conversation/useConversation.ts.\\n- 依赖: source/api/*,tool executor,tool confirmation 相关能力.\\n避坑指南:\\n- 后续合并 upstream 时,优先在本目录吸收新的轮次拆分或 adapter 选择逻辑,不要把已拆出的能力重新回填到 useConversation.ts.\\n- createStreamGenerator 的参数口径必须与 useConversation 调用点同步演进,避免再次出现 call-site 传旧模式参数(plan/vulnerability/toolSearchDisabled)而 core 类型已收敛的错位.\\n- tool confirmation 的统一入口必须与 UI askuser/ToolConfirmation 流程保持兼容,避免执行层新增第二套审批状态机.",
+      "createdAt": "2026-03-10T19:55:26.642",
+      "updatedAt": "2026-03-10T19:55:26.642"
+    }
+  ],
   "source/hooks/conversation/useConversation.ts": [
     {
       "id": "notebook-1772945711181_j5lhhipfz",
@@ -172,9 +181,9 @@
     {
       "id": "notebook-1772107272120_8ae464f6q",
       "filePath": "source/hooks/conversation/useConversation.ts",
-      "note": "职责: 会话执行编排层,统一接入四类流式适配器并管理重试状态提示.\n接口摘要:\n- 根据 requestMethod 选择 streaming generator.\n- onRetry 回调负责 UI 重试状态更新,文案必须走 i18n key(retryResending).\n依赖拓扑:\n- 依赖 source/api/{chat,anthropic,gemini,responses}.ts.\n- 依赖 source/i18n/lang/* 的 retry 文案.\n避坑指南:\n- 用户主动中断(Request aborted by user)必须短路退出,不得进入重试提示循环.\n- 不得在此硬编码任意语言重试文案,避免多语言漂移.",
+      "note": "职责: 会话执行编排层,负责组装主循环并消费 core/* 中的流式轮次与工具轮次能力,而不是重新内联 provider 分支或 UI 状态机.\\n接口摘要:\\n- 主循环通过 processStreamRound() 处理单轮流式输出,通过 handleToolCallRound() 处理 tool calls,通过 createStreamGenerator() 统一选择 anthropic/gemini/responses/chat 适配器.\\n- onRetry 仅负责 UI 重试状态同步,文案必须走 i18n key(retryResending).\\n依赖拓扑:\\n- 依赖 source/hooks/conversation/core/{streamFactory,toolCallRound,toolConfirmationFlow}.ts 与 source/api/* 渠道适配器.\\n- 被 source/hooks/conversation/chatLogic/useMessageProcessing.ts 调用,由其管理 AbortController 与 UI streaming state.\\n避坑指南:\\n- 本文件已按 upstream 拆分结构收敛,后续合并 upstream 时优先保留 processStreamRound/handleToolCallRound/createStreamGenerator 这组稳定边界,不要把 provider 选择,确认流或 tool loop 再摊回单文件.\\n- 必须保留本地能力: 空回复重试 guard,请求前 contextUsage 基线估算,roundUsage/accumulatedUsage 透传,finally 中的 setIsStopping(false)+notifyMessageProcessingCompleted()+clearConversationContext() 清理链.\\n- Tool Search 的唯一开关事实源仍是 getToolSearchEnabled(),不得在会话层引入 plan/role/vulnerability 等已移除模式的兼容分支.\\n- 用户主动中断(Request aborted by user)必须短路退出,不得进入重试提示循环.",
       "createdAt": "2026-02-26T20:01:12.120",
-      "updatedAt": "2026-02-26T20:01:12.120"
+      "updatedAt": "2026-03-10T19:55:26.242"
     }
   ],
   "source/hooks/ui/useCommandPanel.ts": [
@@ -339,13 +348,22 @@
       "updatedAt": "2026-02-26T18:48:11.936"
     }
   ],
+  "source/ui/pages/chatScreen/": [
+    {
+      "id": "notebook-1773143726518_my9ere7wd",
+      "filePath": "source/ui/pages/chatScreen/",
+      "note": "职责: ChatScreen 的页面内模块化子目录. 承载 commands,modes,input,panels,conversation view,codebase indexing 等页面级拆分单元,目标是让 ChatScreen.tsx 只做装配而不再承担巨型状态机.\\n接口摘要:\\n- 输入: ChatScreen 透传的页面级状态与回调.\\n- 输出: 可组合的 hooks/components,供 ChatScreen.tsx 统一装配.\\n依赖拓扑:\\n- 被依赖: source/ui/pages/ChatScreen.tsx.\\n- 依赖: source/hooks/conversation/*,source/hooks/ui/*,source/utils/commands/*.\\n避坑指南:\\n- 此目录中的模块边界要围绕\\\"单一页面职责\\\"拆分,不要把模型调用,工具权限判定或持久化事实源塞回 UI 子模块.\\n- 本地长期约束已移除 plan/role/vulnerability 模式. 后续合并 upstream 时,若上游重新出现这些兼容项,应在此目录优先清理,不要把旧模式残留扩散回 ChatScreen.\\n- useChatScreenCommands,useChatScreenModes,useChatScreenInputHandler 共同构成页面交互骨架,修改时必须核对 askuser,ToolConfirmation 与普通输入是否仍保持单入口,避免快捷键和弹窗冲突.",
+      "createdAt": "2026-03-10T19:55:26.518",
+      "updatedAt": "2026-03-10T19:55:26.518"
+    }
+  ],
   "source/ui/pages/ChatScreen.tsx": [
     {
       "id": "notebook-1772958935650_lu0j6o03c",
       "filePath": "source/ui/pages/ChatScreen.tsx",
-      "note": "ChatScreen 对 Tool Search 的职责仅限展示与交互同步. UI 层读取 getToolSearchEnabled() 初始化显示状态,并通过 persistToolSearchEnabled(setToolSearchEnabled) 回写 .snow/settings.json. 后续禁止在本文件硬编码 Tool Search 默认开关或单独维护一套独立真值,避免 UI 展示状态与 projectSettings 持久化状态,会话执行状态漂移. 该页面不负责权限判断,白名单判断或执行层兜底.",
+      "note": "职责: 聊天主页面装配层. 负责组合 chatScreen/* hooks/components,维护最少量页面级状态(如 currentAgentName),并把 Tool Search,主代理选择,面板体系与对话逻辑接线到统一 UI.\\n接口摘要:\\n- 输入: useChatLogic,useStreamingState,useToolConfirmation,useChatScreenCommands,useChatScreenModes,useCodebaseIndexing 等 hooks 输出.\\n- 输出: ChatScreenConversationView,ChatScreenPanels,ChatFooter 的装配结果.\\n依赖拓扑:\\n- 依赖: source/ui/pages/chatScreen/* 拆分模块,source/hooks/conversation/*,source/utils/MainAgentManager.ts.\\n- 被依赖: TUI screen 路由.\\n避坑指南:\\n- ChatScreen 已采用 upstream 的 chatScreen/* 拆分结构. 后续合并 upstream 时优先延续拆分后的 hook/component 边界,不要回退到旧的大一体化页面.\\n- 本地定制仅保留必要接线,尤其是主代理 picker 与本地模式约束;不得重新引入 plan,role,vulnerability 兼容状态或旧命令入口.\\n- Tool Search 在 UI 层的职责仅限展示与交互同步. 读取 getToolSearchEnabled() 初始化显示状态,并通过 persistToolSearchEnabled(setToolSearchEnabled) 回写 .snow/settings.json. 禁止硬编码默认值或维护第二套真值.\\n- askuser,ToolConfirmation 与页面级输入处理必须保持单一焦点链路,避免多处 useInput/队列并存造成 Esc,Enter 或弹窗冲突. 任何新增交互优先接入现有拆分 hook,不要在页面内再开一套本地队列.",
       "createdAt": "2026-03-08T16:35:35.650",
-      "updatedAt": "2026-03-08T16:35:35.650"
+      "updatedAt": "2026-03-10T19:55:26.381"
     }
   ],
   "source/ui/pages/ConfigScreen.tsx": [

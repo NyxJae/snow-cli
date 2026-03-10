@@ -886,5 +886,25 @@
       "notebookId": "notebook-1772945711335_mf41t729l",
       "previousNote": "主代理配置来源层. 仅负责暴露 availableTools,availableSubAgents,systemPrompt 等原始配置,不负责 Tool Search 暴露策略. availableSubAgents 映射到 subagent-xxx 后,应由统一工具过滤层消费,避免 Manager 与执行链路重复决策."
     }
+  ],
+  "6999d821-4345-4554-bb5e-f0304c3239f4:180": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1772107272120_8ae464f6q",
+      "previousNote": "职责: 会话执行编排层,统一接入四类流式适配器并管理重试状态提示.\n接口摘要:\n- 根据 requestMethod 选择 streaming generator.\n- onRetry 回调负责 UI 重试状态更新,文案必须走 i18n key(retryResending).\n依赖拓扑:\n- 依赖 source/api/{chat,anthropic,gemini,responses}.ts.\n- 依赖 source/i18n/lang/* 的 retry 文案.\n避坑指南:\n- 用户主动中断(Request aborted by user)必须短路退出,不得进入重试提示循环.\n- 不得在此硬编码任意语言重试文案,避免多语言漂移."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772958935650_lu0j6o03c",
+      "previousNote": "ChatScreen 对 Tool Search 的职责仅限展示与交互同步. UI 层读取 getToolSearchEnabled() 初始化显示状态,并通过 persistToolSearchEnabled(setToolSearchEnabled) 回写 .snow/settings.json. 后续禁止在本文件硬编码 Tool Search 默认开关或单独维护一套独立真值,避免 UI 展示状态与 projectSettings 持久化状态,会话执行状态漂移. 该页面不负责权限判断,白名单判断或执行层兜底."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773143726518_my9ere7wd"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773143726642_v0ba6j1vm"
+    }
   ]
 }

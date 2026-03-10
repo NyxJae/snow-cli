@@ -3,6 +3,7 @@ import {Box, Text} from 'ink';
 import Spinner from 'ink-spinner';
 import ChatInput from './ChatInput.js';
 import StatusLine from '../common/StatusLine.js';
+import LoadingIndicator from './LoadingIndicator.js';
 import {useI18n} from '../../../i18n/I18nContext.js';
 import type {Message} from './MessageList.js';
 import {BackgroundProcessPanel} from '../bash/BackgroundProcessPanel.js';
@@ -122,12 +123,45 @@ type ChatFooterProps = {
 	currentProfileName: string;
 	isCompressing: boolean;
 	compressionError: string | null;
+	copyStatusMessage?: {
+		text: string;
+		isError?: boolean;
+		timestamp: number;
+	} | null;
 
 	// Background process panel props
 	backgroundProcesses: BackgroundProcess[];
 	showBackgroundPanel: boolean;
 	selectedProcessIndex: number;
 	terminalWidth: number;
+
+	// Loading indicator props
+	isStreaming: boolean;
+	isSaving: boolean;
+	hasPendingToolConfirmation: boolean;
+	hasPendingUserQuestion: boolean;
+	hasBlockingOverlay: boolean;
+	animationFrame: number;
+	retryStatus: {
+		isRetrying: boolean;
+		errorMessage?: string;
+		remainingSeconds?: number;
+		attempt: number;
+	} | null;
+	codebaseSearchStatus: {
+		isSearching: boolean;
+		attempt: number;
+		maxAttempts: number;
+		currentTopN: number;
+		message: string;
+		query?: string;
+		originalResultsCount?: number;
+		suggestion?: string;
+	} | null;
+	isReasoning: boolean;
+	streamTokenCount: number;
+	elapsedSeconds: number;
+	currentModel?: string | null;
 };
 
 const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
@@ -152,6 +186,11 @@ const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
 	>('disconnected');
 	const [connectionInstanceName, setConnectionInstanceName] =
 		useState<string>('');
+	const [copyStatusMessage, setCopyStatusMessage] = useState<{
+		text: string;
+		isError?: boolean;
+		timestamp: number;
+	} | null>(null);
 
 	// 订阅连接状态变化
 	useEffect(() => {
@@ -189,10 +228,36 @@ const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
 		};
 	}, []);
 
+	useEffect(() => {
+		if (!copyStatusMessage) return;
+		const timeoutId = setTimeout(() => {
+			setCopyStatusMessage(null);
+		}, 2000);
+		return () => {
+			clearTimeout(timeoutId);
+		};
+	}, [copyStatusMessage]);
+
 	return (
 		<>
 			{!props.showReviewCommitPanel && (
 				<>
+					<LoadingIndicator
+						isStreaming={props.isStreaming}
+						isStopping={props.isStopping}
+						isSaving={props.isSaving}
+						hasPendingToolConfirmation={props.hasPendingToolConfirmation}
+						hasPendingUserQuestion={props.hasPendingUserQuestion}
+						hasBlockingOverlay={props.hasBlockingOverlay}
+						terminalWidth={props.terminalWidth}
+						animationFrame={props.animationFrame}
+						retryStatus={props.retryStatus}
+						codebaseSearchStatus={props.codebaseSearchStatus}
+						isReasoning={props.isReasoning}
+						streamTokenCount={props.streamTokenCount}
+						elapsedSeconds={props.elapsedSeconds}
+						currentModel={props.currentModel}
+					/>
 					<ChatInput
 						onSubmit={props.onSubmit}
 						onCommand={props.onCommand}
@@ -215,19 +280,22 @@ const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
 						setProfileSelectedIndex={props.setProfileSelectedIndex}
 						getFilteredProfiles={props.getFilteredProfiles}
 						handleProfileSelect={props.handleProfileSelect}
-						onSwitchProfile={props.onSwitchProfile}
 						profileSearchQuery={props.profileSearchQuery}
 						setProfileSearchQuery={props.setProfileSearchQuery}
-						showMainAgentPicker={props.showMainAgentPicker}
-						setShowMainAgentPicker={props.setShowMainAgentPicker}
-						mainAgentSelectedIndex={props.mainAgentSelectedIndex}
-						setMainAgentSelectedIndex={props.setMainAgentSelectedIndex}
-						mainAgentSearchQuery={props.mainAgentSearchQuery}
-						setMainAgentSearchQuery={props.setMainAgentSearchQuery}
-						getFilteredMainAgents={props.getFilteredMainAgents}
-						onSwitchMainAgent={props.onSwitchMainAgent}
-						onMainAgentSelect={props.onMainAgentSelect}
 						onPasteReceivingChange={handlePasteReceivingChange}
+						onCopyInputSuccess={() => {
+							setCopyStatusMessage({
+								text: `✔ ${t.chatScreen.inputCopySuccess}`,
+								timestamp: Date.now(),
+							});
+						}}
+						onCopyInputError={errorMessage => {
+							setCopyStatusMessage({
+								text: `✖ ${t.chatScreen.inputCopyFailedPrefix}: ${errorMessage}`,
+								isError: true,
+								timestamp: Date.now(),
+							});
+						}}
 					/>
 
 					<Box marginTop={1}>
@@ -247,6 +315,7 @@ const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
 						codebaseProgress={props.codebaseProgress}
 						watcherEnabled={props.watcherEnabled}
 						fileUpdateNotification={props.fileUpdateNotification}
+						copyStatusMessage={copyStatusMessage}
 						currentProfileName={props.currentProfileName}
 					/>
 

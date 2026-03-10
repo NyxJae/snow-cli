@@ -25,6 +25,7 @@ import './commands/todoPicker.js';
 import './commands/codebase.js';
 import './commands/backend.js';
 import './commands/models.js';
+import './commands/todolist.js';
 import './commands/usage.js';
 import './commands/permissions.js';
 import './commands/toolsearch.js';

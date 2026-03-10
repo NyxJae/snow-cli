@@ -72,6 +72,12 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 				description: t.commandPanel.commands.todo,
 			},
 			{
+				name: 'todolist',
+				description:
+					t.commandPanel.commands.todolist ||
+					'Show current session TODO tree and manage items',
+			},
+			{
 				name: 'skills-',
 				description:
 					t.commandPanel.commands.skillsPicker ||

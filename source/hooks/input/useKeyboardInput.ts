@@ -3,6 +3,7 @@ import {useInput} from 'ink';
 import {TextBuffer} from '../../utils/ui/textBuffer.js';
 import {editTextWithNotepad} from '../../utils/ui/externalEditor.js';
 import {executeCommand} from '../../utils/execution/commandExecutor.js';
+import {copyToClipboard} from '../../utils/core/clipboard.js';
 import {commandUsageManager} from '../../utils/session/commandUsageManager.js';
 import {setPickerActive} from '../../utils/ui/pickerState.js';
 import type {SubAgent} from '../../utils/config/subAgentConfig.js';
@@ -65,6 +66,8 @@ type KeyboardInputOptions = {
 	saveToHistory: (content: string) => Promise<void>;
 	// Clipboard
 	pasteFromClipboard: () => Promise<void>;
+	onCopyInputSuccess?: () => void;
+	onCopyInputError?: (errorMessage: string) => void;
 	// Paste detection
 	pasteShortcutTimeoutMs?: number;
 	pasteFlushDebounceMs?: number;
@@ -218,7 +221,10 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 		saveToHistory,
 		pasteFromClipboard,
 		onPasteReceivingChange,
+		onCopyInputSuccess,
+		onCopyInputError,
 		pasteShortcutTimeoutMs = 800,
+
 		pasteFlushDebounceMs = 250,
 		pasteIndicatorThreshold = 300,
 		onSubmit,
@@ -1054,23 +1060,29 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			return;
 		}
 
+		// Ctrl+O - Copy current input content to system clipboard
+		if (key.ctrl && input === 'o') {
+			flushPendingInput();
+			const contentToCopy = buffer.getFullText();
+			void copyToClipboard(contentToCopy)
+				.then(() => {
+					onCopyInputSuccess?.();
+				})
+				.catch(error => {
+					console.error('Failed to copy current input to clipboard:', error);
+					onCopyInputError?.(
+						error instanceof Error ? error.message : 'Unknown error',
+					);
+				});
+			return;
+		}
+
 		// Alt+F - Forward one word
 		if (key.meta && input === 'f') {
 			flushPendingInput();
 			const text = buffer.text;
 			const cursorPos = buffer.getCursorPosition();
 			const newPos = findWordBoundary(text, cursorPos, 'forward');
-			buffer.setCursorPosition(newPos);
-			triggerUpdate();
-			return;
-		}
-
-		// Alt+B - Backward one word
-		if (key.meta && input === 'b') {
-			flushPendingInput();
-			const text = buffer.text;
-			const cursorPos = buffer.getCursorPosition();
-			const newPos = findWordBoundary(text, cursorPos, 'backward');
 			buffer.setCursorPosition(newPos);
 			triggerUpdate();
 			return;

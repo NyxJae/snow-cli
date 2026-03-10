@@ -56,6 +56,8 @@ export interface ApiConfig {
 	editSimilarityThreshold?: number;
 	// 工具返回结果的最大 token 限制 (默认: 100000)
 	toolResultTokenLimit?: number;
+	// 流式逐行显示 AI 回复 (默认: false)
+	streamingDisplay?: boolean;
 }
 
 export interface MCPServer {
@@ -136,6 +138,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 		streamIdleTimeoutSec: DEFAULT_STREAM_IDLE_TIMEOUT_SEC,
 		modelSpecificPrompt: '',
 		editSimilarityThreshold: 0.75,
+		streamingDisplay: false,
 	},
 };
 
