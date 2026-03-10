@@ -906,5 +906,25 @@
       "op": "add",
       "notebookId": "notebook-1773143726642_v0ba6j1vm"
     }
+  ],
+  "6757a93c-a4f0-4a23-8740-a1f692ad760e:1": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1772107272120_8ae464f6q",
+      "previousNote": "职责: 会话执行编排层,负责组装主循环并消费 core/* 中的流式轮次与工具轮次能力,而不是重新内联 provider 分支或 UI 状态机.\\n接口摘要:\\n- 主循环通过 processStreamRound() 处理单轮流式输出,通过 handleToolCallRound() 处理 tool calls,通过 createStreamGenerator() 统一选择 anthropic/gemini/responses/chat 适配器.\\n- onRetry 仅负责 UI 重试状态同步,文案必须走 i18n key(retryResending).\\n依赖拓扑:\\n- 依赖 source/hooks/conversation/core/{streamFactory,toolCallRound,toolConfirmationFlow}.ts 与 source/api/* 渠道适配器.\\n- 被 source/hooks/conversation/chatLogic/useMessageProcessing.ts 调用,由其管理 AbortController 与 UI streaming state.\\n避坑指南:\\n- 本文件已按 upstream 拆分结构收敛,后续合并 upstream 时优先保留 processStreamRound/handleToolCallRound/createStreamGenerator 这组稳定边界,不要把 provider 选择,确认流或 tool loop 再摊回单文件.\\n- 必须保留本地能力: 空回复重试 guard,请求前 contextUsage 基线估算,roundUsage/accumulatedUsage 透传,finally 中的 setIsStopping(false)+notifyMessageProcessingCompleted()+clearConversationContext() 清理链.\\n- Tool Search 的唯一开关事实源仍是 getToolSearchEnabled(),不得在会话层引入 plan/role/vulnerability 等已移除模式的兼容分支.\\n- 用户主动中断(Request aborted by user)必须短路退出,不得进入重试提示循环."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772102890983_fbxjvwghi",
+      "previousNote": "职责: 对话核心运行时能力层(core),包含重试,流保护,模型调用通用健壮性.\n不该做什么:\n- 不承载 UI 输入输出状态.\n- 不保存 profile 持久化配置.\n架构约束(本需求):\n- 流式空闲超时配置单一来源为 snowcfg.streamIdleTimeoutSec(秒),默认180.\n- 核心层仅负责秒->毫秒转换与执行,不引入多层优先级.\n依赖拓扑:\n- 依赖 config 层提供配置值,被 source/api/* 调用.\n避坑指南:\n- 心跳/空事件不能触发活跃刷新.\n- 断开后必须丢弃旧流延迟消息,避免串流污染."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773152943578_tjo29q3gw"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773152943709_123s7mhki"
+    }
   ]
 }

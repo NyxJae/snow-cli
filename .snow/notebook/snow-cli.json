@@ -181,9 +181,9 @@
     {
       "id": "notebook-1772107272120_8ae464f6q",
       "filePath": "source/hooks/conversation/useConversation.ts",
-      "note": "职责: 会话执行编排层,负责组装主循环并消费 core/* 中的流式轮次与工具轮次能力,而不是重新内联 provider 分支或 UI 状态机.\\n接口摘要:\\n- 主循环通过 processStreamRound() 处理单轮流式输出,通过 handleToolCallRound() 处理 tool calls,通过 createStreamGenerator() 统一选择 anthropic/gemini/responses/chat 适配器.\\n- onRetry 仅负责 UI 重试状态同步,文案必须走 i18n key(retryResending).\\n依赖拓扑:\\n- 依赖 source/hooks/conversation/core/{streamFactory,toolCallRound,toolConfirmationFlow}.ts 与 source/api/* 渠道适配器.\\n- 被 source/hooks/conversation/chatLogic/useMessageProcessing.ts 调用,由其管理 AbortController 与 UI streaming state.\\n避坑指南:\\n- 本文件已按 upstream 拆分结构收敛,后续合并 upstream 时优先保留 processStreamRound/handleToolCallRound/createStreamGenerator 这组稳定边界,不要把 provider 选择,确认流或 tool loop 再摊回单文件.\\n- 必须保留本地能力: 空回复重试 guard,请求前 contextUsage 基线估算,roundUsage/accumulatedUsage 透传,finally 中的 setIsStopping(false)+notifyMessageProcessingCompleted()+clearConversationContext() 清理链.\\n- Tool Search 的唯一开关事实源仍是 getToolSearchEnabled(),不得在会话层引入 plan/role/vulnerability 等已移除模式的兼容分支.\\n- 用户主动中断(Request aborted by user)必须短路退出,不得进入重试提示循环.",
+      "note": "职责: 会话执行编排层,负责组装主循环并消费 core/* 中的流式轮次与工具轮次能力,而不是重新内联 provider 分支或 UI 状态机.\n接口摘要:\n- 主循环通过 processStreamRound() 处理单轮流式输出,通过 handleToolCallRound() 处理 tool calls,通过 createStreamGenerator() 统一选择 anthropic/gemini/responses/chat 适配器.\n- 最外层 retry loop 统一负责错误分类,重试上限,退避等待,RetryStatus UI 同步与 AbortController 生命周期切换; onRetry 文案必须走 i18n key(retryResending).\n依赖拓扑:\n- 依赖 source/hooks/conversation/core/{streamFactory,toolCallRound,toolConfirmationFlow}.ts 与 source/api/* 渠道适配器.\n- 依赖 source/utils/core/emptyResponseDetector.ts 提供 EMPTY_RESPONSE 可重试错误分类契约.\n- 被 source/hooks/conversation/chatLogic/useMessageProcessing.ts 调用,由其管理 AbortController 与 UI streaming state.\n避坑指南:\n- 本文件已按 upstream 拆分结构收敛,后续合并 upstream 时优先保留 processStreamRound/handleToolCallRound/createStreamGenerator 这组稳定边界,不要把 provider 选择,确认流或 tool loop 再摊回单文件.\n- 必须保留本地能力: 空回复重试 guard,请求前 contextUsage 基线估算,roundUsage/accumulatedUsage 透传,finally 中的 setIsStopping(false)+notifyMessageProcessingCompleted()+clearConversationContext() 清理链.\n- 重试必须集中在 handleConversationWithTools 最外层循环处理,executeWithInternalRetry 及下游适配器只负责单次执行,禁止在多层同时各自实现空回复重试,避免重入和重复退避.\n- EMPTY_RESPONSE 走更积极策略: 独立错误分类,最大重试 20 次,base delay 500ms,指数退避并附加 20% jitter,总 delay cap 15s; 其他可重试错误沿用默认策略.\n- 每轮重试前必须重新读取 options.controller,并在切换到新 AbortController 时桥接旧 controller 的 abort 事件; 否则 ESC/用户中断会在等待窗口或重试轮次中丢失.\n- 延迟等待必须使用 abort-aware sleep(signal),确保用户主动中断可立即打断等待; 用户主动中断(Request aborted by user)必须短路退出,不得进入重试提示循环.\n- Tool Search 的唯一开关事实源仍是 getToolSearchEnabled(),不得在会话层引入 plan/role/vulnerability 等已移除模式的兼容分支.",
       "createdAt": "2026-02-26T20:01:12.120",
-      "updatedAt": "2026-03-10T19:55:26.242"
+      "updatedAt": "2026-03-10T22:29:03.143"
     }
   ],
   "source/hooks/ui/useCommandPanel.ts": [
@@ -301,6 +301,15 @@
       "note": "职责: SSE 客户端示例的样式表,控制布局与视觉反馈(连接状态,按钮,聊天消息,loading 等).\\n主代理扩展(本需求): \\n- 为主代理选择器提供紧凑样式,与\"新建会话\"按钮同一行右侧对齐.\\n- 提供 switching/loading 的视觉态(如 disabled + spinner 或 opacity),以及未连接态的占位文案样式.\\n避坑指南: \\n- 避免使用影响全局的 tag 选择器,优先用 class/id 作用域,防止破坏既有聊天样式.\\n- loading 状态应可无障碍(禁用 select,同时提供文本提示),不要只靠颜色变化.",
       "createdAt": "2026-02-19T13:15:49.573",
       "updatedAt": "2026-02-19T13:15:49.573"
+    }
+  ],
+  "source/test/empty-response-retry.test.ts": [
+    {
+      "id": "notebook-1773152943709_123s7mhki",
+      "filePath": "source/test/empty-response-retry.test.ts",
+      "note": "职责: 锁定 EMPTY_RESPONSE 错误分类契约的最小回归测试.\n接口摘要:\n- 验证 createEmptyResponseError('') 产生的错误对象必须包含 code='EMPTY_RESPONSE',isRetryable=true,且 message 保留可识别文案.\n依赖拓扑:\n- 依赖 source/utils/core/emptyResponseDetector.ts.\n- 作为会话层外层重试策略的契约回归保护.\n避坑指南:\n- 测试关注跨层契约,不要把退避时长,UI 状态或 AbortController 竞态细节耦合进此文件.\n- 若未来调整错误文案,至少保留能让上层与日志识别为空回复的稳定语义.",
+      "createdAt": "2026-03-10T22:29:03.709",
+      "updatedAt": "2026-03-10T22:29:03.709"
     }
   ],
   "source/types/MainAgentConfig.ts": [
@@ -492,9 +501,18 @@
     {
       "id": "notebook-1772102890983_fbxjvwghi",
       "filePath": "source/utils/core/",
-      "note": "职责: 对话核心运行时能力层(core),包含重试,流保护,模型调用通用健壮性.\n不该做什么:\n- 不承载 UI 输入输出状态.\n- 不保存 profile 持久化配置.\n架构约束(本需求):\n- 流式空闲超时配置单一来源为 snowcfg.streamIdleTimeoutSec(秒),默认180.\n- 核心层仅负责秒->毫秒转换与执行,不引入多层优先级.\n依赖拓扑:\n- 依赖 config 层提供配置值,被 source/api/* 调用.\n避坑指南:\n- 心跳/空事件不能触发活跃刷新.\n- 断开后必须丢弃旧流延迟消息,避免串流污染.",
+      "note": "职责: 对话核心运行时能力层(core),包含重试,流保护,模型调用通用健壮性.\n不该做什么:\n- 不承载 UI 输入输出状态.\n- 不保存 profile 持久化配置.\n架构约束:\n- 流式空闲超时配置单一来源为 snowcfg.streamIdleTimeoutSec(秒),默认180.\n- 核心层仅负责秒->毫秒转换与执行,不引入多层优先级.\n- 空回复/不足回复必须通过统一错误分类契约向上抛出,由会话编排层的外层 retry loop 决策是否重试; 核心层与适配器层不得各自再实现第二套退避策略.\n依赖拓扑:\n- 依赖 config 层提供配置值,被 source/api/* 调用.\n- source/hooks/conversation/useConversation.ts 负责消费 core 层错误并执行集中重试策略.\n避坑指南:\n- 心跳/空事件不能触发活跃刷新.\n- 断开后必须丢弃旧流延迟消息,避免串流污染.\n- 新增可重试错误类型时,优先扩展统一错误分类字段(code,isRetryable),不要依赖零散 message 文本匹配.",
       "createdAt": "2026-02-26T18:48:10.983",
-      "updatedAt": "2026-02-26T18:48:10.983"
+      "updatedAt": "2026-03-10T22:29:03.454"
+    }
+  ],
+  "source/utils/core/emptyResponseDetector.ts": [
+    {
+      "id": "notebook-1773152943578_tjo29q3gw",
+      "filePath": "source/utils/core/emptyResponseDetector.ts",
+      "note": "职责: 定义空回复/不足回复与空工具调用的统一检测与错误分类契约,为上层工作循环提供稳定的重试判据.\n接口摘要:\n- isEmptyResponse(content): 判断文本回复是否为空或仅为无效占位确认.\n- createEmptyResponseError(content): 返回携带 code='EMPTY_RESPONSE' 与 isRetryable=true 的 Error.\n- isEmptyToolCalls(toolCalls): 判断工具调用数组是否为空或无效.\n依赖拓扑:\n- 被 source/hooks/conversation/useConversation.ts 的外层 retry loop 消费,用于识别空回复专属重试策略.\n- 可被模型适配器或流式处理逻辑复用,但不得在调用方重新定义同义错误码.\n避坑指南:\n- EMPTY_RESPONSE 是跨层契约,后续若扩展字段或文案,必须保持 code 与 isRetryable 语义稳定,避免上层失去重试判定.\n- 本文件只负责检测与分类,不负责 sleep,退避,UI 提示或 AbortController 管理.\n- 判定规则应保持保守且可解释,避免把正常的澄清型短回复误归类为空回复.",
+      "createdAt": "2026-03-10T22:29:03.578",
+      "updatedAt": "2026-03-10T22:29:03.578"
     }
   ],
   "source/utils/core/retryUtils.ts": [

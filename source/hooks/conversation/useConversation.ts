@@ -113,13 +113,13 @@ export type ConversationHandlerOptions = {
 	setRemountKey?: React.Dispatch<React.SetStateAction<number>>;
 	setSnapshotFileCount?: React.Dispatch<
 		React.SetStateAction<Map<number, number>>
-	>; // Clear snapshot counts after compression
-	getCurrentContextPercentage?: () => number; // Get current context percentage from ChatInput
-	setCurrentModel?: React.Dispatch<React.SetStateAction<string | null>>; // Set current model name for display
-	setIsStopping?: React.Dispatch<React.SetStateAction<boolean>>; // Control stopping state
+	>; // 压缩后清空快照计数
+	getCurrentContextPercentage?: () => number; // 获取当前上下文占用比例
+	setCurrentModel?: React.Dispatch<React.SetStateAction<string | null>>; // 用于展示当前模型名
+	setIsStopping?: React.Dispatch<React.SetStateAction<boolean>>; // 控制停止态
 	/**
-	 * Sync AbortController to streamingState.
-	 * Used during retry to update controller reference,ensuring ESC interrupt can target the current active controller.
+	 * 将 AbortController 同步到 streamingState.
+	 * 重试会替换 controller,这里同步引用,确保 ESC 中断命中当前有效请求.
 	 */
 	setAbortController?: (controller: AbortController) => void;
 	onRawSubAgentMessage?: (message: SubAgentMessage) => void; // 可选: 原始子代理消息透传回调(SSE 服务端用于转发事件)
@@ -131,10 +131,9 @@ export type ConversationHandlerOptions = {
 export async function handleConversationWithTools(
 	options: ConversationHandlerOptions,
 ): Promise<{usage: any | null}> {
-	const {controller, setRetryStatus, saveMessage, userContent, imageContents} =
-		options;
+	const {setRetryStatus, saveMessage, userContent, imageContents} = options;
 
-	// Save user message before retry loop to prevent duplicates caused by timing alignment
+	// 在重试循环前保存用户消息,避免网络重试导致重复写入.
 	try {
 		await saveMessage({
 			role: 'user',
@@ -145,26 +144,107 @@ export async function handleConversationWithTools(
 		console.error('Failed to save user message:', error);
 	}
 
-	const MAX_RETRIES = 10;
-	const RETRY_DELAY = 5000;
+	const DEFAULT_MAX_RETRIES = 10;
+	const EMPTY_RESPONSE_MAX_RETRIES = 20;
+	const BASE_DELAY_MS = 1000;
+	const EMPTY_RESPONSE_BASE_DELAY_MS = 500;
+	const MAX_DELAY_MS = 15000;
+
+	const getIsEmptyResponseError = (error: unknown): boolean => {
+		const err = error as any;
+		const message = String(err?.message || '').toLowerCase();
+		return (
+			err?.code === 'EMPTY_RESPONSE' ||
+			err?.isRetryable === true ||
+			message.includes('empty response') ||
+			message.includes('empty or insufficient response')
+		);
+	};
+
+	const getIsRetriable = (error: unknown): boolean => {
+		const err = error as any;
+		if (err?.isRetryable === true) return true;
+
+		const message = String(err?.message || '').toLowerCase();
+		return (
+			message.includes('timeout') ||
+			message.includes('network') ||
+			message.includes('connection') ||
+			message.includes('enotfound') ||
+			message.includes('econnreset') ||
+			message.includes('econnrefused') ||
+			message.includes('500') ||
+			message.includes('502') ||
+			message.includes('503') ||
+			message.includes('504') ||
+			message.includes('fetch failed') ||
+			message.includes('fetcherror') ||
+			getIsEmptyResponseError(error)
+		);
+	};
+
+	const calcNextDelay = (attempt: number, isEmptyResponse: boolean): number => {
+		const base = isEmptyResponse ? EMPTY_RESPONSE_BASE_DELAY_MS : BASE_DELAY_MS;
+		const cappedExp = Math.min(Math.max(0, attempt - 1), 6);
+		const rawDelay = Math.min(base * Math.pow(2, cappedExp), MAX_DELAY_MS);
+		const jitter = Math.floor(rawDelay * 0.2 * Math.random());
+		return rawDelay + jitter;
+	};
+
+	const sleep = (ms: number, signal: AbortSignal) =>
+		new Promise<void>((resolve, reject) => {
+			if (signal.aborted) {
+				reject(new Error('Request aborted by user'));
+				return;
+			}
+
+			const timer = setTimeout(() => {
+				cleanup();
+				resolve();
+			}, ms);
+
+			const onAbort = () => {
+				cleanup();
+				reject(new Error('Request aborted by user'));
+			};
+
+			const cleanup = () => {
+				clearTimeout(timer);
+				signal.removeEventListener('abort', onAbort);
+			};
+
+			signal.addEventListener('abort', onAbort, {once: true});
+		});
+
 	let retryCount = 0;
 	let lastError: Error | null = null;
 
-	while (retryCount <= MAX_RETRIES) {
+	while (true) {
+		// 每轮重新读取 AbortController,避免重试后继续引用已失效实例.
+		const currentController = options.controller;
+
 		try {
-			// 检查是否是用户主动中断
-			if (controller.signal.aborted) {
+			if (currentController.signal.aborted) {
 				throw new Error('Request aborted by user');
 			}
 
-			// 重试时创建新controller并同步到streamingState
-			// 确保重试/流消费/ESC中断三方使用同一controller引用
+			// 重试前同步新的 AbortController,并桥接旧实例的 abort,避免中断意图丢失.
 			if (retryCount > 0) {
+				const previousController = currentController;
 				const newController = new AbortController();
+				const bridgeAbort = () => newController.abort();
+				previousController.signal.addEventListener('abort', bridgeAbort, {
+					once: true,
+				});
+				if (previousController.signal.aborted) {
+					bridgeAbort();
+				}
+
 				options.controller = newController;
-				// 同步更新到streamingState,确保ESC中断能命中当前有效controller
-				if (options.setAbortController) {
-					options.setAbortController(newController);
+				options.setAbortController?.(newController);
+
+				if (newController.signal.aborted) {
+					throw new Error('Request aborted by user');
 				}
 			}
 
@@ -172,7 +252,6 @@ export async function handleConversationWithTools(
 				setRetryStatus(null);
 			}
 
-			// 重试时确保isStreaming状态为true
 			if (retryCount > 0 && options.setIsStreaming) {
 				options.setIsStreaming(true);
 			}
@@ -181,53 +260,54 @@ export async function handleConversationWithTools(
 		} catch (error) {
 			lastError = error as Error;
 
-			const errorMessage = (error as Error).message.toLowerCase();
-			const errorCode = (error as any).code;
-			const isRetriable =
-				errorMessage.includes('timeout') ||
-				errorMessage.includes('network') ||
-				errorMessage.includes('connection') ||
-				errorMessage.includes('ENOTFOUND') ||
-				errorMessage.includes('ECONNRESET') ||
-				errorMessage.includes('ECONNREFUSED') ||
-				errorMessage.includes('500') ||
-				errorMessage.includes('502') ||
-				errorMessage.includes('503') ||
-				errorMessage.includes('504') ||
-				errorMessage.includes('fetch failed') ||
-				errorMessage.includes('fetcherror') ||
-				errorCode === 'EMPTY_RESPONSE' ||
-				errorMessage.includes('empty response');
+			// 用户主动中断必须短路退出,不得进入重试提示循环
+			if (String(lastError.message) === 'Request aborted by user') {
+				throw lastError;
+			}
 
-			if (!isRetriable || retryCount >= MAX_RETRIES) {
+			const isRetriable = getIsRetriable(error);
+			if (!isRetriable) {
+				throw error;
+			}
+
+			const isEmptyResponse = getIsEmptyResponseError(error);
+			const maxRetries = isEmptyResponse
+				? EMPTY_RESPONSE_MAX_RETRIES
+				: DEFAULT_MAX_RETRIES;
+
+			if (retryCount >= maxRetries) {
 				throw error;
 			}
 
 			retryCount++;
+			const nextDelay = calcNextDelay(retryCount, isEmptyResponse);
+
+			console.warn(
+				`Retrying request (attempt ${retryCount}/${maxRetries}) after error: ${lastError.message}`,
+			);
+
 			if (setRetryStatus) {
 				const currentLanguage = getCurrentLanguage();
 				const t = translations[currentLanguage].chatScreen;
 				setRetryStatus({
 					isRetrying: true,
 					attempt: retryCount,
-					nextDelay: RETRY_DELAY,
-					remainingSeconds: Math.floor(RETRY_DELAY / 1000),
+					nextDelay,
+					remainingSeconds: Math.floor(nextDelay / 1000),
 					errorMessage: t.retryResending
 						.replace('{current}', String(retryCount))
-						.replace('{max}', String(MAX_RETRIES)),
+						.replace('{max}', String(maxRetries)),
 				});
 			}
 
-			// 重试延迟期间保持isStreaming=true,避免"思考中"显示消失
+			// 重试延迟期间保持流式状态,避免"思考中"提示消失
 			if (options.setIsStreaming) {
 				options.setIsStreaming(true);
 			}
 
-			await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+			await sleep(nextDelay, options.controller.signal);
 		}
 	}
-
-	throw lastError || new Error('Unknown error occurred');
 }
 
 function stripSpecialUserMessages(messages: ChatMessage[]): ChatMessage[] {
@@ -324,10 +404,10 @@ async function executeWithInternalRetry(
 		addMultipleToAlwaysApproved([toolName]);
 	};
 
-	// Initialize session and TODO context
+	// 初始化会话与待办上下文
 	let {conversationMessages} = await initializeConversationSession();
 
-	// Collect all MCP tools,按主代理权限过滤并划分初始暴露/可搜索集合后再接入 Tool Search.
+	// 收集所有 MCP 工具,按主代理权限过滤并划分初始暴露/可搜索集合后再接入 Tool Search.
 	const allMcpTools = await collectAllMCPTools();
 	const {allowedTools, initialTools} = filterToolsByMainAgent({
 		tools: allMcpTools,
@@ -357,7 +437,7 @@ async function executeWithInternalRetry(
 
 	cleanOrphanedToolCalls(conversationMessages);
 
-	// ── Build and save user message ──
+	// ── 构建并追加用户消息 ──
 
 	const finalUserContent = buildEditorContextContent(
 		editorContext,
@@ -370,10 +450,10 @@ async function executeWithInternalRetry(
 		images: imageContents,
 	});
 
-	// NOTE: User message is saved in handleConversationWithTools BEFORE retry loop
-	// to prevent duplicate saves when network errors trigger retries
+	// 说明: 用户消息在外层重试循环前已保存.
+	// 避免网络重试触发时重复写入.
 
-	// Set conversation context for on-demand snapshot system
+	// 为按需快照系统设置会话上下文
 	try {
 		const {setConversationContext} = await import(
 			'../../utils/codebase/conversationContext.js'
@@ -390,7 +470,7 @@ async function executeWithInternalRetry(
 		console.error('Failed to set conversation context:', error);
 	}
 
-	// ── Initialize encoder ──
+	// ── 初始化编码器 ──
 
 	let encoder: any;
 	let encoderFreed = false;
@@ -406,7 +486,7 @@ async function executeWithInternalRetry(
 		}
 	};
 
-	// Timer reference for retry status cleanup
+	// 重试状态清理计时器引用
 	let retryStatusClearTimer: NodeJS.Timeout | null = null;
 
 	try {
@@ -427,7 +507,7 @@ async function executeWithInternalRetry(
 		options.setCurrentModel(model);
 	}
 
-	// ── Main conversation loop ──
+	// ── 主会话循环 ──
 
 	let accumulatedUsage: {
 		prompt_tokens: number;
@@ -473,7 +553,7 @@ async function executeWithInternalRetry(
 			setStreamTokenCount(0);
 			accumulatedUsage = mergeUsage(accumulatedUsage, streamResult.roundUsage);
 
-			// ── Handle tool calls ──
+			// ── 处理工具调用 ──
 			if (
 				(!streamResult.streamedContent ||
 					isEmptyResponse(streamResult.streamedContent)) &&
@@ -528,7 +608,7 @@ async function executeWithInternalRetry(
 				continue;
 			}
 
-			// ── No tool calls — final text response ──
+			// ── 无工具调用,最终文本回复 ──
 			if (streamResult.streamedContent.trim()) {
 				if (!streamResult.hasStreamedLines) {
 					const finalAssistantMessage: Message = {
@@ -558,7 +638,7 @@ async function executeWithInternalRetry(
 				});
 			}
 
-			// ── onStop hooks ──
+			// ── 停止钩子 ──
 			if (!controller.signal.aborted) {
 				const hookResult = await handleOnStopHooks({
 					conversationMessages,
@@ -590,7 +670,7 @@ async function executeWithInternalRetry(
 		try {
 			await connectionManager.notifyMessageProcessingCompleted();
 		} catch {
-			// Ignore notification errors
+			// 忽略通知阶段的错误
 		}
 
 		try {
@@ -599,7 +679,7 @@ async function executeWithInternalRetry(
 			);
 			clearConversationContext();
 		} catch {
-			// Ignore errors during cleanup
+			// 忽略清理阶段的错误
 		}
 
 		freeEncoder();
@@ -609,7 +689,7 @@ async function executeWithInternalRetry(
 }
 
 // ─────────────────────────────────────────────────────────────
-// Internal helpers
+// 内部辅助函数
 // ─────────────────────────────────────────────────────────────
 
 type StreamRoundResult = {
@@ -624,7 +704,7 @@ type StreamRoundResult = {
 	hasStreamedLines: boolean;
 };
 
-// Placeholder type for usage — mirrors the accumulated shape
+// 用量占位类型,形状与 accumulatedUsage 保持一致
 const tmpUsage = {
 	prompt_tokens: 0,
 	completion_tokens: 0,
@@ -815,7 +895,7 @@ async function processStreamRound(ctx: {
 			maxTokens,
 		});
 	} catch {
-		// Ignore estimation failures and keep previous context usage.
+		// 忽略估算失败,保留上一轮上下文用量.
 	}
 
 	const streamGenerator = createStreamGenerator({
@@ -839,7 +919,7 @@ async function processStreamRound(ctx: {
 				lastTokenUpdateTime = now;
 			}
 		} catch {
-			// Ignore encoding errors
+			// 忽略编码错误
 		}
 	};
 
@@ -1046,7 +1126,7 @@ async function handleToolCallRound(ctx: {
 
 	const receivedToolCalls = streamResult.receivedToolCalls!;
 
-	// Save assistant message with tool_calls
+	// 保存包含 tool_calls 的 assistant 消息
 	const {parallelGroupId} = await processToolCallsAfterStream({
 		receivedToolCalls,
 		streamedContent: streamResult.streamedContent,
@@ -1060,7 +1140,7 @@ async function handleToolCallRound(ctx: {
 		hasStreamedLines: streamResult.hasStreamedLines,
 	});
 
-	// ── Resolve tool confirmations ──
+	// ── 处理工具确认 ──
 
 	const confirmResult = await resolveToolConfirmations({
 		receivedToolCalls,
@@ -1088,7 +1168,7 @@ async function handleToolCallRound(ctx: {
 
 	const approvedTools = confirmResult.approvedTools;
 
-	// ── Check abort before execution ──
+	// ── 执行前检查中断 ──
 
 	if (controller.signal.aborted) {
 		for (const toolCall of approvedTools) {
@@ -1105,7 +1185,7 @@ async function handleToolCallRound(ctx: {
 		return {type: 'break'};
 	}
 
-	// ── Execute tools ──
+	// ── 执行工具 ──
 
 	const subAgentHandler = new SubAgentUIHandler(
 		encoder,
@@ -1159,7 +1239,7 @@ async function handleToolCallRound(ctx: {
 		},
 	);
 
-	// ── Check abort during execution ──
+	// ── 执行中检查中断 ──
 
 	if (controller.signal.aborted) {
 		if (receivedToolCalls.length > 0) {
@@ -1182,7 +1262,7 @@ async function handleToolCallRound(ctx: {
 		return {type: 'break'};
 	}
 
-	// ── Hook failure check ──
+	// ── 检查 hook 失败 ──
 
 	const hookFailedResult = toolResults.find(r => r.hookFailed);
 	if (hookFailedResult) {
@@ -1209,7 +1289,7 @@ async function handleToolCallRound(ctx: {
 		return {type: 'break'};
 	}
 
-	// ── Progressive tool loading ──
+	// ── 渐进式工具加载 ──
 
 	if (useToolSearch && receivedToolCalls) {
 		for (const tc of receivedToolCalls) {
@@ -1229,13 +1309,13 @@ async function handleToolCallRound(ctx: {
 						}
 					}
 				} catch {
-					// Ignore parse errors
+					// 忽略解析错误
 				}
 			}
 		}
 	}
 
-	// ── Save tool results ──
+	// ── 保存工具结果 ──
 
 	for (const result of toolResults) {
 		const isError = result.content.startsWith('Error:');
@@ -1251,7 +1331,7 @@ async function handleToolCallRound(ctx: {
 		}
 	}
 
-	// ── Auto-compression after tool execution ──
+	// ── 工具执行后自动压缩 ──
 
 	const autoCompressOpts = {
 		getCurrentContextPercentage: options.getCurrentContextPercentage,
@@ -1293,7 +1373,7 @@ async function handleToolCallRound(ctx: {
 		}
 	}
 
-	// ── Update UI with tool results ──
+	// ── 使用工具结果更新 UI ──
 
 	setMessages(prev =>
 		prev.filter(
@@ -1315,7 +1395,7 @@ async function handleToolCallRound(ctx: {
 		setMessages(prev => [...prev, ...resultMessages]);
 	}
 
-	// ── Inject spawned sub-agent results ──
+	// ── 注入已派生子代理结果 ──
 
 	try {
 		const {runningSubAgentTracker} = await import(
@@ -1363,7 +1443,7 @@ async function handleToolCallRound(ctx: {
 		console.error('Failed to process spawned agent results:', error);
 	}
 
-	// ── Handle pending messages ──
+	// ── 处理待发送消息 ──
 
 	const pendingResult = await handlePendingMessages({
 		getPendingMessages: options.getPendingMessages,
