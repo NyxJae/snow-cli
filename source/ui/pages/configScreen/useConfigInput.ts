@@ -1,5 +1,9 @@
 import {useInput} from 'ink';
-import {stripFocusArtifacts, isFocusEventInput, isSelectField} from './types.js';
+import {
+	stripFocusArtifacts,
+	isFocusEventInput,
+	isSelectField,
+} from './types.js';
 import type {ConfigStateReturn} from './useConfigState.js';
 
 export function useConfigInput(
@@ -183,7 +187,11 @@ export function useConfigInput(
 
 		// Handle editing mode
 		if (isEditing) {
-			if (currentField === 'baseUrl' || currentField === 'apiKey') {
+			if (
+				currentField === 'baseUrl' ||
+				currentField === 'apiKey' ||
+				currentField === 'modelSpecificPrompt'
+			) {
 				if (key.return) {
 					setIsEditing(false);
 				}

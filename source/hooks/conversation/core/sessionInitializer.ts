@@ -46,6 +46,9 @@ export async function initializeConversationSession(): Promise<{
 	const systemPrompt =
 		customSystemPrompt?.join('\n\n') || mainAgentManager.getSystemPrompt();
 
+	// 为满足"模型专属提示词"仅注入 user 的约束,这里额外注入主代理 user 角色定义块
+	const mainAgentUserRolePrompt = mainAgentManager.getMainAgentUserRolePrompt();
+
 	const conversationMessages: ChatMessage[] = [
 		{
 			role: 'system',
@@ -67,13 +70,13 @@ export async function initializeConversationSession(): Promise<{
 	// 收集特殊用户消息,动态插入到倒数第3条assistant之前,提高模型注意力和KV缓存命中率
 	const specialUserMessages: ChatMessage[] = [];
 
-	// 1. Agent角色定义(包含mainAgentRole + AGENTS.md + 环境上下文 + 任务完成标识)
+	// 1. Agent角色定义(包含mainAgentRole + 模型专属提示词 + AGENTS.md + 环境上下文 + 任务完成标识)
 	// 确保主代理了解自己的角色和职责
 	const currentAgentConfig = mainAgentManager.getCurrentAgentConfig();
 	if (currentAgentConfig && currentAgentConfig.mainAgentRole) {
 		specialUserMessages.push({
 			role: 'user',
-			content: mainAgentManager.getSystemPrompt(),
+			content: mainAgentUserRolePrompt,
 			specialUserMessage: true,
 		});
 	}

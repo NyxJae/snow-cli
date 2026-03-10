@@ -53,6 +53,7 @@ export function useConfigState() {
 	const [customHeadersSchemeId, setCustomHeadersSchemeId] = useState<
 		string | undefined
 	>(undefined);
+	const [modelSpecificPrompt, setModelSpecificPrompt] = useState('');
 	const [systemPrompts, setSystemPrompts] = useState<
 		Array<{id: string; name: string}>
 	>([]);
@@ -143,6 +144,7 @@ export function useConfigState() {
 			'requestMethod',
 			'systemPromptId',
 			'customHeadersSchemeId',
+			'modelSpecificPrompt',
 			'enableAutoCompress',
 			...(enableAutoCompress ? ['autoCompressThreshold' as ConfigField] : []),
 			'showThinking',
@@ -280,6 +282,7 @@ export function useConfigState() {
 		setRequestMethod(config.requestMethod || 'chat');
 		setSystemPromptId(config.systemPromptId);
 		setCustomHeadersSchemeId(config.customHeadersSchemeId);
+		setModelSpecificPrompt(config.modelSpecificPrompt || '');
 		setAnthropicBeta(config.anthropicBeta || false);
 		setAnthropicCacheTTL(config.anthropicCacheTTL || '5m');
 		setEnableAutoCompress(config.enableAutoCompress !== false);
@@ -332,6 +335,7 @@ export function useConfigState() {
 			baseUrl,
 			apiKey,
 			requestMethod,
+			modelSpecificPrompt,
 		};
 		await updateOpenAiConfig(tempConfig);
 
@@ -367,6 +371,7 @@ export function useConfigState() {
 		if (currentField === 'profile') return activeProfile;
 		if (currentField === 'baseUrl') return baseUrl;
 		if (currentField === 'apiKey') return apiKey;
+		if (currentField === 'modelSpecificPrompt') return modelSpecificPrompt;
 		if (currentField === 'advancedModel') return advancedModel;
 		if (currentField === 'basicModel') return basicModel;
 		if (currentField === 'maxContextTokens') return maxContextTokens.toString();
@@ -536,6 +541,7 @@ export function useConfigState() {
 					requestMethod,
 					systemPromptId,
 					customHeadersSchemeId,
+					modelSpecificPrompt: modelSpecificPrompt || '',
 					anthropicBeta,
 					anthropicCacheTTL,
 					enableAutoCompress,
@@ -634,6 +640,7 @@ export function useConfigState() {
 				requestMethod,
 				systemPromptId,
 				customHeadersSchemeId,
+				modelSpecificPrompt: modelSpecificPrompt || '',
 				anthropicBeta,
 				anthropicCacheTTL,
 				enableAutoCompress,
@@ -690,6 +697,7 @@ export function useConfigState() {
 						requestMethod,
 						systemPromptId,
 						customHeadersSchemeId,
+						modelSpecificPrompt: modelSpecificPrompt || '',
 						anthropicBeta,
 						anthropicCacheTTL,
 						enableAutoCompress,
@@ -706,13 +714,13 @@ export function useConfigState() {
 						geminiThinking: geminiThinkingEnabled
 							? {enabled: true, budget: geminiThinkingBudget}
 							: undefined,
-					responsesReasoning: {
-						enabled: responsesReasoningEnabled,
-						effort: responsesReasoningEffort,
-					},
-					responsesVerbosity,
-					responsesFastMode,
-					advancedModel,
+						responsesReasoning: {
+							enabled: responsesReasoningEnabled,
+							effort: responsesReasoningEffort,
+						},
+						responsesVerbosity,
+						responsesFastMode,
+						advancedModel,
 						basicModel,
 						maxContextTokens,
 						maxTokens,
@@ -759,6 +767,8 @@ export function useConfigState() {
 		setSystemPromptId,
 		customHeadersSchemeId,
 		setCustomHeadersSchemeId,
+		modelSpecificPrompt,
+		setModelSpecificPrompt,
 		systemPrompts,
 		activeSystemPromptIds,
 		pendingPromptIds,

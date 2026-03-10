@@ -267,7 +267,7 @@ async function refreshMainAgentSpecialUserMessages(
 	if (currentAgentConfig && currentAgentConfig.mainAgentRole) {
 		specialUserMessages.push({
 			role: 'user',
-			content: mainAgentManager.getSystemPrompt(),
+			content: mainAgentManager.getMainAgentUserRolePrompt(),
 			specialUserMessage: true,
 		});
 	}
@@ -1935,6 +1935,13 @@ async function executeWithInternalRetry(
 								content: mainAgentManager.getSystemPrompt(),
 							});
 
+							// 1.5 注入主代理 user 角色定义块(含模型专属提示词),位置靠前但在system之后
+							conversationMessages.push({
+								role: 'user',
+								content: mainAgentManager.getMainAgentUserRolePrompt(),
+								specialUserMessage: true,
+							});
+
 							// 2. 如果有TODOs，添加TODO上下文
 							if (existingTodoList && existingTodoList.todos.length > 0) {
 								const todoContext = formatTodoContext(existingTodoList.todos);
@@ -2317,6 +2324,13 @@ async function executeWithInternalRetry(
 									conversationMessages.push({
 										role: 'system',
 										content: mainAgentManager.getSystemPrompt(),
+									});
+
+									// 1.5 注入主代理 user 角色定义块(含模型专属提示词),位置靠前但在system之后
+									conversationMessages.push({
+										role: 'user',
+										content: mainAgentManager.getMainAgentUserRolePrompt(),
+										specialUserMessage: true,
 									});
 
 									// 2. 如果有TODOs，添加TODO上下文

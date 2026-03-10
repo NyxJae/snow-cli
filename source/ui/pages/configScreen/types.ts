@@ -7,6 +7,7 @@ export type ConfigField =
 	| 'requestMethod'
 	| 'systemPromptId'
 	| 'customHeadersSchemeId'
+	| 'modelSpecificPrompt'
 	| 'anthropicBeta'
 	| 'anthropicCacheTTL'
 	| 'enableAutoCompress'

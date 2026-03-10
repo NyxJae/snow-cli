@@ -31,6 +31,8 @@ export default function ConfigFieldRenderer({field, state}: Props) {
 		activeSystemPromptIds,
 		customHeadersSchemeId,
 		activeCustomHeadersSchemeId,
+		modelSpecificPrompt,
+		setModelSpecificPrompt,
 		anthropicBeta,
 		anthropicCacheTTL,
 		setAnthropicCacheTTL,
@@ -226,6 +228,34 @@ export default function ConfigFieldRenderer({field, state}: Props) {
 			);
 		}
 
+		case 'modelSpecificPrompt':
+			return (
+				<Box key={field} flexDirection="column">
+					<Text color={activeColor}>
+						{activeIndicator}
+						{t.configScreen.modelSpecificPrompt}
+					</Text>
+					{isCurrentlyEditing && (
+						<Box marginLeft={3}>
+							<TextInput
+								value={modelSpecificPrompt}
+								onChange={value =>
+									setModelSpecificPrompt(stripFocusArtifacts(value))
+								}
+								placeholder={t.configScreen.modelSpecificPromptPlaceholder}
+							/>
+						</Box>
+					)}
+					{!isCurrentlyEditing && (
+						<Box marginLeft={3}>
+							<Text color={theme.colors.menuSecondary}>
+								{modelSpecificPrompt || t.configScreen.notSet}
+							</Text>
+						</Box>
+					)}
+				</Box>
+			);
+
 		case 'anthropicBeta':
 			return (
 				<Box key={field} flexDirection="column">
@@ -235,9 +265,7 @@ export default function ConfigFieldRenderer({field, state}: Props) {
 					</Text>
 					<Box marginLeft={3}>
 						<Text color={theme.colors.menuSecondary}>
-							{anthropicBeta
-								? t.configScreen.enabled
-								: t.configScreen.disabled}{' '}
+							{anthropicBeta ? t.configScreen.enabled : t.configScreen.disabled}{' '}
 							{t.configScreen.toggleHint}
 						</Text>
 					</Box>
@@ -330,9 +358,7 @@ export default function ConfigFieldRenderer({field, state}: Props) {
 					</Text>
 					<Box marginLeft={3}>
 						<Text color={theme.colors.menuSecondary}>
-							{showThinking
-								? t.configScreen.enabled
-								: t.configScreen.disabled}{' '}
+							{showThinking ? t.configScreen.enabled : t.configScreen.disabled}{' '}
 							{t.configScreen.toggleHint}
 						</Text>
 					</Box>
@@ -495,9 +521,7 @@ export default function ConfigFieldRenderer({field, state}: Props) {
 									{label: 'LOW', value: 'low'},
 									{label: 'MEDIUM', value: 'medium'},
 									{label: 'HIGH', value: 'high'},
-									...(supportsXHigh
-										? [{label: 'XHIGH', value: 'xhigh'}]
-										: []),
+									...(supportsXHigh ? [{label: 'XHIGH', value: 'xhigh'}] : []),
 								]}
 								onChange={value => {
 									setResponsesReasoningEffort(
@@ -534,9 +558,7 @@ export default function ConfigFieldRenderer({field, state}: Props) {
 									{label: 'HIGH', value: 'high'},
 								]}
 								onChange={value => {
-									setResponsesVerbosity(
-										value as 'low' | 'medium' | 'high',
-									);
+									setResponsesVerbosity(value as 'low' | 'medium' | 'high');
 									state.setIsEditing(false);
 								}}
 							/>
@@ -605,11 +627,7 @@ export default function ConfigFieldRenderer({field, state}: Props) {
 			);
 
 		case 'maxTokens':
-			return renderNumericField(
-				field,
-				t.configScreen.maxTokens,
-				maxTokens,
-			);
+			return renderNumericField(field, t.configScreen.maxTokens, maxTokens);
 
 		case 'streamIdleTimeoutSec':
 			return renderNumericField(

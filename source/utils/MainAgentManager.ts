@@ -14,7 +14,7 @@ import type {AgentInfo} from '../api/sse-server.js';
 import {
 	getAgentsPrompt,
 	createSystemContext,
-	// getTaskCompletionPrompt,
+	getTaskCompletionPrompt,
 } from './agentsPromptUtils.js';
 import {getModelSpecificPrompt} from './config/apiConfig.js';
 
@@ -249,19 +249,33 @@ export class MainAgentManager {
 	 */
 	getSystemPrompt(): string {
 		if (!this.currentState) {
-			// 如果状态未初始化，返回通用主代理的默认提示词
 			const builtinConfigs = getBuiltinMainAgentConfigs();
 			const generalConfig = builtinConfigs['general'];
-
 			if (!generalConfig) {
 				throw new Error('General主代理配置未找到');
 			}
-
-			return this.generateCleanSystemPrompt(generalConfig);
+			return this.generateBuiltinSystemPrompt(generalConfig);
 		}
 
 		const {currentConfig} = this.currentState;
-		return this.generateCleanSystemPrompt(currentConfig);
+		return this.generateBuiltinSystemPrompt(currentConfig);
+	}
+
+	/**
+	 * 获取主代理 user 角色定义提示词块(用于会话层注入特殊 user 消息).
+	 */
+	getMainAgentUserRolePrompt(): string {
+		if (!this.currentState) {
+			const builtinConfigs = getBuiltinMainAgentConfigs();
+			const generalConfig = builtinConfigs['general'];
+			if (!generalConfig) {
+				throw new Error('General主代理配置未找到');
+			}
+			return this.generateMainAgentUserRolePrompt(generalConfig);
+		}
+
+		const {currentConfig} = this.currentState;
+		return this.generateMainAgentUserRolePrompt(currentConfig);
 	}
 
 	/**
@@ -331,42 +345,56 @@ export class MainAgentManager {
 	}
 
 	/**
-	 * 生成纯净的系统提示词（不包含工具和子代理列表）
+	 * 生成内置 system prompt(不包含工具和子代理列表).
 	 *
-	 * 工具和子代理权限通过原生工具调用机制处理，不在提示词中显示
-	 *
-	 * @param config 主代理配置
-	 * @returns 纯净的系统提示词
+	 * 注意: modelSpecificPrompt 按需求只能注入到 user,不得进入 system.
 	 */
-	private generateCleanSystemPrompt(config: MainAgentConfig): string {
+	private generateBuiltinSystemPrompt(config: MainAgentConfig): string {
 		const {mainAgentRole} = config;
 
-		// 创建基础提示词
 		let prompt = mainAgentRole;
 
-		// 添加模型专属提示词
-		const modelSpecificPrompt = getModelSpecificPrompt();
-		if (modelSpecificPrompt) {
-			prompt += '\n\n' + modelSpecificPrompt;
-		}
-
-		// 添加 AGENTS.md 内容
 		const agentsPrompt = getAgentsPrompt();
 		if (agentsPrompt) {
 			prompt += '\n\n' + agentsPrompt;
 		}
 
-		// 添加环境上下文信息
 		const contextInfo = createSystemContext();
 		if (contextInfo) {
 			prompt += '\n\n' + contextInfo;
 		}
 
-		// 添加任务完成标识提示词
-		// const taskCompletionPrompt = getTaskCompletionPrompt();
-		// if (taskCompletionPrompt) {
-		// 	prompt += '\n\n' + taskCompletionPrompt;
-		// }
+		return prompt.trim();
+	}
+
+	/**
+	 * 生成主代理的 user 角色定义提示词块.
+	 * 顺序: 角色定义 -> 模型专属提示词 -> AGENTS.md -> 系统环境 -> 任务完成标识.
+	 */
+	private generateMainAgentUserRolePrompt(config: MainAgentConfig): string {
+		const {mainAgentRole} = config;
+
+		let prompt = mainAgentRole;
+
+		const modelSpecificPrompt = getModelSpecificPrompt();
+		if (modelSpecificPrompt) {
+			prompt += '\n\n' + modelSpecificPrompt;
+		}
+
+		const agentsPrompt = getAgentsPrompt();
+		if (agentsPrompt) {
+			prompt += '\n\n' + agentsPrompt;
+		}
+
+		const contextInfo = createSystemContext();
+		if (contextInfo) {
+			prompt += '\n\n' + contextInfo;
+		}
+
+		const taskCompletionPrompt = getTaskCompletionPrompt();
+		if (taskCompletionPrompt) {
+			prompt += '\n\n' + taskCompletionPrompt;
+		}
 
 		return prompt.trim();
 	}
