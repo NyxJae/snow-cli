@@ -1017,15 +1017,28 @@ export async function closeAllMCPConnections(): Promise<void> {
 export interface MCPExecutionContext {
 	editableFileSuffixes?: string[];
 	/**
-	 * Skip beforeToolCall/afterToolCall execution in executeMCPTool.
-	 * Use this when the caller already executes tool hooks.
+	 * 是否跳过 beforeToolCall/afterToolCall hooks.
+	 *
+	 * 为什么需要这个开关:
+	 * - 上层(toolExecutor 等)可能已经执行过 hooks,此处重复执行会导致副作用重复(例如重复记录/重复阻断).
 	 */
 	skipToolHooks?: boolean;
+	/**
+	 * 用于执行 tool_search 的 ToolSearchService 实例.
+	 *
+	 * 为什么必须从执行上下文注入:
+	 * - Tool Search 的 registry/toolMap 是有状态的.
+	 * - 子代理必须使用隔离实例,避免与全局单例共享 registry 导致工具集合串扰.
+	 */
+	toolSearchService?: any;
 }
 
 /**
- * Normalize tool arguments by parsing JSON-like string values for known array/object fields.
- * This keeps hook payloads and tool execution payloads consistent.
+ * 规范化工具参数.
+ *
+ * 为什么需要规范化:
+ * - 某些模型会把数组/对象参数序列化成 JSON 字符串,导致 hooks 与工具执行层收到的结构不一致.
+ * - 这里仅对已知的数组/对象字段尝试反序列化,避免误伤普通字符串参数.
  */
 export function normalizeToolArgs(args: any): any {
 	if (!args || typeof args !== 'object') {
@@ -1131,8 +1144,20 @@ export async function executeMCPTool(
 	let executionError: Error | null = null;
 
 	try {
-		// Handle tool_search meta-tool (progressive tool discovery)
+		// tool_search 元工具:用于渐进式工具发现,不需要连接任何 MCP 服务.
 		if (toolName === 'tool_search') {
+			const serviceFromContext = executionContext?.toolSearchService;
+			if (
+				serviceFromContext &&
+				typeof serviceFromContext.search === 'function'
+			) {
+				const {textResult} = serviceFromContext.search(
+					args.query || '',
+					args.maxResults,
+				);
+				return textResult;
+			}
+
 			const {toolSearchService} = await import('./toolSearchService.js');
 			const {textResult} = toolSearchService.search(
 				args.query || '',

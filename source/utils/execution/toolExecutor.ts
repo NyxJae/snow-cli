@@ -408,7 +408,7 @@ export async function executeToolCall(
 				runningSubAgentTracker.unregister(toolCall.id);
 			}
 		} else {
-			// Regular tool execution
+			// 常规工具执行.
 			const toolResult = await executeMCPTool(
 				toolCall.function.name,
 				args,
@@ -420,7 +420,7 @@ export async function executeToolCall(
 				},
 			);
 
-			// Extract multimodal content (text + images)
+			// 提取多模态内容(text + images),用于 UI 渲染与后续消息拼接.
 			const {textContent, images} = extractMultimodalContent(toolResult);
 
 			result = {

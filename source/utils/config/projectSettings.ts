@@ -19,6 +19,8 @@ export const TOOL_SEARCH_INITIAL_TOOL_WHITELIST: readonly string[] = [
 	'ide-get_diagnostics',
 	'askuser-ask_question',
 	'ace-text_search',
+	"notebook-add",
+  "notebook-update",
 	'skill-execute',
 ];
 

@@ -1,11 +1,13 @@
 /**
- * Tool Search Service - Progressive tool discovery
+ * Tool Search 服务(渐进式工具发现).
  *
- * Instead of loading all MCP tools upfront into the API request context,
- * this service provides a tool_search meta-tool that lets the AI discover
- * and activate tools on-demand, dramatically reducing context consumption.
+ * 为什么需要它:
+ * - 直接把全部工具定义塞进一次模型请求会占用大量上下文.
+ * - 该服务提供一个 `tool_search` 元工具,让模型先搜索,再按需加载工具,以节约上下文.
  *
- * Inspired by Claude Code's Tool Search mechanism.
+ * 约束:
+ * - registry 只能基于当前代理已授权的 allowedTools 构建,不得回流 rawTools 扩权.
+ * - 该服务是有状态的,主代理与子代理必须使用隔离实例,避免 registry 串扰.
  */
 
 import type {MCPTool, MCPServiceTools} from './mcpToolsManager.js';
@@ -32,15 +34,17 @@ interface BuiltInCategorySummary {
 	count: number;
 }
 
-class ToolSearchService {
+export class ToolSearchService {
 	private registry: MCPTool[] = [];
 	private toolMap: Map<string, MCPTool> = new Map();
 	private externalServices: ExternalServiceMeta[] = [];
 
 	/**
-	 * Update the tool registry with already-authorized tools only.
+	 * 更新工具 registry(仅允许已授权工具).
 	 *
-	 * Tool Search registry 必须基于 allowedTools 构建,绝不能回流 rawTools.
+	 * 为什么必须这样做:
+	 * - Tool Search 只能搜索"当前代理真正允许看到的工具集合".
+	 * - 如果把未授权工具放进 registry,会导致越权可见/可搜索.
 	 */
 	updateRegistry(tools: MCPTool[], servicesInfo?: MCPServiceTools[]): void {
 		this.registry = tools;
@@ -70,9 +74,11 @@ class ToolSearchService {
 	}
 
 	/**
-	 * Search tools by keyword query.
-	 * Scores tools by matching keywords against name, description, and parameter names.
-	 * Returns formatted text result for the AI and the list of matched tool names.
+	 * 根据关键词搜索工具.
+	 *
+	 * 说明:
+	 * - 返回 textResult(给模型看的文本) + matchedToolNames(用于调用侧解锁工具).
+	 * - 搜索范围仅限 registry,因此天然不会泄露未授权工具.
 	 */
 	search(
 		query: string,
@@ -210,8 +216,11 @@ class ToolSearchService {
 	}
 
 	/**
-	 * Get a summary of tool categories for guidance.
-	 * Separates built-in and third-party services for clarity.
+	 * 获取工具类别摘要,用于在 tool_search 的说明中引导用户如何检索.
+	 *
+	 * 为什么要区分内置与第三方服务:
+	 * - 内置工具可按类别给出示例.
+	 * - 第三方 MCP 服务更适合按 serviceName 引导检索.
 	 */
 	getCategorySummary(): string {
 		const builtInLines = this.getSortedBuiltInCategories().map(
@@ -236,14 +245,20 @@ class ToolSearchService {
 	}
 
 	/**
-	 * Get a tool definition by its full name.
+	 * 根据完整工具名获取工具定义.
+	 *
+	 * 为什么必须使用完整名:
+	 * - 工具权限与 Tool Search 的 registry 都以运行时工具全称为唯一标识,避免短名/前缀导致的歧义与越权.
 	 */
 	getToolByName(name: string): MCPTool | undefined {
 		return this.toolMap.get(name);
 	}
 
 	/**
-	 * Get multiple tool definitions by names.
+	 * 根据工具名集合批量获取工具定义.
+	 *
+	 * 为什么需要批量接口:
+	 * - buildActiveTools 需要按已发现工具名快速组装 tools 列表,避免在上层重复遍历 registry.
 	 */
 	getToolsByNames(names: Iterable<string>): MCPTool[] {
 		const result: MCPTool[] = [];
@@ -257,8 +272,10 @@ class ToolSearchService {
 	}
 
 	/**
-	 * Extract tool names that were previously used in conversation history.
-	 * These tools should be pre-loaded to avoid re-discovery.
+	 * 从历史消息中提取曾经调用过的工具名.
+	 *
+	 * 为什么需要预加载:
+	 * - 避免同一会话反复 tool_search 才能再次调用已用过的工具,降低交互成本.
 	 */
 	extractUsedToolNames(
 		messages: Array<{tool_calls?: Array<{function: {name: string}}>}>,
@@ -278,8 +295,15 @@ class ToolSearchService {
 	}
 
 	/**
-	 * Build the active tools array for an API request.
-	 * Includes tool_search,首轮直出工具,以及已发现/已使用工具.
+	 * 构建一次模型请求需要暴露的 tools 列表.
+	 *
+	 * 组成:
+	 * - 必带: `tool_search`.
+	 * - 首轮直出: initialTools.
+	 * - 已发现: discoveredToolNames 对应的工具.
+	 *
+	 * 为什么这样做:
+	 * - 避免一次性暴露全部工具导致上下文膨胀.
 	 */
 	buildActiveTools(options: ToolSearchBuildOptions): MCPTool[] {
 		const {discoveredToolNames, initialTools = []} = options;
@@ -305,10 +329,11 @@ class ToolSearchService {
 		}
 		return active;
 	}
-
 	/**
-	 * Get the tool_search meta-tool definition.
-	 * Dynamically includes authorized built-in categories and third-party MCP service info.
+	 * 获取 `tool_search` 元工具定义.
+	 *
+	 * 为什么需要动态生成:
+	 * - tool_search 的描述里展示的类别/第三方服务信息必须来自"已授权 registry",否则会泄露无权限工具信息.
 	 */
 	getToolSearchDefinition(): MCPTool {
 		const builtInCategoryExamples = this.getBuiltInCategoryExamples(5);
@@ -380,3 +405,14 @@ class ToolSearchService {
 }
 
 export const toolSearchService = new ToolSearchService();
+
+/**
+ * 创建隔离的 ToolSearchService 实例.
+ *
+ * 为什么必须隔离:
+ * - ToolSearchService 内部持有 registry/toolMap 等可变状态.
+ * - 主代理与子代理若共用单例,会互相覆盖 registry,导致可搜索工具集合串扰.
+ */
+export function createToolSearchService(): ToolSearchService {
+	return new ToolSearchService();
+}

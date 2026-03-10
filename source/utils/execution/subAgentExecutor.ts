@@ -34,7 +34,15 @@ import type {MCPTool} from './mcpToolsManager.js';
 import type {ChatMessage} from '../../api/types.js';
 import {formatUsefulInfoContext} from '../core/usefulInfoPreprocessor.js';
 import {formatTodoContext} from '../core/todoPreprocessor.js';
-import {isExactToolIdentifierMatch} from '../core/toolFilterUtils.js';
+import {
+	isExactToolIdentifierMatch,
+	shouldExposeToolInitially,
+} from '../core/toolFilterUtils.js';
+import {
+	createToolSearchService,
+	toolSearchService as globalToolSearchService,
+} from './toolSearchService.js';
+import {getToolSearchEnabled} from '../config/projectSettings.js';
 import {
 	formatFolderNotebookContext,
 	getReadFolders,
@@ -317,7 +325,20 @@ export async function executeSubAgent(
 			isExactToolIdentifierMatch(tool.function.name, configuredAllowedTools),
 		);
 
-		if (allowedTools.length === 0) {
+		// Tool Search registry 需要基于子代理自身 allowedTools 构建,并且每次子代理调用都必须
+		// 使用独立实例,避免与主代理共享全局单例导致 registry 被覆盖.
+		const useToolSearch = getToolSearchEnabled();
+		const toolSearch = useToolSearch
+			? createToolSearchService()
+			: globalToolSearchService;
+
+		// 子代理渐进式工具加载状态.
+		// 注意: registry 的更新必须延后到协作工具注入后,确保协作工具也可被 tool_search 搜索到.
+		let discoveredToolNames = new Set<string>();
+		let initialTools: MCPTool[] = [];
+		let activeTools: MCPTool[] = allowedTools;
+
+		if (activeTools.length === 0) {
 			return {
 				success: false,
 				result: '',
@@ -474,6 +495,18 @@ ${agentDescriptions}`,
 			};
 
 			allowedTools.push(spawnSubAgentTool);
+		}
+
+		// Tool Search:协作工具注入完成后,再用最终 allowedTools 构建 registry 并计算首轮 activeTools.
+		if (useToolSearch) {
+			toolSearch.updateRegistry(allowedTools);
+			initialTools = allowedTools.filter(tool =>
+				shouldExposeToolInitially(tool.function.name),
+			);
+			activeTools = toolSearch.buildActiveTools({
+				discoveredToolNames,
+				initialTools,
+			});
 		}
 
 		// 构建并行子代理协作上下文
@@ -756,7 +789,7 @@ You have access to these collaboration tools:
 								messages,
 								temperature: 0,
 								max_tokens: config.maxTokens || 4096,
-								tools: allowedTools,
+								tools: activeTools,
 								sessionId: currentSession?.id,
 								//disableThinking: true, // Sub-agents 不使用 Extended Thinking
 								configProfile: agent.configProfile,
@@ -771,7 +804,7 @@ You have access to these collaboration tools:
 								model,
 								messages,
 								temperature: 0,
-								tools: allowedTools,
+								tools: activeTools,
 								configProfile: agent.configProfile,
 								subAgentSystemPrompt: finalPrompt,
 							},
@@ -784,7 +817,7 @@ You have access to these collaboration tools:
 								model,
 								messages,
 								temperature: 0,
-								tools: allowedTools,
+								tools: activeTools,
 								prompt_cache_key: currentSession?.id,
 								configProfile: agent.configProfile,
 								subAgentSystemPrompt: finalPrompt,
@@ -797,7 +830,7 @@ You have access to these collaboration tools:
 								model,
 								messages,
 								temperature: 0,
-								tools: allowedTools,
+								tools: activeTools,
 								configProfile: agent.configProfile,
 								subAgentSystemPrompt: finalPrompt,
 							},
@@ -1013,7 +1046,7 @@ You have access to these collaboration tools:
 			// 因为系统提示词 + 工具定义通常就超过 1k), 用 tiktoken 估算 token.
 			// 此阈值与主代理保持一致(useConversation.ts).
 			if (latestPromptTokens < 1000 && config.maxContextTokens) {
-				latestTotalTokens = countMessagesTokens(messages, allowedTools);
+				latestTotalTokens = countMessagesTokens(messages, activeTools);
 
 				// 将估算的上下文占用同步给 UI.
 				if (onMessage && latestTotalTokens > 0) {
@@ -1856,18 +1889,57 @@ You have access to these collaboration tools:
 				// 将拒绝结果添加到对话
 				messages.push(...rejectionResults);
 
-				// If all tools were rejected and there are no approved tools, continue to next AI turn
-				// The AI will see the rejection messages and can respond accordingly
+				// 如果所有工具都被拒绝且没有可执行的 tool calls,
+				// 就进入下一轮让模型基于拒绝原因调整策略(例如改用其他工具或改写参数).
 				if (approvedToolCalls.length === 0) {
 					continue;
 				}
 
-				// Otherwise, continue executing approved tools below
+				// 否则继续执行已批准的工具调用.
 			}
 
-			// Execute approved tool calls
+			// 执行已批准的 tool calls.
 			const toolResults: ChatMessage[] = [];
 			for (const toolCall of approvedToolCalls) {
+				// Progressive tool loading:当 tool_search 被调用时,将匹配到的工具加入 discoveredToolNames,
+				// 并在下一轮请求时通过 buildActiveTools 扩展 activeTools.
+				if (useToolSearch && toolCall.function.name === 'tool_search') {
+					try {
+						const searchArgs = JSON.parse(toolCall.function.arguments || '{}');
+						const {matchedToolNames, textResult} = toolSearch.search(
+							searchArgs.query || '',
+							searchArgs.maxResults,
+						);
+						for (const name of matchedToolNames) {
+							if (!discoveredToolNames.has(name)) {
+								discoveredToolNames.add(name);
+							}
+						}
+						// 将 tool_search 的文本结果写回对话,并跳过 executeMCPTool.
+						const toolResult = {
+							role: 'tool' as const,
+							tool_call_id: toolCall.id,
+							content: JSON.stringify(textResult),
+						};
+						toolResults.push(toolResult);
+						if (onMessage) {
+							onMessage({
+								type: 'sub_agent_message',
+								agentId: agent.id,
+								agentName: agent.name,
+								message: {
+									type: 'tool_result',
+									tool_call_id: toolCall.id,
+									tool_name: toolCall.function.name,
+									content: JSON.stringify(textResult),
+								} as any,
+							});
+						}
+						continue;
+					} catch {
+						// 解析失败则回退到正常执行路径.
+					}
+				}
 				// 执行每个工具前检查中止信号
 				if (abortSignal?.aborted) {
 					// Send done message to mark completion
@@ -1894,6 +1966,7 @@ You have access to these collaboration tools:
 					const executionContext: MCPExecutionContext = {
 						editableFileSuffixes,
 						skipToolHooks: false,
+						toolSearchService: toolSearch,
 					};
 					const result = await executeMCPTool(
 						toolCall.function.name,
@@ -1958,8 +2031,17 @@ You have access to these collaboration tools:
 			// 将工具结果添加到对话
 			messages.push(...toolResults);
 
-			// Continue to next iteration if there were tool calls
-			// The loop will continue until no more tool calls
+			// Progressive tool loading:在进入下一轮请求前,根据已发现工具重建 activeTools.
+			if (useToolSearch) {
+				activeTools = toolSearch.buildActiveTools({
+					discoveredToolNames,
+					initialTools,
+				});
+			}
+
+			// 若本轮触发了工具调用,则继续下一轮对话.
+			// 为什么不在这里 break:
+			// - 工具结果需要被追加到 messages,再交给模型决定后续是否继续调用工具或输出最终答复.
 		}
 
 		// while (true) 结束后返回最终结果
