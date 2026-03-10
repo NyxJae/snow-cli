@@ -47,13 +47,26 @@ export class ToolSearchService {
 	 * - 如果把未授权工具放进 registry,会导致越权可见/可搜索.
 	 */
 	updateRegistry(tools: MCPTool[], servicesInfo?: MCPServiceTools[]): void {
-		this.registry = tools;
-		this.toolMap.clear();
+		// 按工具全名去重,避免重复定义导致模型侧工具注册冲突
+		const uniqueTools: MCPTool[] = [];
+		const seenNames = new Set<string>();
 		for (const tool of tools) {
+			const name = tool.function.name;
+			if (!seenNames.has(name)) {
+				seenNames.add(name);
+				uniqueTools.push(tool);
+			}
+		}
+
+		this.registry = uniqueTools;
+		this.toolMap.clear();
+		for (const tool of uniqueTools) {
 			this.toolMap.set(tool.function.name, tool);
 		}
 
-		const allowedToolNames = new Set(tools.map(tool => tool.function.name));
+		const allowedToolNames = new Set(
+			uniqueTools.map(tool => tool.function.name),
+		);
 		this.externalServices = [];
 		if (servicesInfo) {
 			for (const svc of servicesInfo) {
@@ -95,8 +108,7 @@ export class ToolSearchService {
 				matchedToolNames: [],
 			};
 		}
-
-		// Build a map of external service names for prefix matching bonus
+		// 为外部服务名前缀匹配提供额外加分,提高按服务名检索时的相关性排名
 		const externalServiceNames = new Set(
 			this.externalServices.map(s => s.serviceName.toLowerCase()),
 		);
@@ -131,8 +143,7 @@ export class ToolSearchService {
 					}
 				}
 
-				// Boost score when keyword matches an external service prefix
-				// This ensures searching by service name surfaces all its tools
+				// 当关键词命中外部服务名前缀时给予额外加分,便于按服务名检索其全部工具
 				if (externalServiceNames.has(keyword)) {
 					const prefix = keyword + '-';
 					if (name.startsWith(prefix) || name === keyword) {

@@ -1803,8 +1803,10 @@ async function executeWithInternalRetry(
 					break;
 				}
 
-				// Progressive tool loading: expand activeTools when tool_search was called
+				// Progressive tool loading: 当 tool_search 被调用时,将命中的工具加入 discoveredToolNames,
+				// 并通过 buildActiveTools 重建 activeTools,避免与 initialTools/已激活工具重复导致重复注册.
 				if (useToolSearch && receivedToolCalls) {
+					let shouldRebuildActiveTools = false;
 					for (const tc of receivedToolCalls) {
 						if (tc.function.name === 'tool_search') {
 							try {
@@ -1815,16 +1817,19 @@ async function executeWithInternalRetry(
 								for (const name of matchedToolNames) {
 									if (!discoveredToolNames.has(name)) {
 										discoveredToolNames.add(name);
-										const tool = toolSearchService.getToolByName(name);
-										if (tool) {
-											activeTools.push(tool);
-										}
+										shouldRebuildActiveTools = true;
 									}
 								}
 							} catch {
 								// Ignore parse errors
 							}
 						}
+					}
+					if (shouldRebuildActiveTools) {
+						activeTools = toolSearchService.buildActiveTools({
+							discoveredToolNames,
+							initialTools: initialMcpTools,
+						});
 					}
 				}
 
