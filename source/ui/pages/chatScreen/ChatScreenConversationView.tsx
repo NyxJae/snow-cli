@@ -4,6 +4,7 @@ import type {Message} from '../../components/chat/MessageList.js';
 import PendingMessages from '../../components/chat/PendingMessages.js';
 import ToolConfirmation from '../../components/tools/ToolConfirmation.js';
 import AskUserQuestion from '../../components/special/AskUserQuestion.js';
+import QuestionHeader from '../../components/special/QuestionHeader.js';
 import {
 	BashCommandConfirmation,
 	BashCommandExecutionStatus,
@@ -13,10 +14,14 @@ import MessageRenderer from '../../components/chat/MessageRenderer.js';
 import ChatHeader from '../../components/special/ChatHeader.js';
 import {HookErrorDisplay} from '../../components/special/HookErrorDisplay.js';
 import type {HookErrorDetails} from '../../../utils/execution/hookResultHandler.js';
+import type {PendingConfirmation} from '../../../hooks/conversation/useToolConfirmation.js';
+import type {TerminalExecutionState} from '../../../hooks/execution/useTerminalExecutionState.js';
+import type {BashModeState} from '../../../hooks/input/useBashMode.js';
 import type {
 	BashSensitiveCommandState,
 	CustomCommandExecutionState,
 	PendingMessageInput,
+	PendingUserQuestionResult,
 	PendingUserQuestionState,
 } from './types.js';
 
@@ -28,17 +33,24 @@ type Props = {
 	messages: Message[];
 	showThinking: boolean;
 	pendingMessages: PendingMessageInput[];
-	pendingToolConfirmation: any;
+	pendingToolConfirmation: PendingConfirmation | null;
 	pendingUserQuestion: PendingUserQuestionState;
 	bashSensitiveCommand: BashSensitiveCommandState;
-	terminalExecutionState: any;
+	terminalExecutionState: {state: TerminalExecutionState};
 	customCommandExecution: CustomCommandExecutionState;
-	bashMode: any;
+	bashMode: {state: BashModeState};
 	hookError: HookErrorDetails | null;
-	handleUserQuestionAnswer: (result: any) => void;
+	handleUserQuestionAnswer: (result: PendingUserQuestionResult) => void;
 	setHookError: React.Dispatch<React.SetStateAction<HookErrorDetails | null>>;
 };
 
+/**
+ * ChatScreen 会话视图组件.
+ *
+ * @description
+ * 负责渲染历史消息,工具确认,以及 askuser 交互提问等界面元素.
+ * askuser 的问题标题与文本通过 Static 记录在会话历史中,避免交互输入期间闪烁.
+ */
 export default function ChatScreenConversationView({
 	remountKey,
 	terminalWidth,
@@ -80,6 +92,18 @@ export default function ChatScreenConversationView({
 								showThinking={showThinking}
 							/>
 						)),
+					// AskUserQuestion 组件不渲染问题文本,这里用 Static 记录问题,同时把它留在会话历史中.
+					...(pendingUserQuestion
+						? [
+								<QuestionHeader
+									key={`question-${
+										pendingUserQuestion.toolCall?.id ??
+										pendingUserQuestion.question
+									}`}
+									question={pendingUserQuestion.question}
+								/>,
+						  ]
+						: []),
 				]}
 			>
 				{item => item}
