@@ -80,10 +80,10 @@ type PanelsManagerProps = {
 	alwaysApprovedTools: Set<string>;
 	onRemoveTool: (toolName: string) => void;
 	onClearAllTools: () => void;
-	// Main agent panel props
-	showMainAgentPanel?: boolean;
-	mainAgentSelectedIndex?: number;
-	mainAgentSearchQuery?: string;
+	// 主代理面板
+	showMainAgentPanel: boolean;
+	mainAgentSelectedIndex: number;
+	mainAgentSearchQuery: string;
 };
 
 /**
@@ -134,8 +134,8 @@ export default function PanelsManager({
 	const {theme} = useTheme();
 	const {t} = useI18n();
 
-	// Calculate main agent items on every render to ensure isActive is up-to-date
-	// Apply search filter if mainAgentSearchQuery is provided
+	// 这里每次 render 重新计算,确保 isActive 始终与 mainAgentManager 当前状态一致.
+	// 如果有搜索词,在装配阶段过滤列表,避免在 Panel 内部再维护一份筛选状态.
 	const allMainAgentItems =
 		mainAgentManager.getOrderedAgentList().map(config => ({
 			id: config.basicInfo.id,
@@ -166,7 +166,7 @@ export default function PanelsManager({
 
 	return (
 		<>
-			{/* Show session list panel if active - replaces input */}
+			{/* SessionList 面板 */}
 			{showSessionPanel && (
 				<Box paddingX={1} width={terminalWidth}>
 					<Suspense fallback={loadingFallback}>
@@ -178,7 +178,7 @@ export default function PanelsManager({
 				</Box>
 			)}
 
-			{/* Show MCP info panel if active - replaces input */}
+			{/* MCPInfo 面板 */}
 			{showMcpPanel && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<Suspense fallback={loadingFallback}>
@@ -190,7 +190,7 @@ export default function PanelsManager({
 				</Box>
 			)}
 
-			{/* Show usage panel if active - replaces input */}
+			{/* Usage 面板 */}
 			{showUsagePanel && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<Suspense fallback={loadingFallback}>
@@ -204,7 +204,7 @@ export default function PanelsManager({
 				</Box>
 			)}
 
-			{/* Show models panel if active - replaces input */}
+			{/* Models 面板 */}
 			{showModelsPanel && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<ModelsPanel
@@ -216,7 +216,7 @@ export default function PanelsManager({
 				</Box>
 			)}
 
-			{/* Show custom command config panel if active */}
+			{/* CustomCommandConfig 面板 */}
 			{showCustomCommandConfig && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<CustomCommandConfigPanel
@@ -227,7 +227,7 @@ export default function PanelsManager({
 				</Box>
 			)}
 
-			{/* Show skills creation panel if active */}
+			{/* SkillsCreation 面板 */}
 			{showSkillsCreation && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<SkillsCreationPanel
@@ -238,7 +238,7 @@ export default function PanelsManager({
 				</Box>
 			)}
 
-			{/* Show working directory panel if active */}
+			{/* WorkingDirectory 面板 */}
 			{showWorkingDirPanel && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<WorkingDirectoryPanel
@@ -247,7 +247,7 @@ export default function PanelsManager({
 				</Box>
 			)}
 
-			{/* Show permissions panel if active */}
+			{/* Permissions 面板 */}
 			{showPermissionsPanel && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<PermissionsPanel
@@ -259,7 +259,6 @@ export default function PanelsManager({
 				</Box>
 			)}
 
-			{/* Show main agent panel if active */}
 			{showMainAgentPanel && (
 				<Box paddingX={1} width={terminalWidth}>
 					<MainAgentPanel
@@ -271,14 +270,14 @@ export default function PanelsManager({
 				</Box>
 			)}
 
-			{/* Show branch management panel if active */}
+			{/* Branch 面板 */}
 			{showBranchPanel && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<BranchPanel onClose={() => setShowBranchPanel(false)} />
 				</Box>
 			)}
 
-			{/* Show diff review panel if active */}
+			{/* DiffReview 面板 */}
 			{showDiffReviewPanel && (
 				<Box paddingX={1} width={terminalWidth}>
 					<Suspense fallback={loadingFallback}>
@@ -291,7 +290,7 @@ export default function PanelsManager({
 				</Box>
 			)}
 
-			{/* Show connection panel if active */}
+			{/* Connection 面板 */}
 			{showConnectionPanel && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<ConnectionPanel
@@ -301,6 +300,7 @@ export default function PanelsManager({
 				</Box>
 			)}
 
+			{/* TodoList 面板 */}
 			{showTodoListPanel && (
 				<Box paddingX={1} flexDirection="column" width={terminalWidth}>
 					<TodoListPanel onClose={() => setShowTodoListPanel(false)} />

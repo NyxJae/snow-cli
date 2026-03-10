@@ -219,7 +219,7 @@ type Props = {
 	onCopyInputSuccess?: () => void;
 	onCopyInputError?: (errorMessage: string) => void;
 	disableKeyboardNavigation?: boolean; // Disable arrow keys and Ctrl+K when background panel is active
-	// Main agent picker
+	// 主代理选择面板(状态由页面层持有,输入区仅负责触发与搜索/选择交互).
 	showMainAgentPicker?: boolean;
 	setShowMainAgentPicker?: (show: boolean) => void;
 	mainAgentSelectedIndex?: number;
@@ -271,7 +271,7 @@ export default function ChatInput({
 	onCopyInputSuccess,
 	onCopyInputError,
 	disableKeyboardNavigation = false,
-	// Main agent picker
+	// 主代理选择面板
 	showMainAgentPicker = false,
 	setShowMainAgentPicker,
 	mainAgentSelectedIndex = 0,
@@ -539,7 +539,7 @@ export default function ChatInput({
 		setProfileSearchQuery: setProfileSearchQuery || (() => {}),
 		onSwitchProfile,
 		onPasteReceivingChange,
-		// Main agent picker
+		// 主代理选择面板
 		showMainAgentPicker,
 		setShowMainAgentPicker: setShowMainAgentPicker || (() => {}),
 		mainAgentSelectedIndex,

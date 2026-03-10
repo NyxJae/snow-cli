@@ -82,7 +82,7 @@ type ChatFooterProps = {
 	getFilteredProfiles: () => any[];
 	profileSearchQuery: string;
 	setProfileSearchQuery: (query: string) => void;
-	// Main agent picker props
+	// 主代理选择面板 props
 	showMainAgentPicker?: boolean;
 	setShowMainAgentPicker?: (
 		value: boolean | ((prev: boolean) => boolean),
@@ -280,8 +280,18 @@ const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
 						setProfileSelectedIndex={props.setProfileSelectedIndex}
 						getFilteredProfiles={props.getFilteredProfiles}
 						handleProfileSelect={props.handleProfileSelect}
+						onSwitchProfile={props.onSwitchProfile}
 						profileSearchQuery={props.profileSearchQuery}
 						setProfileSearchQuery={props.setProfileSearchQuery}
+						showMainAgentPicker={props.showMainAgentPicker}
+						setShowMainAgentPicker={props.setShowMainAgentPicker}
+						mainAgentSelectedIndex={props.mainAgentSelectedIndex}
+						setMainAgentSelectedIndex={props.setMainAgentSelectedIndex}
+						mainAgentSearchQuery={props.mainAgentSearchQuery}
+						setMainAgentSearchQuery={props.setMainAgentSearchQuery}
+						getFilteredMainAgents={props.getFilteredMainAgents}
+						onSwitchMainAgent={props.onSwitchMainAgent}
+						onMainAgentSelect={props.onMainAgentSelect}
 						onPasteReceivingChange={handlePasteReceivingChange}
 						onCopyInputSuccess={() => {
 							setCopyStatusMessage({

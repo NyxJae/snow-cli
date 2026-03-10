@@ -131,9 +131,9 @@ type KeyboardInputOptions = {
 	handleProfileSelect: (profileName: string) => void;
 	profileSearchQuery: string;
 	setProfileSearchQuery: (query: string) => void;
-	// Profile switching
+	// Profile 切换
 	onSwitchProfile?: () => void;
-	// Main agent picker
+	// 主代理选择面板
 	showMainAgentPicker?: boolean;
 	setShowMainAgentPicker?: (show: boolean) => void;
 	mainAgentSelectedIndex?: number;
@@ -264,7 +264,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 		profileSearchQuery,
 		setProfileSearchQuery,
 		onSwitchProfile,
-		// Main agent picker
+		// 主代理选择面板
 		showMainAgentPicker,
 		setShowMainAgentPicker,
 		mainAgentSelectedIndex,
@@ -434,7 +434,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			return;
 		}
 
-		// Alt+M - 打开主代理选择面板
+		// Alt+M: 打开主代理选择面板(与 Alt+P 保持一致,通过面板而不是循环切换,避免误触).
 		if (key.meta && input === 'm') {
 			if (onSwitchMainAgent) {
 				onSwitchMainAgent();
@@ -442,7 +442,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			return;
 		}
 
-		// Windows/Linux: Alt+P, macOS: Ctrl+P - Switch to next profile
+		// Windows/Linux: Alt+P, macOS: Ctrl+P - 打开 profile 选择面板.
 		const isProfileSwitchShortcut =
 			process.platform === 'darwin'
 				? key.ctrl && input === 'p'
@@ -750,13 +750,13 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			}
 		}
 
-		// Handle main agent picker navigation
+		// 处理主代理选择面板的键盘导航
 		if (showMainAgentPicker) {
 			const filteredMainAgents = getFilteredMainAgents
 				? getFilteredMainAgents()
 				: [];
 
-			// Up arrow in main agent picker - 循环导航:第一项 → 最后一项
+			// 上箭头 - 循环导航:第一项 → 最后一项
 			if (key.upArrow) {
 				if (setMainAgentSelectedIndex) {
 					setMainAgentSelectedIndex(prev =>
@@ -766,7 +766,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// Down arrow in main agent picker - 循环导航:最后一项 → 第一项
+			// 下箭头 - 循环导航:最后一项 → 第一项
 			if (key.downArrow) {
 				if (setMainAgentSelectedIndex) {
 					const maxIndex = Math.max(0, filteredMainAgents.length - 1);
@@ -826,7 +826,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// For any other key in main agent picker, just return to prevent interference
+			// 其它按键: 直接拦截,避免影响输入区/其它状态机
 			return;
 		}
 

@@ -61,6 +61,10 @@ type Props = {
 	) => void;
 };
 
+/**
+ * ChatScreen 的面板装配层.
+ * 仅负责把 panelState 拆解后透传给 PanelsManager,避免在本文件内引入额外状态源.
+ */
 export default function ChatScreenPanels({
 	terminalWidth,
 	workingDirectory,
@@ -97,6 +101,10 @@ export default function ChatScreenPanels({
 				showDiffReviewPanel={panelState.showDiffReviewPanel}
 				showConnectionPanel={panelState.showConnectionPanel}
 				showTodoListPanel={panelState.showTodoListPanel}
+				// 主代理面板状态由页面层统一持有,这里仅负责透传给面板装配器.
+				showMainAgentPanel={panelState.showMainAgentPanel}
+				mainAgentSelectedIndex={panelState.mainAgentSelectedIndex}
+				mainAgentSearchQuery={panelState.mainAgentSearchQuery}
 				connectionPanelApiUrl={panelState.connectionPanelApiUrl}
 				diffReviewMessages={messages}
 				diffReviewSnapshotFileCount={snapshotState.snapshotFileCount}

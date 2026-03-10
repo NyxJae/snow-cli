@@ -70,10 +70,15 @@ export type PanelActions = {
 		hasPendingUserQuestion: boolean;
 	}) => void;
 	handleMainAgentSelect: (agentId: string) => void;
-	handleEscapeKey: () => boolean; // Returns true if ESC was handled
+	handleEscapeKey: () => boolean; // 返回 true 表示本层已处理 ESC.
 	isAnyPanelOpen: () => boolean;
 };
 
+/**
+ * UI 面板状态管理.
+ * - 统一持有各面板 show/hide 状态与选择器状态.
+ * - 提供快捷键触发的切换入口,并在有其它遮挡/面板时阻止打开新面板,避免焦点冲突.
+ */
 export function usePanelState(): PanelState & PanelActions {
 	const [showSessionPanel, setShowSessionPanel] = useState(false);
 	const [showMcpPanel, setShowMcpPanel] = useState(false);
@@ -114,7 +119,7 @@ export function usePanelState(): PanelState & PanelActions {
 		hasPendingToolConfirmation: boolean;
 		hasPendingUserQuestion: boolean;
 	}) => {
-		// Don't switch if any panel is open or streaming
+		// 面板切换前置判断: 若有任意面板打开或正在流式处理中,直接忽略(避免焦点冲突).
 		if (
 			showSessionPanel ||
 			showMcpPanel ||
@@ -139,25 +144,25 @@ export function usePanelState(): PanelState & PanelActions {
 			return;
 		}
 
-		// Show profile selection panel instead of cycling
+		// 用 profile 选择面板替代循环切换,降低误触风险.
 		setShowProfilePanel(true);
 		setProfileSelectedIndex(0);
 		setProfileSearchQuery('');
 	};
 
 	const handleProfileSelect = (profileName: string) => {
-		// Switch to selected profile
+		// 选择后立即切换配置,并刷新生效.
 		switchProfile(profileName);
 
-		// Reload config to pick up new profile's configuration
+		// 切换 profile 后立即 reloadConfig,让新配置立刻生效.
 		reloadConfig();
 
-		// Update display name
+		// 更新状态栏展示用的 profile 名称.
 		const profiles = getAllProfiles();
 		const profile = profiles.find(p => p.name === profileName);
 		setCurrentProfileName(profile?.displayName || profileName);
 
-		// Close panel and reset search
+		// 关闭面板并重置搜索状态
 		setShowProfilePanel(false);
 		setProfileSelectedIndex(0);
 		setProfileSearchQuery('');
@@ -169,7 +174,7 @@ export function usePanelState(): PanelState & PanelActions {
 		hasPendingToolConfirmation: boolean;
 		hasPendingUserQuestion: boolean;
 	}) => {
-		// Don't switch if any panel is open or streaming
+		// 避免多个面板同时争抢输入焦点: 仅在完全空闲状态下才允许打开主代理选择面板.
 		if (
 			showSessionPanel ||
 			showMcpPanel ||
@@ -179,7 +184,13 @@ export function usePanelState(): PanelState & PanelActions {
 			showWorkingDirPanel ||
 			showPermissionsPanel ||
 			showReviewCommitPanel ||
+			showBranchPanel ||
 			showProfilePanel ||
+			showModelsPanel ||
+			showDiffReviewPanel ||
+			showConnectionPanel ||
+			showNewPromptPanel ||
+			showTodoListPanel ||
 			showMainAgentPanel ||
 			options.hasPendingRollback ||
 			options.hasPendingToolConfirmation ||
@@ -189,27 +200,25 @@ export function usePanelState(): PanelState & PanelActions {
 			return;
 		}
 
-		// Show main agent selection panel
 		setShowMainAgentPanel(true);
 		setMainAgentSelectedIndex(0);
 		setMainAgentSearchQuery('');
 	};
 
 	const handleMainAgentSelect = (agentId: string) => {
-		// Switch to selected main agent
 		mainAgentManager.setCurrentAgent(agentId);
 
-		// Reload config to pick up new agent's configuration
+		// 切换主代理后立即 reloadConfig,确保后续对话使用新主代理的配置与提示词.
 		reloadConfig();
 
-		// Close panel and reset search
+		// 关闭面板并重置搜索状态
 		setShowMainAgentPanel(false);
 		setMainAgentSelectedIndex(0);
 		setMainAgentSearchQuery('');
 	};
 
 	const handleEscapeKey = (): boolean => {
-		// Check each panel in priority order and close if open
+		// ESC 处理: 按优先级关闭面板,避免多个面板各自处理导致状态错乱.
 		if (showSessionPanel) {
 			setShowSessionPanel(false);
 			return true;
@@ -224,21 +233,20 @@ export function usePanelState(): PanelState & PanelActions {
 			setShowUsagePanel(false);
 			return true;
 		}
-		// CustomCommandConfigPanel handles its own ESC key logic internally
-		// Don't close it here - let the panel decide when to close
+
+		// CustomCommandConfigPanel 有独立键盘状态机,此处不强行关闭,避免中断其内部流程.
 		if (showCustomCommandConfig) {
-			return false; // Let CustomCommandConfigPanel handle ESC
-		}
-		// SkillsCreationPanel handles its own ESC key logic internally
-		// Don't close it here - let the panel decide when to close
-		if (showSkillsCreation) {
-			return false; // Let SkillsCreationPanel handle ESC
+			return false;
 		}
 
-		// WorkingDirectoryPanel handles its own ESC key logic internally
-		// Don't close it here - let the panel decide when to close
+		// SkillsCreationPanel 有独立键盘状态机,此处不强行关闭,避免中断其内部流程.
+		if (showSkillsCreation) {
+			return false;
+		}
+
+		// WorkingDirectoryPanel 有独立键盘状态机,此处不强行关闭,避免中断其内部流程.
 		if (showWorkingDirPanel) {
-			return false; // Let WorkingDirectoryPanel handle ESC
+			return false;
 		}
 
 		if (showPermissionsPanel) {
@@ -251,10 +259,9 @@ export function usePanelState(): PanelState & PanelActions {
 			return true;
 		}
 
-		// BranchPanel handles its own ESC key logic internally
-		// Don't close it here - let the panel decide when to close
+		// BranchPanel 有独立键盘状态机,此处不强行关闭,避免中断其内部流程.
 		if (showBranchPanel) {
-			return false; // Let BranchPanel handle ESC
+			return false;
 		}
 
 		if (showDiffReviewPanel) {
@@ -262,29 +269,29 @@ export function usePanelState(): PanelState & PanelActions {
 			return true;
 		}
 
-		// ConnectionPanel handles its own ESC key logic internally
+		// ConnectionPanel 有独立键盘状态机,此处不强行关闭,避免中断其内部流程.
 		if (showConnectionPanel) {
-			return false; // Let ConnectionPanel handle ESC
+			return false;
 		}
 
 		if (showProfilePanel) {
 			setShowProfilePanel(false);
 			return true;
 		}
+
 		if (showMainAgentPanel) {
 			setShowMainAgentPanel(false);
 			return true;
 		}
 
-		// ModelsPanel handles its own ESC key logic internally
-		// Don't close it here - let the panel decide when to close
+		// ModelsPanel 有独立键盘状态机,此处不强行关闭,避免中断其内部流程.
 		if (showModelsPanel) {
-			return false; // Let ModelsPanel handle ESC
+			return false;
 		}
 
-		// NewPromptPanel handles its own ESC key logic internally
+		// NewPromptPanel 有独立键盘状态机,此处不强行关闭,避免中断其内部流程.
 		if (showNewPromptPanel) {
-			return false; // Let NewPromptPanel handle ESC
+			return false;
 		}
 
 		if (showTodoListPanel) {
@@ -292,7 +299,7 @@ export function usePanelState(): PanelState & PanelActions {
 			return true;
 		}
 
-		return false; // ESC not handled
+		return false; // ESC 未处理
 	};
 
 	const isAnyPanelOpen = (): boolean => {
