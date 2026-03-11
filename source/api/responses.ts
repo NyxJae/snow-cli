@@ -637,9 +637,53 @@ export async function* createStreamingResponse(
 
 			if (!response.ok) {
 				const errorText = await response.text();
-				throw new Error(
-					`OpenAI Responses API error: ${response.status} ${response.statusText} - ${errorText}`,
-				);
+				const baseErrorMsg = `OpenAI Responses API error: ${response.status} ${response.statusText} - ${errorText}`;
+
+				const error = new Error(baseErrorMsg) as Error & {
+					code?: string;
+					isRetryable?: boolean;
+				};
+
+				if (response.status === 403) {
+					const lower = errorText.toLowerCase();
+					const likelyPersistent =
+						lower.includes('insufficient_quota') ||
+						lower.includes('quota') ||
+						lower.includes('billing') ||
+						lower.includes('invalid api key') ||
+						lower.includes('api key') ||
+						lower.includes('permission') ||
+						lower.includes('organization') ||
+						lower.includes('not allowed');
+
+					error.isRetryable = true;
+					error.code = likelyPersistent
+						? 'HTTP_403_FORBIDDEN_PERSISTENT'
+						: 'HTTP_403_FORBIDDEN_TRANSIENT';
+
+					const hint = likelyPersistent
+						? 'Hint: This 403 likely indicates auth/quota/permission. Retrying may not help, but Snow CLI will retry up to the configured limit.'
+						: 'Hint: This 403 may be transient when using a third-party relay/WAF. Snow CLI will retry with backoff.';
+					error.message = `${baseErrorMsg}\n${hint}`;
+
+					try {
+						const {logger} = await import('../utils/core/logger.js');
+						logger.warn(
+							`[API_ERROR] OpenAI Responses API HTTP 403 (${error.code}), will retry with backoff`,
+							{
+								url,
+								model: requestPayload.model,
+								code: error.code,
+								status: response.status,
+								statusText: response.statusText,
+							},
+						);
+					} catch {
+						// ignore logging errors
+					}
+				}
+
+				throw error;
 			}
 
 			if (!response.body) {

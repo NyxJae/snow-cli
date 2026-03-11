@@ -53,6 +53,11 @@ function isRetriableError(error: Error): boolean {
 		return true;
 	}
 
+	// 优先支持统一错误分类字段,避免上层只能依赖 message 关键字
+	if ((error as any)?.isRetryable === true) {
+		return true;
+	}
+
 	const errorMessage = error.message.toLowerCase();
 
 	// 网络错误
@@ -75,8 +80,13 @@ function isRetriableError(error: Error): boolean {
 		return true;
 	}
 
+	// Forbidden errors (403). 通过第三方中转时可能是瞬时风控/权限抖动,允许在上限内重试
+	if (errorMessage.includes('403') && errorMessage.includes('forbidden')) {
+		return true;
+	}
+
 	// Server errors (5xx - temporary server issues, retryable)
-	// Note: 400, 403, 405 are client errors - typically not retryable
+	// Note: 400, 405 are client errors - typically not retryable
 	// as they indicate request format issues that won't change on retry
 	if (
 		errorMessage.includes('500') ||

@@ -177,6 +177,8 @@ export async function handleConversationWithTools(
 			message.includes('502') ||
 			message.includes('503') ||
 			message.includes('504') ||
+			message.includes('403') ||
+			message.includes('forbidden') ||
 			message.includes('fetch failed') ||
 			message.includes('fetcherror') ||
 			getIsEmptyResponseError(error)
