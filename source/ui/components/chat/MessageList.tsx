@@ -197,14 +197,16 @@ const MessageList = memo(
 										<Text color="cyan">
 											{message.subAgentResult?.agentType === 'explore'
 												? '🤖'
-												: message.subAgentResult?.agentType === 'plan'
-												? '📋'
-												: '🔧'}{' '}
+												: message.subAgentResult?.agentType === 'general'
+												? '🔧'
+												: '⚙️'}{' '}
 											{message.subAgentResult?.agentType === 'explore'
 												? 'Explore Agent'
-												: message.subAgentResult?.agentType === 'plan'
-												? 'Plan Agent'
-												: 'General Agent'}{' '}
+												: message.subAgentResult?.agentType === 'general'
+												? 'General Agent'
+												: `Agent (${
+														message.subAgentResult?.agentType ?? 'unknown'
+												  })`}{' '}
 											Result{' '}
 											{message.subAgentResult?.status === 'success'
 												? '✓'

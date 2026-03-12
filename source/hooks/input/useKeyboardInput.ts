@@ -18,8 +18,6 @@ type KeyboardInputOptions = {
 	// Mode state
 	yoloMode: boolean;
 	setYoloMode: (value: boolean) => void;
-	// planMode 已整合为 currentAgentName，不再需要独立状态
-	// Vulnerability Hunting Mode 已整合为 Debugger 主代理，不再需要独立状态
 	// Paste receiving indicator
 	onPasteReceivingChange?: (isReceiving: boolean, charCount: number) => void;
 	// Command panel
@@ -185,8 +183,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 		forceUpdate,
 		yoloMode,
 		setYoloMode,
-		// planMode 已整合为 currentAgentName，不再需要独立状态
-		// Vulnerability Hunting Mode 已整合为 Debugger 主代理，不再需要独立状态
 		showCommands,
 		setShowCommands,
 		commandSelectedIndex,
@@ -297,7 +293,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 	void runningAgentsSelectedIndex;
 	void selectedRunningAgents;
 	void setShowRunningAgentsPicker;
-	// planMode 已整合为 currentAgentName，不再需要独立状态
 
 	// Track paste detection
 	const inputBuffer = useRef<string>('');

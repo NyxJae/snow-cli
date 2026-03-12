@@ -10,12 +10,16 @@ import {
 	BashCommandExecutionStatus,
 } from '../../components/bash/BashCommandConfirmation.js';
 import {CustomCommandExecutionDisplay} from '../../components/bash/CustomCommandExecutionDisplay.js';
+import {SchedulerCountdown} from '../../components/scheduler/SchedulerCountdown.js';
 import MessageRenderer from '../../components/chat/MessageRenderer.js';
 import ChatHeader from '../../components/special/ChatHeader.js';
 import {HookErrorDisplay} from '../../components/special/HookErrorDisplay.js';
+import {CompressionStatus} from '../../components/compression/CompressionStatus.js';
+import type {CompressionStatus as CompressionStatusType} from '../../components/compression/CompressionStatus.js';
 import type {HookErrorDetails} from '../../../utils/execution/hookResultHandler.js';
 import type {PendingConfirmation} from '../../../hooks/conversation/useToolConfirmation.js';
 import type {TerminalExecutionState} from '../../../hooks/execution/useTerminalExecutionState.js';
+import type {SchedulerExecutionState} from '../../../hooks/execution/useSchedulerExecutionState.js';
 import type {BashModeState} from '../../../hooks/input/useBashMode.js';
 import type {
 	BashSensitiveCommandState,
@@ -37,11 +41,13 @@ type Props = {
 	pendingUserQuestion: PendingUserQuestionState;
 	bashSensitiveCommand: BashSensitiveCommandState;
 	terminalExecutionState: {state: TerminalExecutionState};
+	schedulerExecutionState: {state: SchedulerExecutionState};
 	customCommandExecution: CustomCommandExecutionState;
 	bashMode: {state: BashModeState};
 	hookError: HookErrorDetails | null;
 	handleUserQuestionAnswer: (result: PendingUserQuestionResult) => void;
 	setHookError: React.Dispatch<React.SetStateAction<HookErrorDetails | null>>;
+	compressionStatus: CompressionStatusType | null;
 };
 
 /**
@@ -63,11 +69,13 @@ export default function ChatScreenConversationView({
 	pendingUserQuestion,
 	bashSensitiveCommand,
 	terminalExecutionState,
+	schedulerExecutionState,
 	customCommandExecution,
 	bashMode,
 	hookError,
 	handleUserQuestionAnswer,
 	setHookError,
+	compressionStatus,
 }: Props) {
 	return (
 		<>
@@ -116,6 +124,15 @@ export default function ChatScreenConversationView({
 			{hookError && (
 				<Box paddingX={1} width={terminalWidth} marginBottom={1}>
 					<HookErrorDisplay details={hookError} />
+				</Box>
+			)}
+
+			{compressionStatus && (
+				<Box paddingX={1} width={terminalWidth} marginBottom={1}>
+					<CompressionStatus
+						status={compressionStatus}
+						terminalWidth={terminalWidth}
+					/>
 				</Box>
 			)}
 
@@ -184,6 +201,18 @@ export default function ChatScreenConversationView({
 							output={terminalExecutionState.state.output}
 							needsInput={terminalExecutionState.state.needsInput}
 							inputPrompt={terminalExecutionState.state.inputPrompt}
+						/>
+					</Box>
+				)}
+
+			{schedulerExecutionState?.state?.isRunning &&
+				schedulerExecutionState?.state?.description && (
+					<Box paddingX={1} width={terminalWidth}>
+						<SchedulerCountdown
+							description={schedulerExecutionState.state.description}
+							totalDuration={schedulerExecutionState.state.totalDuration}
+							remainingSeconds={schedulerExecutionState.state.remainingSeconds}
+							terminalWidth={terminalWidth}
 						/>
 					</Box>
 				)}

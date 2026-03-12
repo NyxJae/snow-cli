@@ -113,9 +113,15 @@ export type ConversationHandlerOptions = {
 	setRemountKey?: React.Dispatch<React.SetStateAction<number>>;
 	setSnapshotFileCount?: React.Dispatch<
 		React.SetStateAction<Map<number, number>>
-	>; // 压缩后清空快照计数
+	>;
 	getCurrentContextPercentage?: () => number; // 获取当前上下文占用比例
 	setCurrentModel?: React.Dispatch<React.SetStateAction<string | null>>; // 用于展示当前模型名
+	onCompressionStatus?: (
+		status:
+			| import('../../ui/components/compression/CompressionStatus.js').CompressionStatus
+			| null,
+	) => void;
+	setIsAutoCompressing?: (value: boolean) => void;
 	setIsStopping?: React.Dispatch<React.SetStateAction<boolean>>; // 控制停止态
 	/**
 	 * 将 AbortController 同步到 streamingState.
@@ -764,7 +770,7 @@ async function processStreamRound(ctx: {
 	let thinkingLineBuffer = '';
 	let contentLineBuffer = '';
 	let isFirstStreamLine = true;
-	let hasEmittedThinkingLines = false;
+	let hasReceivedContentChunk = false;
 	let hasStartedContent = false;
 	let hasStreamedLines = false;
 
@@ -786,7 +792,6 @@ async function processStreamRound(ctx: {
 		const isFirstContent = !isThinking && !hasStartedContent;
 		if (isFirst) isFirstStreamLine = false;
 		if (isFirstContent) hasStartedContent = true;
-		if (isThinking) hasEmittedThinkingLines = true;
 		hasStreamedLines = true;
 		pendingStreamLines.push({
 			role: 'assistant' as const,
@@ -800,6 +805,21 @@ async function processStreamRound(ctx: {
 		if (now - lastFlushTime >= STREAM_FLUSH_INTERVAL) {
 			flushStreamLines();
 		}
+	};
+
+	const flushThinkingBufferToStream = () => {
+		if (hasReceivedContentChunk || !thinkingLineBuffer) {
+			thinkingLineBuffer = '';
+			return;
+		}
+		const cleaned = thinkingLineBuffer.replace(
+			/\s*<\/?think(?:ing)?>\s*/gi,
+			'',
+		);
+		if (cleaned.trim()) {
+			emitStreamLine(cleaned, true);
+		}
+		thinkingLineBuffer = '';
 	};
 
 	let inCodeBlock = false;
@@ -925,6 +945,10 @@ async function processStreamRound(ctx: {
 		}
 	};
 
+	// Note: Stream iteration relies on the generator respecting AbortSignal.
+	// The signal is passed to createStreamGenerator which passes it to fetch.
+	// We also check abort status at the start of each iteration.
+
 	for await (const chunk of streamGenerator) {
 		if (controller.signal.aborted) break;
 
@@ -934,13 +958,21 @@ async function processStreamRound(ctx: {
 		}
 
 		if (chunk.type === 'reasoning_started') {
-			setIsReasoning?.(true);
+			if (!hasReceivedContentChunk) {
+				setIsReasoning?.(true);
+			}
 		} else if (chunk.type === 'reasoning_delta' && chunk.delta) {
 			if (!hasStartedReasoning) {
-				setIsReasoning?.(true);
 				hasStartedReasoning = true;
+				if (!hasReceivedContentChunk) {
+					setIsReasoning?.(true);
+				}
 			}
 			countTokens(chunk.delta);
+
+			if (hasReceivedContentChunk) {
+				continue;
+			}
 
 			thinkingLineBuffer += chunk.delta;
 			const thinkLines = thinkingLineBuffer.split('\n');
@@ -955,22 +987,13 @@ async function processStreamRound(ctx: {
 			}
 			thinkingLineBuffer = thinkLines[thinkLines.length - 1] ?? '';
 		} else if (chunk.type === 'content' && chunk.content) {
+			if (!hasReceivedContentChunk) {
+				hasReceivedContentChunk = true;
+				flushThinkingBufferToStream();
+			}
 			setIsReasoning?.(false);
 			streamedContent += chunk.content;
 			countTokens(chunk.content);
-
-			if (hasEmittedThinkingLines && !hasStartedContent) {
-				if (thinkingLineBuffer) {
-					const cleaned = thinkingLineBuffer.replace(
-						/\s*<\/?think(?:ing)?>\s*/gi,
-						'',
-					);
-					if (cleaned.trim()) {
-						emitStreamLine(cleaned, true);
-					}
-					thinkingLineBuffer = '';
-				}
-			}
 
 			contentLineBuffer += chunk.content;
 			const contentLines = contentLineBuffer.split('\n');
@@ -1005,14 +1028,10 @@ async function processStreamRound(ctx: {
 		}
 	}
 
-	if (thinkingLineBuffer) {
-		const cleaned = thinkingLineBuffer.replace(
-			/\s*<\/?think(?:ing)?>\s*/gi,
-			'',
-		);
-		if (cleaned.trim()) {
-			emitStreamLine(cleaned, true);
-		}
+	if (!hasReceivedContentChunk) {
+		flushThinkingBufferToStream();
+	} else {
+		thinkingLineBuffer = '';
 	}
 	if (contentLineBuffer.trim()) {
 		processContentLine(contentLineBuffer);
@@ -1159,6 +1178,7 @@ async function handleToolCallRound(ctx: {
 			? (v: boolean) => options.setIsStreaming!(v)
 			: undefined,
 		freeEncoder,
+		abortSignal: controller.signal,
 	});
 
 	if (confirmResult.type === 'rejected') {
@@ -1346,6 +1366,8 @@ async function handleToolCallRound(ctx: {
 		freeEncoder,
 		compressingLabel:
 			'✵ Auto-compressing context before sending tool results...',
+		onCompressionStatus: options.onCompressionStatus,
+		setIsAutoCompressing: options.setIsAutoCompressing,
 	};
 
 	const compressResult = await handleAutoCompression(autoCompressOpts);

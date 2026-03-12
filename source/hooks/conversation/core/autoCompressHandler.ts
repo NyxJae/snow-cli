@@ -1,4 +1,5 @@
 import type {Message} from '../../../ui/components/chat/MessageList.js';
+import type {CompressionStatus} from '../../../ui/components/compression/CompressionStatus.js';
 import {
 	getOpenAiConfig,
 	DEFAULT_AUTO_COMPRESS_THRESHOLD,
@@ -21,6 +22,8 @@ export type AutoCompressOptions = {
 	setIsStreaming?: React.Dispatch<React.SetStateAction<boolean>>;
 	freeEncoder: () => void;
 	compressingLabel?: string;
+	onCompressionStatus?: (status: CompressionStatus | null) => void;
+	setIsAutoCompressing?: (value: boolean) => void;
 };
 
 export type AutoCompressResult = {
@@ -51,21 +54,34 @@ export async function handleAutoCompression(
 		return {compressed: false, hookFailed: false};
 	}
 
+	options.setIsAutoCompressing?.(true);
+
 	try {
 		const compressingMessage: Message = {
 			role: 'assistant',
-			content:
-				options.compressingLabel ||
-				'✵ Auto-compressing context...',
+			content: options.compressingLabel || '✵ Auto-compressing context...',
 			streaming: false,
 		};
 		options.setMessages(prev => [...prev, compressingMessage]);
 
 		const session = sessionManager.getCurrentSession();
-		const compressionResult = await performAutoCompression(session?.id);
+
+		// Set up status callback for UI display
+		const onStatusUpdate = (status: CompressionStatus) => {
+			options.onCompressionStatus?.(status);
+		};
+
+		const compressionResult = await performAutoCompression(
+			session?.id,
+			onStatusUpdate,
+		);
+
+		// Clear status after completion
+		options.onCompressionStatus?.(null);
 
 		// Check if beforeCompress hook failed
 		if (compressionResult && (compressionResult as any).hookFailed) {
+			options.setIsAutoCompressing?.(false);
 			return {
 				compressed: false,
 				hookFailed: true,
@@ -97,6 +113,7 @@ export async function handleAutoCompression(
 				updatedConversationMessages.push(...updatedSession.messages);
 			}
 
+			options.setIsAutoCompressing?.(false);
 			return {
 				compressed: true,
 				hookFailed: false,
@@ -105,8 +122,12 @@ export async function handleAutoCompression(
 			};
 		}
 	} catch (error) {
-		console.error('Auto-compression failed:', error);
+		options.onCompressionStatus?.({
+			step: 'failed',
+			message: error instanceof Error ? error.message : 'Unknown error',
+		});
 	}
 
+	options.setIsAutoCompressing?.(false);
 	return {compressed: false, hookFailed: false};
 }

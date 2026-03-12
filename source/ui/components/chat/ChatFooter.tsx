@@ -162,6 +162,7 @@ type ChatFooterProps = {
 	streamTokenCount: number;
 	elapsedSeconds: number;
 	currentModel?: string | null;
+	compressBlockToast?: string | null;
 };
 
 const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
@@ -327,6 +328,7 @@ const ChatFooter = React.memo(function ChatFooter(props: ChatFooterProps) {
 						fileUpdateNotification={props.fileUpdateNotification}
 						copyStatusMessage={copyStatusMessage}
 						currentProfileName={props.currentProfileName}
+						compressBlockToast={props.compressBlockToast}
 					/>
 
 					{props.isCompressing && (

@@ -7,7 +7,7 @@ import {getSubAgent} from '../../../utils/config/subAgentConfig.js';
  * 子代理执行结果显示组件的属性接口
  */
 interface SubAgentResultProps {
-	/** Agent类型标识符（如：'explore', 'plan', 'general', 或自定义Agent ID） */
+	/** Agent类型标识符（如：'explore', 'general', 或自定义Agent ID） */
 	agentType: string;
 	/** 显示的完整内容 */
 	content: string;
@@ -23,7 +23,6 @@ const BUILTIN_AGENT_CONFIG: Record<
 	{icon: string; color: string; name: string}
 > = {
 	explore: {icon: '🤖', color: 'cyan', name: 'Explore Agent'},
-	plan: {icon: '📋', color: 'blue', name: 'Plan Agent'},
 	general: {icon: '🔧', color: 'magenta', name: 'General Agent'},
 };
 
@@ -37,7 +36,7 @@ const DEFAULT_CONFIG = {
  * 子代理执行结果显示组件
  *
  * 根据Agent类型动态显示图标、颜色和名称：
- * - 内置Agent（explore/plan/general）使用特殊配置
+ * - 内置Agent(explore/general)使用特殊配置
  * - 自定义Agent从subAgentConfig.ts获取信息
  * - 未知Agent使用默认样式
  */

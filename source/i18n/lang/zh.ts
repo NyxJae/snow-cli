@@ -520,7 +520,6 @@ export const zh: TranslationKeys = {
 			resume: '恢复对话',
 			mcp: '显示模型上下文协议服务和工具',
 			yolo: '切换无人值守模式(自动批准所有工具)',
-			plan: '切换团队模式(专业规划助手)',
 			init: '分析项目并生成/更新 AGENTS.md 文档',
 			ide: '连接到 VSCode 编辑器并同步上下文',
 			compact: '使用压缩模型压缩对话历史',
@@ -539,9 +538,9 @@ export const zh: TranslationKeys = {
 			codebase: '切换当前项目的代码库索引功能。用法: /codebase [on|off|status]',
 			permissions: '管理始终批准的工具权限',
 			backend: '显示后台进程面板',
+			loop: '创建会话级循环任务。用法: /loop 5m <提示词>',
 			profiles: '打开配置文件切换面板',
 			models: '打开模型切换面板',
-			vulnerabilityHunting: '切换漏洞检查模式，进行安全性代码分析',
 			toolSearch: '切换工具搜索（渐进式工具加载）。默认启用以节省上下文',
 			worktree: '打开 Git 分支管理面板，支持切换、新建和删除分支',
 			diff: '在 IDE 中查看对话的文件修改 Diff',
@@ -822,6 +821,7 @@ export const zh: TranslationKeys = {
 		// Profile switch
 		profileCurrent: '当前配置',
 		profileSwitchHint: '切换',
+		memoryUsageLabel: '内存占用:',
 		// Tool execution
 		toolCall: '工具调用',
 		toolThinking: '思考',
@@ -830,7 +830,6 @@ export const zh: TranslationKeys = {
 		toolSearching: '搜索',
 		toolExecuting: '执行',
 		toolSuccess: '✓ 成功',
-		toolFailed: '✗ 失败',
 		toolRejected: '✗ 已拒绝',
 		// Parallel execution
 		parallelStart: '┌─ 并行执行',
@@ -882,6 +881,7 @@ export const zh: TranslationKeys = {
 		compressionInProgress: '正在压缩对话历史...',
 		compressionSuccess: '对话历史压缩成功',
 		compressionFailed: '对话历史压缩失败: {error}',
+		compressionBlockToast: '✵ 正在压缩上下文，无法中断，请等待完成...',
 		reviewStartTitle: '准备开始代码 Review',
 		reviewSelectedSummary: '选中：{workingTreePrefix}{commitCount} 个提交',
 		reviewSelectedWorkingTreePrefix: 'Working Tree + ',
@@ -1153,6 +1153,10 @@ export const zh: TranslationKeys = {
 		inputRequired: '需要输入',
 		inputPlaceholder: '输入内容后按 Enter 提交',
 		inputHint: '按 Enter 提交输入',
+	},
+	scheduler: {
+		title: '预约任务',
+		hint: 'AI 流程已暂停，等待倒计时结束...',
 	},
 	backgroundProcesses: {
 		title: '后台进程',

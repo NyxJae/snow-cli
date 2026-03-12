@@ -18,6 +18,7 @@ import {useTerminalSize} from '../../hooks/ui/useTerminalSize.js';
 import {useTerminalFocus} from '../../hooks/ui/useTerminalFocus.js';
 import {useBashMode} from '../../hooks/input/useBashMode.js';
 import {useTerminalExecutionState} from '../../hooks/execution/useTerminalExecutionState.js';
+import {useSchedulerExecutionState} from '../../hooks/execution/useSchedulerExecutionState.js';
 import {useBackgroundProcesses} from '../../hooks/execution/useBackgroundProcesses.js';
 import {usePanelState} from '../../hooks/ui/usePanelState.js';
 import {useCursorHide} from '../../hooks/ui/useCursorHide.js';
@@ -96,6 +97,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		pendingUserQuestion,
 		setPendingUserQuestion,
 		requestUserQuestion,
+		compressionStatus,
+		setCompressionStatus,
 	} = useChatScreenLocalState();
 	const {yoloMode, setYoloMode, toolSearchDisabled, simpleMode, showThinking} =
 		useChatScreenModes({enableYolo});
@@ -104,6 +107,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const snapshotState = useSnapshotState(messages.length);
 	const bashMode = useBashMode();
 	const terminalExecutionState = useTerminalExecutionState();
+	const schedulerExecutionState = useSchedulerExecutionState();
 	const backgroundProcesses = useBackgroundProcesses();
 	const panelState = usePanelState();
 	const {hasFocus} = useTerminalFocus();
@@ -219,6 +223,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		commandsLoaded,
 		terminalExecutionState,
 		backgroundProcesses,
+		schedulerExecutionState,
 		panelState,
 		setIsExecutingTerminalCommand,
 		setHookError,
@@ -229,6 +234,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 			handleCommandExecutionRef.current?.(command, result);
 		},
 		pendingToolConfirmation,
+		onCompressionStatus: setCompressionStatus,
 	});
 
 	function handleSwitchProfile() {
@@ -289,6 +295,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		onQuit: handleQuit,
 		onReindexCodebase: handleReindexCodebase,
 		onToggleCodebase: handleToggleCodebase,
+		onCompressionStatus: setCompressionStatus,
 	});
 
 	useEffect(() => {
@@ -390,6 +397,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 		!pendingUserQuestion &&
 		!bashSensitiveCommand &&
 		!terminalExecutionState.state.needsInput &&
+		!schedulerExecutionState.state.isRunning &&
 		!hasBlockingPanel &&
 		!snapshotState.pendingRollback;
 	const footerContextUsage = streamingState.contextUsage
@@ -441,11 +449,13 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 				pendingUserQuestion={pendingUserQuestion}
 				bashSensitiveCommand={bashSensitiveCommand}
 				terminalExecutionState={terminalExecutionState}
+				schedulerExecutionState={schedulerExecutionState}
 				customCommandExecution={customCommandExecution}
 				bashMode={bashMode}
 				hookError={hookError}
 				handleUserQuestionAnswer={handleUserQuestionAnswer}
 				setHookError={setHookError}
+				compressionStatus={compressionStatus}
 			/>
 
 			<ChatScreenPanels
@@ -554,6 +564,7 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 					streamTokenCount={streamingState.streamTokenCount}
 					elapsedSeconds={streamingState.elapsedSeconds}
 					currentModel={streamingState.currentModel}
+					compressBlockToast={streamingState.compressBlockToast}
 				/>
 			)}
 		</Box>

@@ -522,7 +522,6 @@ export type TranslationKeys = {
 			resume: string;
 			mcp: string;
 			yolo: string;
-			plan: string;
 			init: string;
 			ide: string;
 			compact: string;
@@ -530,6 +529,7 @@ export type TranslationKeys = {
 			review: string;
 			usage: string;
 			backend: string;
+			loop: string;
 			profiles: string;
 			models: string;
 			export: string;
@@ -543,7 +543,6 @@ export type TranslationKeys = {
 			reindex: string;
 			codebase: string;
 			permissions: string;
-			vulnerabilityHunting: string;
 			toolSearch: string;
 			worktree: string; // Git branch management panel
 			diff: string;
@@ -829,6 +828,7 @@ export type TranslationKeys = {
 		// Profile switch
 		profileCurrent: string;
 		profileSwitchHint: string;
+		memoryUsageLabel: string;
 		// Tool execution
 		toolCall: string;
 		toolThinking: string;
@@ -837,7 +837,6 @@ export type TranslationKeys = {
 		toolSearching: string;
 		toolExecuting: string;
 		toolSuccess: string;
-		toolFailed: string;
 		toolRejected: string;
 		// Parallel execution
 		parallelStart: string;
@@ -888,6 +887,7 @@ export type TranslationKeys = {
 		compressionInProgress: string;
 		compressionSuccess: string;
 		compressionFailed: string;
+		compressionBlockToast: string;
 		// Review
 		reviewStartTitle: string;
 		reviewSelectedSummary: string;
@@ -1127,6 +1127,10 @@ export type TranslationKeys = {
 		inputRequired: string;
 		inputPlaceholder: string;
 		inputHint: string;
+	};
+	scheduler: {
+		title: string;
+		hint: string;
 	};
 	backgroundProcesses: {
 		title: string;

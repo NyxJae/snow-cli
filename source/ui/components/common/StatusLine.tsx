@@ -7,9 +7,39 @@ import {getSimpleMode} from '../../../utils/config/themeConfig.js';
 import {calculateContextPercentage} from '../chat/ChatInput.js';
 import {smartTruncatePath} from '../../../utils/ui/messageFormatter.js';
 
+const MEMORY_REFRESH_INTERVAL_MS = 5000;
+
 // 根据平台返回快捷键显示文本: Windows/Linux使用 Alt+P, macOS使用 Ctrl+P
 const getProfileShortcut = () =>
 	process.platform === 'darwin' ? 'Ctrl+P' : 'Alt+P';
+
+function getCurrentProcessMemoryUsageMb(): number {
+	return Math.max(1, process.memoryUsage().rss / (1024 * 1024));
+}
+
+function formatMemoryUsage(memoryUsageMb: number): string {
+	if (memoryUsageMb >= 1024) {
+		return `${(memoryUsageMb / 1024).toFixed(2)} GB`;
+	}
+
+	return `${memoryUsageMb.toFixed(0)} MB`;
+}
+
+function useCurrentProcessMemoryUsage(): number {
+	const [memoryUsageMb, setMemoryUsageMb] = React.useState(() =>
+		getCurrentProcessMemoryUsageMb(),
+	);
+
+	React.useEffect(() => {
+		const timer = setInterval(() => {
+			setMemoryUsageMb(getCurrentProcessMemoryUsageMb());
+		}, MEMORY_REFRESH_INTERVAL_MS);
+
+		return () => clearInterval(timer);
+	}, []);
+
+	return memoryUsageMb;
+}
 
 type VSCodeConnectionStatus =
 	| 'disconnected'
@@ -79,6 +109,9 @@ type Props = {
 
 	// Profile 信息
 	currentProfileName?: string;
+
+	// 自动压缩禁止中断提示
+	compressBlockToast?: string | null;
 };
 
 export default function StatusLine({
@@ -97,10 +130,15 @@ export default function StatusLine({
 	fileUpdateNotification,
 	copyStatusMessage,
 	currentProfileName,
+	compressBlockToast,
 }: Props) {
 	const {t} = useI18n();
 	const {theme} = useTheme();
 	const simpleMode = getSimpleMode();
+	const memoryUsageMb = useCurrentProcessMemoryUsage();
+	const formattedMemoryUsage = formatMemoryUsage(memoryUsageMb);
+	const simpleMemoryStatusText = `⛁ ${formattedMemoryUsage}`;
+	const detailedMemoryStatusText = `⛁ ${t.chatScreen.memoryUsageLabel} ${formattedMemoryUsage}`;
 
 	// 是否显示任何状态信息
 	const hasAnyStatus =
@@ -115,7 +153,9 @@ export default function StatusLine({
 		watcherEnabled ||
 		fileUpdateNotification ||
 		copyStatusMessage ||
-		currentProfileName;
+		currentProfileName ||
+		compressBlockToast ||
+		detailedMemoryStatusText;
 
 	if (!hasAnyStatus) {
 		return null;
@@ -128,9 +168,7 @@ export default function StatusLine({
 		// Profile - 显示在最前面
 		if (currentProfileName) {
 			statusItems.push({
-				text: `ꚰ ${currentProfileName} | ${getProfileShortcut()} ${
-					t.chatScreen.profileSwitchHint
-				}`,
+				text: `ꚰ ${currentProfileName}`,
 				color: theme.colors.menuInfo,
 			});
 		}
@@ -235,6 +273,18 @@ export default function StatusLine({
 					: theme.colors.success,
 			});
 		}
+
+		if (compressBlockToast) {
+			statusItems.push({
+				text: compressBlockToast,
+				color: theme.colors.warning,
+			});
+		}
+
+		statusItems.push({
+			text: simpleMemoryStatusText,
+			color: theme.colors.menuSecondary,
+		});
 
 		return (
 			<Box flexDirection="column" paddingX={1} marginTop={1}>
@@ -437,6 +487,12 @@ export default function StatusLine({
 				</Box>
 			)}
 
+			<Box>
+				<Text color={theme.colors.menuSecondary} dimColor>
+					{detailedMemoryStatusText}
+				</Text>
+			</Box>
+
 			{/* YOLO模式提示 - 仅当开启时显示 */}
 			{(yoloEnabled || yoloMode) && (
 				<Box>
@@ -597,6 +653,14 @@ export default function StatusLine({
 						dimColor
 					>
 						{copyStatusMessage.text}
+					</Text>
+				</Box>
+			)}
+
+			{compressBlockToast && (
+				<Box>
+					<Text color={theme.colors.warning} dimColor>
+						{compressBlockToast}
 					</Text>
 				</Box>
 			)}

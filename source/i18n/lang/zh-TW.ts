@@ -521,7 +521,6 @@ export const zhTW: TranslationKeys = {
 			resume: '恢復對話',
 			mcp: '顯示模型上下文協定服務和工具',
 			yolo: '切換無人值守模式(自動批准所有工具)',
-			plan: '切換團隊模式(專業規劃助手)',
 			init: '分析專案並產生/更新 AGENTS.md 文件',
 			ide: '連線到 VSCode 編輯器並同步上下文',
 			compact: '使用壓縮模型壓縮對話歷史',
@@ -540,9 +539,9 @@ export const zhTW: TranslationKeys = {
 			codebase: '切換當前專案的代碼庫索引功能。用法: /codebase [on|off|status]',
 			permissions: '管理永遠允許的工具權限',
 			backend: '顯示背景處理程序面板',
+			loop: '建立會話級循環任務。用法: /loop 5m <提示詞>',
 			profiles: '開啟設定檔切換面板',
 			models: '開啟模型切換面板',
-			vulnerabilityHunting: '切換漏洞檢查模式，進行安全性代碼分析',
 			toolSearch: '切換工具搜尋（漸進式工具載入）。預設啟用以節省上下文',
 			worktree: '開啟 Git 分支管理面板，支援切換、新建和刪除分支',
 			diff: '在 IDE 中查看對話的檔案修改 Diff',
@@ -823,6 +822,7 @@ export const zhTW: TranslationKeys = {
 		// Profile switch
 		profileCurrent: '目前設定檔',
 		profileSwitchHint: '切換',
+		memoryUsageLabel: '記憶體佔用:',
 		// Tool execution
 		toolCall: '工具呼叫',
 		toolThinking: '思考',
@@ -831,7 +831,6 @@ export const zhTW: TranslationKeys = {
 		toolSearching: '搜尋',
 		toolExecuting: '執行',
 		toolSuccess: '✓ 成功',
-		toolFailed: '✗ 失敗',
 		toolRejected: '✗ 已拒絕',
 		// Parallel execution
 		parallelStart: '┌─ 並行執行',
@@ -883,6 +882,7 @@ export const zhTW: TranslationKeys = {
 		compressionInProgress: '正在壓縮對話歷史...',
 		compressionSuccess: '對話歷史壓縮成功',
 		compressionFailed: '對話歷史壓縮失敗: {error}',
+		compressionBlockToast: '✵ 正在壓縮上下文，無法中斷，請等待完成...',
 		reviewStartTitle: '準備開始程式碼 Review',
 		reviewSelectedSummary: '已選：{workingTreePrefix}{commitCount} 個提交',
 		reviewSelectedWorkingTreePrefix: 'Working Tree + ',
@@ -1153,6 +1153,10 @@ export const zhTW: TranslationKeys = {
 		inputRequired: '需要輸入',
 		inputPlaceholder: '輸入內容後按 Enter 提交',
 		inputHint: '按 Enter 提交輸入',
+	},
+	scheduler: {
+		title: '預約任務',
+		hint: 'AI 流程已暫停，等待倒數計時結束...',
 	},
 	backgroundProcesses: {
 		title: '背景處理程序',

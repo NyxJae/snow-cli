@@ -552,7 +552,6 @@ export const en: TranslationKeys = {
 			resume: 'Resume a conversation',
 			mcp: 'Show Model Context Protocol services and tools',
 			yolo: 'Toggle unattended mode (auto-approve all tools)',
-			plan: 'Toggle Team mode (specialized planning assistant)',
 			init: 'Analyze project and generate/update AGENTS.md documentation',
 			ide: 'Connect to VSCode editor and sync context',
 			compact: 'Compress conversation history using compact model',
@@ -576,10 +575,9 @@ export const en: TranslationKeys = {
 				'Toggle codebase indexing for current project. Usage: /codebase [on|off|status]',
 			permissions: 'Manage always-approved tools permissions',
 			backend: 'Show background processes panel',
+			loop: 'Schedule a session-scoped recurring task. Usage: /loop 5m <prompt>',
 			profiles: 'Switch configuration profiles',
 			models: 'Open model switching panel',
-			vulnerabilityHunting:
-				'Toggle vulnerability hunting mode for security-focused code analysis',
 			toolSearch:
 				'Toggle Tool Search (progressive tool loading). Enabled by default to save context',
 			worktree:
@@ -870,6 +868,7 @@ export const en: TranslationKeys = {
 		// Profile switch
 		profileCurrent: 'Profile',
 		profileSwitchHint: 'switch',
+		memoryUsageLabel: 'Memory Usage:',
 		// Tool execution
 		toolCall: 'Tool call',
 		toolThinking: 'Thinking',
@@ -878,7 +877,6 @@ export const en: TranslationKeys = {
 		toolSearching: 'Searching',
 		toolExecuting: 'Executing',
 		toolSuccess: '✓ Success',
-		toolFailed: '✗ Failed',
 		toolRejected: '✗ Rejected',
 		// Parallel execution
 		parallelStart: '┌─ Parallel execution',
@@ -930,6 +928,8 @@ export const en: TranslationKeys = {
 		compressionInProgress: 'Compressing conversation history...',
 		compressionSuccess: 'Compression complete',
 		compressionFailed: '✗ Compression failed: {error}',
+		compressionBlockToast:
+			'✵ Compressing context, cannot interrupt, please wait...',
 		// Review
 		reviewStartTitle: 'Preparing to start code review',
 		reviewSelectedSummary:
@@ -1192,6 +1192,10 @@ export const en: TranslationKeys = {
 		inputRequired: 'INPUT REQUIRED',
 		inputPlaceholder: 'Type your input and press Enter',
 		inputHint: 'Press Enter to submit input',
+	},
+	scheduler: {
+		title: 'Scheduled Task',
+		hint: 'AI workflow is paused, waiting for countdown to finish...',
 	},
 	backgroundProcesses: {
 		title: 'Background Processes',

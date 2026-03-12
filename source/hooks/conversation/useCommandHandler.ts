@@ -2,6 +2,7 @@ import {useStdout} from 'ink';
 import {useCallback} from 'react';
 import type {Message} from '../../ui/components/chat/MessageList.js';
 import type {ChatMessage} from '../../api/types.js';
+import type {CompressionStatus} from '../../ui/components/compression/CompressionStatus.js';
 import {sessionManager} from '../../utils/session/sessionManager.js';
 import {compressContext} from '../../utils/core/contextCompressor.js';
 import {getTodoService} from '../../utils/execution/mcpToolsManager.js';
@@ -21,9 +22,13 @@ import {useI18n} from '../../i18n/index.js';
 /**
  * 执行上下文压缩
  * @param sessionId - 可选的会话ID，如果提供则使用该ID加载会话进行压缩
+ * @param onStatusUpdate - 可选的状态更新回调，用于在UI中显示压缩进度
  * @returns 返回压缩后的UI消息列表和token使用信息，如果失败返回null
  */
-export async function executeContextCompression(sessionId?: string): Promise<{
+export async function executeContextCompression(
+	sessionId?: string,
+	onStatusUpdate?: (status: CompressionStatus) => void,
+): Promise<{
 	uiMessages: Message[];
 	usage?: UsageInfo;
 	summary?: string;
@@ -33,37 +38,42 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 	hookErrorDetails?: any;
 } | null> {
 	try {
-		// 必须提供 sessionId 才能执行压缩，避免压缩错误的会话
+		// 必须提供 sessionId 才能执行压缩,避免压缩错误的会话.
 		if (!sessionId) {
-			console.warn(
-				'Context compression skipped: No active session ID available',
-			);
+			onStatusUpdate?.({
+				step: 'skipped',
+				message: '当前没有可用的会话ID',
+			});
 			return null;
 		}
 
-		// CRITICAL: Save current session to disk BEFORE loading for compression
-		// This ensures all recently added messages (including tool_calls) are persisted
-		// Otherwise loadSession might read stale data, causing compressed session to miss tool_calls
-		console.log(`Saving current session ${sessionId} before compression...`);
+		// 压缩前先落盘当前会话,确保最近追加的消息(含 tool_calls)已持久化.
+		// 否则 loadSession 可能读到旧数据,导致压缩后的会话缺失 tool_calls,引发对话不一致.
+		onStatusUpdate?.({step: 'saving', sessionId});
 		const currentSessionBeforeSave = sessionManager.getCurrentSession();
 		if (currentSessionBeforeSave && currentSessionBeforeSave.id === sessionId) {
 			await sessionManager.saveSession(currentSessionBeforeSave);
-			console.log(`Session ${sessionId} saved, now loading for compression...`);
 		}
 
-		// 使用提供的 sessionId 加载会话（从文件读取，确保数据完整）
-		console.log(`Loading session ${sessionId} for compression...`);
+		// 使用提供的 sessionId 加载会话(从文件读取,确保数据完整).
+		onStatusUpdate?.({step: 'loading', sessionId});
 		const currentSession = await sessionManager.loadSession(sessionId);
 
 		if (!currentSession) {
-			console.warn(
-				`Context compression skipped: Failed to load session ${sessionId}`,
-			);
+			onStatusUpdate?.({
+				step: 'failed',
+				message: `加载会话失败: ${sessionId}`,
+				sessionId,
+			});
 			return null;
 		}
 
 		if (currentSession.messages.length === 0) {
-			console.warn(`Session ${sessionId} has no messages to compress`);
+			onStatusUpdate?.({
+				step: 'skipped',
+				message: '当前会话没有可压缩的消息',
+				sessionId,
+			});
 			return null;
 		}
 
@@ -82,20 +92,29 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 			subAgentInternal: msg.subAgentInternal,
 		}));
 
-		// Compress the context (全量压缩，保留最后一轮完整对话)
+		// 执行全量压缩,保留最后一轮完整对话,避免丢失当前任务上下文.
+		onStatusUpdate?.({step: 'compressing', sessionId});
 		const compressionResult = await compressContext(chatMessages);
 
-		// 如果返回null，说明无法安全压缩（历史不足或只有当前轮次）
+		// 若返回 null,说明历史不足或无法保证压缩安全性,直接跳过.
 		if (!compressionResult) {
-			console.warn('Compression skipped: not enough history to compress');
+			onStatusUpdate?.({
+				step: 'skipped',
+				message: '历史不足,无法安全压缩',
+				sessionId,
+			});
 			return null;
 		}
 
-		// Check if beforeCompress hook failed
+		// beforeCompress hook 若阻断,需要中止后续流程,避免在不满足约束时继续写入压缩会话.
 		if (compressionResult.hookFailed) {
-			console.warn('Compression blocked by beforeCompress hook');
-			// Return a special result with hookFailed flag to abort AI flow
-			// Don't return usage to avoid changing token counts
+			onStatusUpdate?.({
+				step: 'failed',
+				message: '压缩被 beforeCompress hook 阻断',
+				sessionId,
+			});
+			// 仅返回 hookFailed 标记,让上层中止 AI 流程.
+			// 这里不返回 usage,避免 token 统计口径被影响.
 			return {
 				uiMessages: [],
 				hookFailed: true,
@@ -184,36 +203,45 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 		try {
 			const todoService = getTodoService();
 			await todoService.copyTodoList(currentSession.id, compressedSession.id);
-			console.log(
-				`TODO list inherited from session ${currentSession.id} to ${compressedSession.id}`,
-			);
+			onStatusUpdate?.({
+				step: 'saving',
+				message: `已从会话 ${currentSession.id} 继承 TODO 列表`,
+				sessionId: compressedSession.id,
+			});
 		} catch (error) {
-			// TODO 继承失败不应该影响压缩流程，记录日志即可
-			console.warn('Failed to inherit TODO list:', error);
+			// TODO 继承失败不应该影响压缩流程,记录日志即可.
+			onStatusUpdate?.({
+				step: 'skipped',
+				message: 'TODO 列表继承失败',
+				sessionId: compressedSession.id,
+			});
 		}
 
-		// CRITICAL: Reload the new session from disk after compression
-		// This ensures the in-memory session object is fully synchronized with the persisted data
-		// Without this, subsequent saveMessage calls might save to the old session file
-		console.log(
-			`Reloading compressed session ${compressedSession.id} from disk...`,
-		);
+		// 压缩完成后需要从磁盘重新加载会话,确保内存中的会话对象与落盘数据完全一致.
+		// 否则后续 saveMessage 可能仍指向旧会话文件,导致消息写入错误的会话.
+		onStatusUpdate?.({
+			step: 'loading',
+			message: '正在从磁盘重新加载压缩后的会话...',
+			sessionId: compressedSession.id,
+		});
 		const reloadedSession = await sessionManager.loadSession(
 			compressedSession.id,
 		);
 
 		if (reloadedSession) {
-			// Set the reloaded session as current (with fresh data from disk)
 			sessionManager.setCurrentSession(reloadedSession);
-			console.log(
-				`Compressed session ${compressedSession.id} reloaded and set as current`,
-			);
+			onStatusUpdate?.({
+				step: 'completed',
+				message: '会话已重新加载并设为当前会话',
+				sessionId: compressedSession.id,
+			});
 		} else {
-			// Fallback: set the in-memory session if reload fails
 			sessionManager.setCurrentSession(compressedSession);
-			console.warn(
-				`Failed to reload compressed session, using in-memory version`,
-			);
+			onStatusUpdate?.({
+				step: 'completed',
+				message: '重新加载失败,已回退使用内存版本',
+				sessionId: compressedSession.id,
+			});
 		}
 
 		// 新会话有独立的快照系统，不需要重映射旧会话的快照
@@ -262,7 +290,11 @@ export async function executeContextCompression(sessionId?: string): Promise<{
 			preservedMessageStartIndex: compressionResult.preservedMessageStartIndex,
 		};
 	} catch (error) {
-		console.error('Context compression failed:', error);
+		onStatusUpdate?.({
+			step: 'failed',
+			message:
+				error instanceof Error ? error.message : 'Context compression failed',
+		});
 		return null;
 	}
 }
@@ -282,6 +314,11 @@ type CommandHandlerOptions = {
 	>;
 	setShowMcpPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setMcpPanelSource: (source: 'chat' | 'mcpConfig') => void;
+	onCompressionStatus?: (
+		status:
+			| import('../../ui/components/compression/CompressionStatus.js').CompressionStatus
+			| null,
+	) => void;
 
 	setShowUsagePanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowModelsPanel: React.Dispatch<React.SetStateAction<boolean>>;
@@ -331,7 +368,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 
 	const handleCommandExecution = useCallback(
 		async (commandName: string, result: any) => {
-			// Handle /compact command
+			// 处理 /compact: 触发上下文压缩并用压缩后的会话替换当前 UI 状态.
 			if (
 				commandName === 'compact' &&
 				result.success &&
@@ -347,26 +384,27 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						throw new Error('No active session to compress');
 					}
 
-					console.log(
-						'[Compact] Executing compression for session:',
-						currentSession.id,
-					);
-					// 使用提取的压缩函数，传入当前会话ID
+					// 使用提取的压缩函数，传入当前会话ID和状态回调
 					const compressionResult = await executeContextCompression(
 						currentSession.id,
+						status => {
+							options.onCompressionStatus?.(status);
+						},
 					);
 
 					if (!compressionResult) {
 						throw new Error('Compression failed');
 					}
 
-					console.log('[Compact] Compression completed successfully');
+					options.onCompressionStatus?.(null);
+
+					// 压缩完成后需要主动清空压缩状态,否则状态行可能继续显示旧进度.
 					// 更新UI
 					options.clearSavedMessages();
 					options.setMessages(compressionResult.uiMessages);
 					options.setRemountKey(prev => prev + 1);
 
-					// Update token usage with compression result
+					// 使用压缩后的 prompt_tokens 重算上下文占用比例,保证统计与压缩后会话一致.
 					if (compressionResult.usage) {
 						const config = getOpenAiConfig();
 						const maxTokens =
@@ -389,12 +427,15 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						error instanceof Error
 							? error.message
 							: 'Unknown compression error';
-					console.error('[Compact] Compression error:', errorMsg);
+					options.onCompressionStatus?.({
+						step: 'failed',
+						message: errorMsg,
+					});
 					options.setCompressionError(errorMsg);
 
 					const errorMessage: Message = {
 						role: 'assistant',
-						content: `**Compression Failed**\n\n${errorMsg}`,
+						content: `**Compression Failed**\\n\\n${errorMsg}`,
 						streaming: false,
 					};
 					options.setMessages(prev => [...prev, errorMessage]);
@@ -445,10 +486,10 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 									[output, error].filter(Boolean).join('\n\n') || '(no output)';
 
 								if (exitCode === 1) {
-									// Warning: save to display AFTER clearing screen
+									// exitCode=1 视为非阻断警告,延后展示以避免清屏逻辑打断用户阅读.
 									warningMessage = `[WARN] onSessionStart hook warning:\nCommand: ${command}\nOutput: ${combinedOutput}`;
 								} else if (exitCode >= 2 || exitCode < 0) {
-									// Critical error: display using HookErrorDisplay component
+									// exitCode>=2 或 exitCode<0 视为阻断错误,需要展示 hook 错误详情并中止后续清理,避免误清会话.
 									const errorMessage: Message = {
 										role: 'assistant',
 										content: '', // Content will be rendered by HookErrorDisplay
@@ -467,12 +508,12 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 							}
 						}
 
-						// If hook failed critically, don't clear session
+						// hook 阻断失败时不清空会话,避免丢失用户上下文(同时保留错误信息供排查).
 						if (shouldAbort) {
 							return;
 						}
 
-						// Hook passed, now clear session
+						// hook 正常通过后再清理会话.
 						resetTerminal(stdout);
 						const currentSession = sessionManager.getCurrentSession();
 						todoEvents.emitTodoUpdate(currentSession?.id ?? '', []);
@@ -674,6 +715,8 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				options.setMessages(prev => [...prev, commandMessage]);
 			} else if (result.success && result.action === 'showNewPromptPanel') {
 				options.setShowNewPromptPanel(true);
+			} else if (result.success && result.action === 'showTaskManager') {
+				navigateTo('tasks');
 			} else if (result.success && result.action === 'showTodoListPanel') {
 				options.setShowTodoListPanel(true);
 			} else if (
@@ -967,17 +1010,27 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 				}
 			} else if (result.success && result.action === 'copyLastMessage') {
 				try {
-					const messages = options.messages;
-					let lastAssistantMessage: Message | undefined;
-					for (let i = messages.length - 1; i >= 0; i--) {
-						const msg = messages[i];
-						if (msg && msg.role === 'assistant' && !msg.subAgentInternal) {
-							lastAssistantMessage = msg;
-							break;
+					const currentSession = sessionManager.getCurrentSession();
+					let lastAssistantContent: string | undefined;
+
+					if (currentSession && !currentSession.isTemporary) {
+						await sessionManager.saveSession(currentSession);
+						const lastAssistantMessage =
+							await sessionManager.getLastAssistantMessageFromSession(
+								currentSession.id,
+							);
+						lastAssistantContent = lastAssistantMessage?.content;
+					} else if (currentSession) {
+						for (let i = currentSession.messages.length - 1; i >= 0; i--) {
+							const msg = currentSession.messages[i];
+							if (msg && msg.role === 'assistant' && !msg.subAgentInternal) {
+								lastAssistantContent = msg.content;
+								break;
+							}
 						}
 					}
 
-					if (!lastAssistantMessage) {
+					if (lastAssistantContent === undefined) {
 						const errorMessage: Message = {
 							role: 'command',
 							content: t.commandPanel.copyLastFeedback.noAssistantMessage,
@@ -987,8 +1040,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						return;
 					}
 
-					const contentToCopy = lastAssistantMessage.content || '';
-					if (!contentToCopy) {
+					if (!lastAssistantContent) {
 						const errorMessage: Message = {
 							role: 'command',
 							content: t.commandPanel.copyLastFeedback.emptyAssistantMessage,
@@ -998,7 +1050,7 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 						return;
 					}
 
-					await copyToClipboard(contentToCopy);
+					await copyToClipboard(lastAssistantContent);
 
 					const successMessage: Message = {
 						role: 'command',
