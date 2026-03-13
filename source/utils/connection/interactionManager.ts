@@ -64,7 +64,7 @@ export class InteractionManager {
 			question,
 			options,
 			toolCallId,
-			multiSelect: multiSelect ?? false,
+			multiSelect: multiSelect ?? true,
 		});
 
 		try {
@@ -73,7 +73,7 @@ export class InteractionManager {
 				question,
 				JSON.stringify(options),
 				toolCallId,
-				multiSelect ?? false,
+				multiSelect ?? true,
 			);
 		} catch {
 			// Silently fail - don't block CLI functionality

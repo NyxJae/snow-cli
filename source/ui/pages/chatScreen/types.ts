@@ -40,6 +40,7 @@ export type PendingUserQuestionState = {
 	question: string;
 	options: string[];
 	toolCall: any;
+	multiSelect?: boolean;
 	resolve: (result: PendingUserQuestionResult) => void;
 } | null;
 

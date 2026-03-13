@@ -17,7 +17,10 @@ interface UseChatHandlersDeps {
 	) => Promise<void>;
 }
 
-export function useChatHandlers(props: UseChatLogicProps, deps: UseChatHandlersDeps) {
+export function useChatHandlers(
+	props: UseChatLogicProps,
+	deps: UseChatHandlersDeps,
+) {
 	const {t} = useI18n();
 	const {
 		setMessages,
@@ -49,13 +52,17 @@ export function useChatHandlers(props: UseChatLogicProps, deps: UseChatHandlersD
 		if (pendingUserQuestion) {
 			if (result.cancelled) {
 				const resolver = pendingUserQuestion.resolve;
+
+				// 取消提问会触发 abort,需要先 resolve,确保 UI 侧能同步标记"需要清空 askuser 队列".
+				// 否则如果先 setPendingUserQuestion(null),会导致 UI 队列 effect 先出队下一个问题,
+				// 随后 shouldClear 标志才置位,进而在未来误清队列,造成漏弹窗/挂起.
+				resolver(result);
+
 				setPendingUserQuestion(null);
 
 				userInterruptedRef.current = true;
 
 				streamingState.setIsStopping(true);
-
-				resolver(result);
 
 				if (streamingState.abortController) {
 					streamingState.abortController.abort();

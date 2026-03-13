@@ -10,31 +10,24 @@ export interface QuestionInputResult {
 }
 
 interface Props {
-	_question: string;
 	options: string[];
+	multiSelect?: boolean;
 	onAnswer: (result: QuestionInputResult) => void;
-	onCancel?: () => void;
 }
 
 /**
- * Agent提问输入组件 - 支持选项选择、多选和自定义输入
+ * Agent提问输入组件. 支持选项选择,多选(可选)和自定义输入.
  *
  * @description
- * 显示建议选项列表，用户可以：
- * - 直接选择建议选项（回车确认单个高亮项）
- * - 按空格键切换选项勾选状态（可多选）
- * - 按'e'键编辑当前高亮选项
- * - 选择「Custom input」从头输入
- * - 数字键快速切换选项勾选状态
+ * 选项展示与输入都在该组件内完成.
+ * - multiSelect=true/undefined: 支持空格勾选与多选提交
+ * - multiSelect=false: 仅单选,禁用勾选交互,数字键用于跳转高亮
  *
- * 注意：问题标题和文本由QuestionHeader组件在Static中渲染
- *
- * @param question - 要问用户的问题（传递给QuestionHeader）
  * @param options - 建议选项数组
+ * @param multiSelect - 是否允许多选(为false时仅单选)
  * @param onAnswer - 用户回答后的回调函数
  */
-// @ts-expect-error - question param is kept for API compatibility but not used internally
-export default function QuestionInput({_question, options, onAnswer}: Props) {
+export default function QuestionInput({options, multiSelect, onAnswer}: Props) {
 	const {theme} = useTheme();
 	const {t} = useI18n();
 	const [hasAnswered, setHasAnswered] = useState(false);
@@ -96,7 +89,6 @@ export default function QuestionInput({_question, options, onAnswer}: Props) {
 			return;
 		}
 
-		// 始终支持多选：如果有勾选项则返回数组，否则返回当前高亮项（单个）
 		const selectedOptions = Array.from(checkedIndices)
 			.sort((a, b) => a - b)
 			.map(idx => allOptions[idx] as string)
@@ -104,13 +96,20 @@ export default function QuestionInput({_question, options, onAnswer}: Props) {
 
 		setHasAnswered(true);
 
+		// multiSelect=false 时,禁用多选: 直接返回当前高亮项
+		if (multiSelect === false) {
+			onAnswer({
+				selected: currentItem.label,
+			});
+			return;
+		}
+
+		// multiSelect=true/undefined 时,兼容既有行为: 有勾选项返回数组,否则返回当前高亮项
 		if (selectedOptions.length > 0) {
-			// 有勾选项，返回数组
 			onAnswer({
 				selected: selectedOptions,
 			});
 		} else {
-			// 没有勾选项，返回当前高亮项（单个）
 			onAnswer({
 				selected: currentItem.label,
 			});
@@ -121,6 +120,7 @@ export default function QuestionInput({_question, options, onAnswer}: Props) {
 		highlightedIndex,
 		checkedIndices,
 		allOptions,
+		multiSelect,
 		onAnswer,
 	]);
 
@@ -178,25 +178,35 @@ export default function QuestionInput({_question, options, onAnswer}: Props) {
 				return;
 			}
 
-			//空格键切换选中（始终支持多选）
-			if (input === ' ') {
-				const currentItem = items[highlightedIndex];
-				if (
-					currentItem &&
-					currentItem.value !== CUSTOM_INPUT_VALUE &&
-					currentItem.value !== CANCEL_VALUE
-				) {
-					toggleCheck(currentItem.index);
+			// 空格/数字键多选交互仅在 multiSelect=true/undefined 时启用
+			if (multiSelect !== false) {
+				//空格键切换选中
+				if (input === ' ') {
+					const currentItem = items[highlightedIndex];
+					if (
+						currentItem &&
+						currentItem.value !== CUSTOM_INPUT_VALUE &&
+						currentItem.value !== CANCEL_VALUE
+					) {
+						toggleCheck(currentItem.index);
+					}
+					return;
 				}
-				return;
-			}
 
-			//数字键快速切换选项勾选状态
-			const num = parseInt(input, 10);
-			if (!isNaN(num) && num >= 1 && num <= allOptions.length) {
-				const idx = num - 1;
-				toggleCheck(idx);
-				return;
+				//数字键快速切换选项勾选状态
+				const num = parseInt(input, 10);
+				if (!isNaN(num) && num >= 1 && num <= allOptions.length) {
+					const idx = num - 1;
+					toggleCheck(idx);
+					return;
+				}
+			} else {
+				// 单选模式下,数字键用于快速跳转高亮(不产生勾选态)
+				const num = parseInt(input, 10);
+				if (!isNaN(num) && num >= 1 && num <= allOptions.length) {
+					setHighlightedIndex(num - 1);
+					return;
+				}
 			}
 
 			//回车确认
@@ -270,7 +280,7 @@ export default function QuestionInput({_question, options, onAnswer}: Props) {
 									>
 										{isHighlighted ? '▸ ' : '  '}
 									</Text>
-									{!isCustomInput && !isCancel && (
+									{!isCustomInput && !isCancel && multiSelect !== false && (
 										<Text
 											color={isChecked ? theme.colors.success : undefined}
 											dimColor={!isChecked}
@@ -291,8 +301,10 @@ export default function QuestionInput({_question, options, onAnswer}: Props) {
 					</Box>
 					<Box marginTop={1}>
 						<Text dimColor>
-							{t.askUser.multiSelectKeyboardHints ||
-								'↑↓ 移动 | 空格 切换 | 1-9 快速切换 | 回车 确认 | e 编辑'}
+							{multiSelect === false
+								? t.askUser.keyboardHints
+								: t.askUser.multiSelectKeyboardHints ||
+								  '↑↓ 移动 | 空格 切换 | 1-9 快速切换 | 回车 确认 | e 编辑'}
 						</Text>
 					</Box>
 				</Box>

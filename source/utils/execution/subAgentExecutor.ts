@@ -3,10 +3,7 @@ import {createStreamingResponse} from '../../api/responses.js';
 import {createStreamingGeminiCompletion} from '../../api/gemini.js';
 import {createStreamingChatCompletion} from '../../api/chat.js';
 import {getSubAgent, getSubAgents} from '../config/subAgentConfig.js';
-import {
-	getAgentsPrompt,
-	createSystemContext,
-} from '../agentsPromptUtils.js';
+import {getAgentsPrompt, createSystemContext} from '../agentsPromptUtils.js';
 import {
 	collectAllMCPTools,
 	executeMCPTool,
@@ -310,7 +307,7 @@ export async function executeSubAgent(
 			return {
 				success: false,
 				result: '',
-				error: `Sub-agent with ID "${agentId}" not found`,
+				error: `未找到ID为 \"${agentId}\" 的子代理`,
 			};
 		}
 
@@ -343,7 +340,7 @@ export async function executeSubAgent(
 			return {
 				success: false,
 				result: '',
-				error: `Sub-agent "${agent.name}" has no valid tools configured`,
+				error: `子代理 \"${agent.name}\" 未配置任何可用工具`,
 			};
 		}
 
@@ -355,7 +352,7 @@ export async function executeSubAgent(
 			return {
 				success: false,
 				result: '',
-				error: `Sub-agent "${agent.name}" missing subAgentRole configuration`,
+				error: `子代理 \"${agent.name}\" 缺少 subAgentRole 配置`,
 			};
 		}
 
@@ -369,24 +366,24 @@ export async function executeSubAgent(
 			function: {
 				name: 'send_message_to_agent',
 				description:
-					"Send a message to another running sub-agent. Use this to share information, findings, or coordinate work with other agents that are executing in parallel. The message will be injected into the target agent's context. IMPORTANT: Use query_agents_status first to check if the target agent is still running before sending.",
+					'向正在运行的其他子代理发送消息. 可用于共享信息,同步发现,或与并行执行的子代理协调工作. 该消息会注入目标子代理的上下文. 重要: 发送前建议先使用 query_agents_status 确认目标子代理仍在运行.',
 				parameters: {
 					type: 'object',
 					properties: {
 						target_agent_id: {
 							type: 'string',
 							description:
-								'The agent ID (type) of the target sub-agent. If multiple instances of the same type are running, the message is sent to the first found instance.',
+								'目标子代理的 agentId(类型). 如果同一类型存在多个运行实例,将默认发送给第一个匹配到的实例.',
 						},
 						target_instance_id: {
 							type: 'string',
 							description:
-								'(Optional) The specific instance ID of the target sub-agent. Use this for precise targeting when multiple instances of the same agent type are running.',
+								'(可选) 目标子代理的 instanceId. 当同一类型存在多个运行实例时,可用于精确指定发送对象.',
 						},
 						message: {
 							type: 'string',
 							description:
-								'The message content to send to the target agent. Be clear and specific about what information you are sharing or what action you are requesting.',
+								'要发送给目标子代理的消息内容. 请尽量清晰,具体地说明你共享的信息或希望对方执行的动作.',
 						},
 					},
 					required: ['message'],
@@ -399,7 +396,7 @@ export async function executeSubAgent(
 			function: {
 				name: 'query_agents_status',
 				description:
-					'Query the current status of all running sub-agents. Returns a list of currently active agents with their IDs, names, prompts, and how long they have been running. Use this to check if a target agent is still running before sending it a message, or to discover new agents that have started.',
+					'查询所有正在运行的子代理状态. 返回当前活跃子代理列表(包含ID,名称,prompt,以及运行时长). 可用于在发送消息前确认目标子代理仍在运行,或发现新启动的子代理.',
 				parameters: {
 					type: 'object',
 					properties: {},
@@ -465,29 +462,29 @@ export async function executeSubAgent(
 				type: 'function' as const,
 				function: {
 					name: 'spawn_sub_agent',
-					description: `Spawn a NEW sub-agent of a DIFFERENT type to get specialized help. The spawned agent runs in parallel and results are reported back automatically.
+					description: `创建一个全新的,且与自己类型不同的子代理,以获得更专业的帮助. 被创建的子代理会与当前流程并行运行,并在完成后自动回传结果.
 
-**WHEN TO USE** — Only spawn when you genuinely need a different agent's specialization.
+**什么时候用**: 只有在你确实需要不同子代理的专长时才创建.
 
-**WHEN NOT TO USE** — Do NOT spawn to offload YOUR OWN work:
-- NEVER spawn an agent of the same type as yourself to delegate your task — that is lazy and wasteful
-- NEVER spawn an agent just to "break work into pieces" if you can do it yourself
-- NEVER spawn when you are simply stuck — try harder or ask the user instead
-- If you can complete the task with your own tools, DO IT YOURSELF
+**什么时候不要用**: 不要用创建子代理来甩锅自己的工作:
+- 绝对不要创建和自己同类型的子代理来替你完成任务,这既懒惰又浪费资源
+- 如果你自己能做,不要为了"拆分工作"而创建子代理
+- 不要因为卡住就创建子代理,请先更努力地尝试,或者直接问用户
+- 如果你有足够工具完成任务,请自己完成
 
-**Available agents you can spawn:**
+**你可以创建的子代理列表**:
 ${agentDescriptions}`,
 					parameters: {
 						type: 'object',
 						properties: {
 							agent_id: {
 								type: 'string',
-								description: `The agent ID to spawn. Must be a DIFFERENT type from yourself. Available: ${agentIdList}.`,
+								description: `要创建的子代理 ID. 必须与自身类型不同. 可选: ${agentIdList}.`,
 							},
 							prompt: {
 								type: 'string',
 								description:
-									'CRITICAL: The task prompt for the spawned agent. Must include COMPLETE context since the spawned agent has NO access to your conversation history. Include all relevant file paths, findings, constraints, and requirements.',
+									'关键: 子代理的任务描述. 子代理无法访问你的历史对话,因此这里必须包含完整上下文,包括相关文件路径,已发现信息,约束与验收标准.',
 							},
 						},
 						required: ['agent_id', 'prompt'],
@@ -526,28 +523,28 @@ ${agentDescriptions}`,
 				)
 				.join('\n');
 			const spawnHint = canSpawn
-				? ', or `spawn_sub_agent` to request a DIFFERENT type of agent for specialized help'
+				? ',或使用 `spawn_sub_agent` 创建不同类型的子代理以获得更专业的帮助'
 				: '';
 			const spawnAdvice = canSpawn
-				? '\n\n**Spawn rules**: Only spawn agents of a DIFFERENT type for work you CANNOT do with your own tools. Complete your own task first — do NOT delegate it.'
+				? '\n\n**创建规则**: 仅在你确实需要其他类型子代理专长,且自己工具无法完成时再创建. 优先完成自己的工作,不要把自己该做的事转交出去.'
 				: '';
-			collaborationContext = `\n\n## Currently Running Peer Agents
-The following sub-agents are running in parallel with you. You can use \`query_agents_status\` to get real-time status, \`send_message_to_agent\` to communicate${spawnHint}.
+			collaborationContext = `\n\n## 当前并行运行的其他子代理
+以下子代理正在与你并行运行. 你可以使用 \`query_agents_status\` 获取实时状态,使用 \`send_message_to_agent\` 与其沟通${spawnHint}.
 
 ${agentList}
 
-If you discover information useful to another agent, proactively share it.${spawnAdvice}`;
+如果你发现对其他子代理有帮助的信息,请主动分享.${spawnAdvice}`;
 		} else {
 			const spawnToolLine = canSpawn
-				? '\n- `spawn_sub_agent`: Spawn a DIFFERENT type of agent for specialized help (do NOT spawn your own type to offload work)'
+				? '\n- `spawn_sub_agent`: 创建不同类型的子代理以获得更专业的帮助(不要创建自己的同类型来甩锅)'
 				: '';
 			const spawnUsage = canSpawn
-				? '\n\n**Spawn rules**: Only use `spawn_sub_agent` when you genuinely need a different agent\'s specialization (e.g., you are read-only but need code changes). NEVER spawn to delegate your own task or to "parallelize" work you should do yourself.'
+				? '\n\n**创建规则**: 仅在你确实需要不同专长的帮助时才使用 `spawn_sub_agent`. 不要用它来转交自己的任务,也不要为了"并行拆分"而滥用.'
 				: '';
-			collaborationContext = `\n\n## Agent Collaboration Tools
-You have access to these collaboration tools:
-- \`query_agents_status\`: Check which sub-agents are currently running
-- \`send_message_to_agent\`: Send a message to a running peer agent (check status first!)${spawnToolLine}${spawnUsage}`;
+			collaborationContext = `\n\n## 子代理协作工具
+你可以使用以下协作工具:
+- \`query_agents_status\`: 查看当前有哪些子代理正在运行
+- \`send_message_to_agent\`: 向正在运行的子代理发送消息(建议先查状态)${spawnToolLine}${spawnUsage}`;
 		}
 
 		// 获取子代理配置
@@ -644,13 +641,16 @@ You have access to these collaboration tools:
 		// 当轮 API 返回的 prompt_tokens, 用于判断 provider usage 是否可靠.
 		// 与主代理保持一致: < 1000 视为不可靠, 触发本地 tiktoken 估算.
 		let latestPromptTokens = 0;
-		// Track all user messages injected from the main session
+		// 记录: 主会话注入到本子代理的用户消息.
+		// 这样做的目的不是为了"多存一份",而是为了在最终结果里明确展示主会话对该子代理的追问/补充,
+		// 便于主代理汇总与排查并行场景下的信息流.
 		const collectedInjectedMessages: string[] = [];
-		// Track internal stop/summarize instructions injected by the executor
+		// 记录: 执行器注入到子代理对话中的内部终止/总结指令.
+		// 这些指令用于在工具被拒绝或需要强制停止时,把"为什么停止"稳定地传递给子代理,避免其继续调用工具.
 		const collectedTerminationInstructions: string[] = [];
 
-		// Track instanceIds of sub-agents spawned by THIS agent via spawn_sub_agent.
-		// Used to prevent this agent from finishing while its children are still running.
+		// 记录: 由本子代理 spawn 出来的子代理 instanceId.
+		// 这样做是为了避免父子代理之间出现"父已结束,子仍运行"的状态错乱,导致结果丢失或 UI 状态卡住.
 		const spawnedChildInstanceIds = new Set<string>();
 
 		// 此子代理执行的本地会话批准工具列表
@@ -681,26 +681,24 @@ You have access to these collaboration tools:
 				return {
 					success: false,
 					result: finalResponse,
-					error: 'Sub-agent execution aborted',
+					error: '子代理执行已中止',
 				};
 			}
 
-			// Inject any pending user messages from the main flow.
-			// The main flow enqueues messages via runningSubAgentTracker.enqueueMessage()
-			// when the user directs a pending message to this specific sub-agent instance.
+			// 注入: 主流程在子代理运行期间,可能会把用户追加消息定向投递给某个子代理实例.
+			// 这里每一轮循环都要先注入,原因是: 子代理是流式长运行任务,如果不及时注入,用户补充信息会延迟到任务结束才生效.
 			if (instanceId) {
 				const injectedMessages =
 					runningSubAgentTracker.dequeueMessages(instanceId);
 				for (const injectedMsg of injectedMessages) {
-					// Collect for inclusion in the final result
+					// 记录到最终结果中,方便主代理做汇总与回放(否则信息只存在于子代理上下文里,主代理难以追溯).
 					collectedInjectedMessages.push(injectedMsg);
-
 					messages.push({
 						role: 'user',
 						content: `[User message from main session]\\n${injectedMsg}`,
 					});
 
-					// Notify UI about the injected message
+					// 通知 UI: 让用户在主界面看到这条"注入到子代理的消息",避免误以为消息丢失.
 					if (onMessage) {
 						onMessage({
 							type: 'sub_agent_message',
@@ -714,16 +712,17 @@ You have access to these collaboration tools:
 					}
 				}
 
-				// Inject any pending inter-agent messages from other sub-agents
+				// 注入: 其他并行子代理之间的互相消息(协作上下文).
+				// 这样做是为了让子代理能感知其他子代理的进展,减少重复劳动,并支持"一个子代理发现线索,另一个立即利用"的并行协作.
 				const interAgentMessages =
 					runningSubAgentTracker.dequeueInterAgentMessages(instanceId);
 				for (const iaMsg of interAgentMessages) {
 					messages.push({
 						role: 'user',
-						content: `[Inter-agent message from ${iaMsg.fromAgentName} (${iaMsg.fromAgentId})]\n${iaMsg.content}`,
+						content: `[Inter-agent message from ${iaMsg.fromAgentName} (${iaMsg.fromAgentId})]\\n${iaMsg.content}`,
 					});
 
-					// Notify UI about the inter-agent message reception
+					// 通知 UI: 让用户知道子代理收到了来自其他子代理的消息,便于排查并行协作是否按预期进行.
 					if (onMessage) {
 						onMessage({
 							type: 'sub_agent_message',
@@ -873,13 +872,13 @@ You have access to these collaboration tools:
 					});
 				}
 
-				// Capture usage from stream events
+				// 从流事件中捕获 usage.
+				// 之所以在流中就处理,是为了让 UI 能在子代理仍处于运行态时实时展示上下文占用情况,避免等到 done 后才更新造成误判.
 				if (event.type === 'usage' && event.usage) {
 					const eventUsage = event.usage;
-					// Track total_tokens (prompt + completion) for context window monitoring.
-					// total_tokens better reflects actual context consumption because the model's
-					// response (completion_tokens) will also be added to the messages array,
-					// contributing to the next round's input.
+					// 使用 total_tokens(prompt + completion)来监控上下文窗口.
+					// 选择 total_tokens 的原因是: completion_tokens 也会在下一轮被追加到 messages,从而真实占用后续输入窗口.
+					// 仅看 prompt_tokens 容易低估下一轮的上下文压力.
 					latestTotalTokens =
 						eventUsage.total_tokens ||
 						(eventUsage.prompt_tokens || 0) +
@@ -895,7 +894,7 @@ You have access to these collaboration tools:
 							cacheReadInputTokens: eventUsage.cache_read_input_tokens,
 						};
 					} else {
-						// Accumulate usage if there are multiple rounds
+						// 跨轮累加 usage,用于最终汇总(子代理可能需要多轮工具交互).
 						totalUsage.inputTokens += eventUsage.prompt_tokens || 0;
 						totalUsage.outputTokens += eventUsage.completion_tokens || 0;
 						if (eventUsage.cache_creation_input_tokens) {
@@ -910,15 +909,14 @@ You have access to these collaboration tools:
 						}
 					}
 
-					// Notify UI of context usage DURING the stream (before 'done' marks message complete)
-					// This ensures the streaming message still exists for the UI to update
+					// 在流式过程中就通知 UI 当前上下文占用(而不是等到 done).
+					// 这样做是为了保证 UI 还有"正在运行"的子代理消息可供更新,避免 done 后 UI 找不到目标消息导致进度条不刷新.
 					if (onMessage && config.maxContextTokens && latestTotalTokens > 0) {
 						const ctxPct = getContextPercentage(
 							latestTotalTokens,
 							config.maxContextTokens,
 						);
-						// Use Math.max(1, ...) so the first API call (small prompt) still shows ≥1%
-						// instead of rounding to 0% and hiding the bar entirely
+						// 用 Math.max(1, ...) 兜底,确保首次调用(小 prompt)也至少显示 1%,避免被四舍五入到 0% 导致 UI 直接隐藏进度条.
 						onMessage({
 							type: 'sub_agent_message',
 							agentId: agent.id,
@@ -938,12 +936,12 @@ You have access to these collaboration tools:
 				} else if (event.type === 'tool_calls' && event.tool_calls) {
 					toolCalls = event.tool_calls;
 				} else if (event.type === 'reasoning_data' && 'reasoning' in event) {
-					// Capture reasoning data from Responses API
+					// 记录 Responses API 的 reasoning 数据,用于多轮对话时保留思考上下文(避免下一轮丢失推理线索).
 					currentReasoning = event.reasoning as typeof currentReasoning;
 				} else if (event.type === 'done') {
-					// Capture thinking/reasoning from done event for multi-turn conversations
+					// 在 done 事件里抓取 thinking/reasoning,用于多轮对话时保留思考块(部分 provider 只在 done 里回传).
 					if ('thinking' in event && event.thinking) {
-						// Anthropic/Gemini thinking block
+						// Anthropic/Gemini 的 thinking block
 						currentThinking = event.thinking as {
 							type: 'thinking';
 							thinking: string;
@@ -951,7 +949,7 @@ You have access to these collaboration tools:
 						};
 					}
 					if ('reasoning_content' in event && event.reasoning_content) {
-						// Chat API (DeepSeek R1) reasoning_content
+						// Chat API(例如 DeepSeek R1) 的 reasoning_content
 						currentReasoningContent = event.reasoning_content as string;
 					}
 				}
@@ -1005,23 +1003,23 @@ You have access to these collaboration tools:
 					content: currentContent || '',
 				};
 
-				// Save thinking/reasoning for multi-turn conversations
-				// Anthropic/Gemini: thinking block (required by Anthropic when thinking is enabled)
+				// 保存 thinking/reasoning,用于多轮对话.
+				// Anthropic/Gemini: thinking block(当启用 thinking 时,Anthropic 要求后续轮次继续携带).
 				if (currentThinking) {
 					assistantMessage.thinking = currentThinking;
 				}
-				// Chat API (DeepSeek R1): reasoning_content
+				// Chat API(例如 DeepSeek R1): reasoning_content
 				if (currentReasoningContent) {
 					(assistantMessage as any).reasoning_content = currentReasoningContent;
 				}
-				// Responses API: reasoning data with encrypted_content
+				// Responses API: 带 encrypted_content 的 reasoning 数据
 				if (currentReasoning) {
 					(assistantMessage as any).reasoning = currentReasoning;
 				}
 
 				if (toolCalls.length > 0) {
-					// tool_calls may contain thought_signature (Gemini thinking mode)
-					// This is preserved automatically since toolCalls is captured directly from the stream
+					// tool_calls 在部分模式下可能包含 thought_signature(如 Gemini thinking).
+					// 这里直接使用流中捕获的 toolCalls,避免自行重建时丢失签名字段.
 					assistantMessage.tool_calls = toolCalls;
 				}
 
@@ -1077,7 +1075,7 @@ You have access to these collaboration tools:
 						latestTotalTokens,
 						config.maxContextTokens,
 					);
-					// Notify UI that compression is starting
+					// 通知 UI: 子代理即将进行上下文压缩(避免用户误以为卡死).
 					if (onMessage) {
 						onMessage({
 							type: 'sub_agent_message',
@@ -1105,18 +1103,17 @@ You have access to these collaboration tools:
 						);
 
 						if (compressionResult.compressed) {
-							// Replace messages array contents
+							// 用压缩后的 messages 替换原数组,把空间让给后续工具调用与回答.
 							messages.length = 0;
 							messages.push(...compressionResult.messages);
 							justCompressed = true;
 
-							// Reset latestTotalTokens to the estimated post-compression value
-							// so the next context_usage event reflects the compressed state
+							// 重置 latestTotalTokens 为压缩后的估算值,确保下一次 context_usage 反映压缩后的状态,避免 UI 继续显示高占用.
 							if (compressionResult.afterTokensEstimate) {
 								latestTotalTokens = compressionResult.afterTokensEstimate;
 							}
 
-							// Notify UI that compression is complete
+							// 通知 UI: 上下文压缩完成,便于用户确认"刚才的卡顿"是压缩导致而非异常.
 							if (onMessage) {
 								onMessage({
 									type: 'sub_agent_message',
@@ -1131,25 +1128,24 @@ You have access to these collaboration tools:
 							}
 						}
 					} catch (compressError) {
-						// Continue without compression — the API call may still succeed
-						// or will fail with context_length_exceeded on the next round
+						// 压缩失败时先继续流程: 这轮请求可能仍能成功,但下一轮可能会因 context_length_exceeded 失败.
+						// 这样做是为了避免压缩模块偶发失败就直接中断子代理,保持尽量"能跑就跑"的韧性.
 					}
 				}
 			}
 
-			// ── After compression: force continuation if agent was about to exit ──
-			// When context was compressed and the model gave a "final" response (no tool_calls),
-			// the response was likely generated under context pressure. Remove it and ask the
-			// agent to continue working with the now-compressed context.
+			// 压缩后的强制续跑:
+			// 如果刚压缩完,模型却给出"最终回答"(没有 tool_calls),通常意味着它在压缩前的上下文压力下提前收尾了.
+			// 因此这里会丢弃这条收尾消息,并注入一条系统指令要求继续工作,让子代理在更空的上下文中把任务做完.
 			if (justCompressed && toolCalls.length === 0) {
-				// Remove the last assistant message (premature exit under context pressure)
+				// 删除最后一条 assistant 消息(很可能是上下文压力下的提前结束).
 				while (
 					messages.length > 0 &&
 					messages[messages.length - 1]?.role === 'assistant'
 				) {
 					messages.pop();
 				}
-				// Inject continuation instruction
+				// 注入续跑指令,让子代理在压缩后的上下文里继续完成任务.
 				messages.push({
 					role: 'user',
 					content:
@@ -1158,13 +1154,12 @@ You have access to these collaboration tools:
 				continue;
 			}
 
-			// If no tool calls, we're done — BUT first check for spawned children
+			// 若没有 tool_calls,通常意味着子代理准备结束.
+			// 但在结束前需要先检查是否仍有子子代理在运行,否则会出现"父已结束,子仍跑"导致结果丢失或主流程误判完成.
 			if (toolCalls.length === 0) {
-				// ── Wait for spawned child agents before finishing ──
-				// If this agent spawned children via spawn_sub_agent, we must
-				// wait for them and feed their results back before we exit.
-				// This prevents the parent from finishing (and thus the main flow
-				// from considering this tool call "done") while children still run.
+				// 等待已 spawn 的子代理完成后再结束.
+				// 原因: 父代理提前结束会让主流程认为该工具调用已完成,从而错过子代理结果,甚至导致 UI 状态不同步.
+				// 因此这里必须等子代理都收敛后,再决定是否真正结束.
 				const runningChildren = Array.from(spawnedChildInstanceIds).filter(id =>
 					runningSubAgentTracker.isRunning(id),
 				);
@@ -1173,7 +1168,7 @@ You have access to these collaboration tools:
 					runningChildren.length > 0 ||
 					runningSubAgentTracker.hasSpawnedResults()
 				) {
-					// Wait for running children to complete
+					// 等待仍在运行的子代理完成(带超时,避免无限等待).
 					if (runningChildren.length > 0) {
 						await runningSubAgentTracker.waitForSpawnedAgents(
 							300_000, // 5 min timeout
@@ -1181,7 +1176,8 @@ You have access to these collaboration tools:
 						);
 					}
 
-					// Drain all spawned results and inject as user context
+					// 取出已完成的子代理结果并注入为 user 上下文.
+					// 这样做能让父代理基于子代理输出继续推理,并最终把所有并行结果合并为一个可交付的结论.
 					const spawnedResults = runningSubAgentTracker.drainSpawnedResults();
 					if (spawnedResults.length > 0) {
 						for (const sr of spawnedResults) {
@@ -1190,14 +1186,15 @@ You have access to these collaboration tools:
 								? sr.result.length > 800
 									? sr.result.substring(0, 800) + '...'
 									: sr.result
-								: sr.error || 'Unknown error';
+								: sr.error || '未知错误';
 
 							messages.push({
 								role: 'user',
-								content: `[Spawned Sub-Agent Result] ${statusIcon} ${sr.agentName} (${sr.agentId})\nPrompt: ${sr.prompt}\nResult: ${resultSummary}`,
+								content: `[Spawned Sub-Agent Result] ${statusIcon} ${sr.agentName} (${sr.agentId})\nPrompt: ${sr.prompt}\n结果: ${resultSummary}`,
+								// 说明: 这里保留英文标签 [Spawned Sub-Agent Result]/Prompt,因为它属于内部协议标识,可能被上游解析或用于日志检索. 仅将对用户可读的字段文案中文化.
 							});
 
-							// Notify UI about the spawned agent completion
+							// 通知 UI: 某个被 spawn 的子代理已完成,方便用户理解并行任务进度.
 							if (onMessage) {
 								onMessage({
 									type: 'sub_agent_message',
@@ -1213,8 +1210,7 @@ You have access to these collaboration tools:
 							}
 						}
 
-						// Don't break — continue the loop so the AI sees spawned results
-						// and can incorporate them into its final response
+						// 不要 break,继续下一轮: 需要把子代理结果喂回模型,让它把信息融合进最终答复,避免只收集不使用.
 						if (onMessage) {
 							onMessage({
 								type: 'sub_agent_message',
@@ -1354,11 +1350,11 @@ You have access to these collaboration tools:
 							const targetAgent = runningSubAgentTracker
 								.getRunningAgents()
 								.find(a => a.instanceId === targetInstanceId);
-							resultText = `Message sent to ${
+							resultText = `消息已发送给 ${
 								targetAgent?.agentName || targetInstanceId
 							}`;
 						} else {
-							resultText = `Error: Target agent instance "${targetInstanceId}" is not running`;
+							resultText = `错误: 目标子代理实例 \"${targetInstanceId}\" 未在运行`;
 						}
 					} else if (targetAgentId) {
 						// Find by agent type ID
@@ -1371,21 +1367,21 @@ You have access to these collaboration tools:
 								msgContent,
 							);
 							if (success) {
-								resultText = `Message sent to ${targetAgent.agentName} (instance: ${targetAgent.instanceId})`;
+								resultText = `消息已发送给 ${targetAgent.agentName} (instance: ${targetAgent.instanceId})`;
 							} else {
-								resultText = `Error: Failed to send message to ${targetAgentId}`;
+								resultText = `错误: 发送消息到 ${targetAgentId} 失败`;
 							}
 						} else if (targetAgent && targetAgent.instanceId === instanceId) {
-							resultText = 'Error: Cannot send a message to yourself';
+							resultText = '错误: 不能给自己发送消息';
 						} else {
-							resultText = `Error: No running agent found with ID "${targetAgentId}"`;
+							resultText = `错误: 未找到 ID 为 \"${targetAgentId}\" 的运行中子代理`;
 						}
 					} else {
 						resultText =
-							'Error: Either target_agent_id or target_instance_id must be provided';
+							'错误: 必须提供 target_agent_id 或 target_instance_id 其中之一';
 					}
 
-					// Build tool result
+					// 构造 tool_result,用于把协作工具的执行结果回填给模型.
 					const toolResultMessage = {
 						role: 'tool' as const,
 						tool_call_id: sendMsgTool.id,
@@ -1393,7 +1389,7 @@ You have access to these collaboration tools:
 					};
 					messages.push(toolResultMessage);
 
-					// Notify UI about the inter-agent message sending
+					// 通知 UI: 已向其他子代理发送协作消息,便于用户理解协作是否按预期发生.
 					if (onMessage) {
 						onMessage({
 							type: 'sub_agent_message',
@@ -1421,7 +1417,7 @@ You have access to these collaboration tools:
 					}
 				}
 
-				// Remove send_message_to_agent from toolCalls
+				// 已在此处消费 send_message_to_agent,从 toolCalls 中移除,避免重复执行.
 				toolCalls = toolCalls.filter(
 					tc => tc.function.name !== 'send_message_to_agent',
 				);
@@ -1494,7 +1490,7 @@ You have access to these collaboration tools:
 							tool_call_id: spawnTool.id,
 							content: JSON.stringify({
 								success: false,
-								error: 'Both agent_id and prompt are required',
+								error: 'agent_id 和 prompt 都是必填项',
 							}),
 						};
 						messages.push(toolResultMessage);
@@ -1508,7 +1504,7 @@ You have access to these collaboration tools:
 							tool_call_id: spawnTool.id,
 							content: JSON.stringify({
 								success: false,
-								error: `REJECTED: You (${agent.name}) attempted to spawn another "${spawnAgentId}" which is the SAME type as yourself. This is not allowed because it wastes resources and delegates work you should complete yourself. If you need help from a DIFFERENT specialization, spawn a different agent type. If the task is within your capabilities, do it yourself.`,
+								error: `REJECTED: 你(${agent.name})尝试创建一个与自己同类型的子代理 \"${spawnAgentId}\". 这会浪费资源,并把你应该自己完成的工作转交给别人,因此不允许. 如果你确实需要不同专长的帮助,请创建其他类型的子代理. 如果该任务在你能力范围内,请自己完成.`,
 							}),
 						};
 						messages.push(toolResultMessage);
@@ -1537,8 +1533,7 @@ You have access to these collaboration tools:
 							tool_call_id: spawnTool.id,
 							content: JSON.stringify({
 								success: false,
-								error:
-									'REJECTED: No spawnable sub-agents are available for this agent.',
+								error: 'REJECTED: 当前子代理没有任何可创建的子代理目标.',
 							}),
 						};
 						messages.push(toolResultMessage);
@@ -1550,9 +1545,9 @@ You have access to these collaboration tools:
 							tool_call_id: spawnTool.id,
 							content: JSON.stringify({
 								success: false,
-								error: `REJECTED: Agent "${
+								error: `REJECTED: 子代理 \"${
 									agent.name
-								}" is not allowed to spawn "${spawnAgentId}". Allowed sub-agents: ${effectiveAllowedSubAgentIds.join(
+								}\" 无权创建 \"${spawnAgentId}\". 允许的子代理范围: ${effectiveAllowedSubAgentIds.join(
 									', ',
 								)}`,
 							}),
@@ -1561,7 +1556,7 @@ You have access to these collaboration tools:
 						continue;
 					}
 
-					// Look up agent name
+					// 解析要 spawn 的子代理展示名(优先读配置,否则回退到内置映射).
 					let spawnAgentName = spawnAgentId;
 					try {
 						const agentConfig = getSubAgent(spawnAgentId);
@@ -1569,19 +1564,19 @@ You have access to these collaboration tools:
 							spawnAgentName = agentConfig.name;
 						}
 					} catch {
-						// Built-in agents aren't resolved by getSubAgent, use ID-based name mapping
+						// 内置子代理不一定能通过 getSubAgent 解析到配置,这里用 ID->名称映射兜底,保证 UI 展示可读.
 						const builtinNames: Record<string, string> = {
 							agent_reviewer: 'reviewer',
-							agent_explore: 'Explore Agent',
-							agent_general: 'General Purpose Agent',
+							agent_explore: '探索代理',
+							agent_general: '通用任务代理',
 							agent_todo_progress_useful_info_admin:
-								'Todo progress and Useful_info Administrator',
-							agent_architect: 'Architect',
+								'TODO 与 useful-info 管理员',
+							agent_architect: '架构师',
 						};
 						spawnAgentName = builtinNames[spawnAgentId] || spawnAgentId;
 					}
 
-					// Generate unique instance ID
+					// 生成唯一 instanceId,用于跟踪该次 spawn 的子代理运行态与结果回收.
 					const spawnInstanceId = `spawn-${Date.now()}-${Math.random()
 						.toString(36)
 						.slice(2, 8)}`;
@@ -1675,13 +1670,13 @@ You have access to these collaboration tools:
 						});
 					}
 
-					// Return immediate result to spawning sub-agent
+					// 返回 spawn_sub_agent 工具的即时结果(子代理已启动,将并行运行)
 					const toolResultMessage = {
 						role: 'tool' as const,
 						tool_call_id: spawnTool.id,
 						content: JSON.stringify({
 							success: true,
-							result: `Agent "${spawnAgentName}" (${spawnAgentId}) has been spawned and is now running in the background with instance ID "${spawnInstanceId}". Its results will be automatically reported to the main workflow when it completes.`,
+							result: `已创建子代理 \"${spawnAgentName}\" (${spawnAgentId}),并在后台并行运行. instanceId: \"${spawnInstanceId}\". 该子代理完成后会自动把结果回传到主工作流.`,
 						}),
 					};
 					messages.push(toolResultMessage);
@@ -1697,15 +1692,21 @@ You have access to these collaboration tools:
 			}
 
 			// 拦截 askuser 工具：子智能体调用时需要显示主会话的蓝色边框 UI，而不是工具确认界面
-			const askUserTool = toolCalls.find(tc =>
-				tc.function.name.startsWith('askuser-'),
-			);
+			// askuser 交互是单资源,并发会导致漏弹窗或死锁,因此使用循环逐个串行处理
+			while (true) {
+				const askUserTool = toolCalls.find(tc =>
+					tc.function.name.startsWith('askuser-'),
+				);
 
-			if (askUserTool && requestUserQuestion) {
-				//解析工具参数，失败时使用默认值
-				let question = 'Please select an option:';
-				let options: string[] = ['Yes', 'No'];
-				let multiSelect = false;
+				// 没有更多 askuser 工具,跳出循环
+				if (!askUserTool || !requestUserQuestion) {
+					break;
+				}
+
+				// 解析工具参数,失败时使用中文兜底文案(避免参数损坏导致 UI 空白)
+				let question = '请选择一个选项:';
+				let options: string[] = ['是', '否'];
+				let multiSelect = true;
 
 				try {
 					const args = JSON.parse(askUserTool.function.arguments);
@@ -1713,8 +1714,8 @@ You have access to these collaboration tools:
 					if (args.options && Array.isArray(args.options)) {
 						options = args.options;
 					}
-					if (args.multiSelect === true) {
-						multiSelect = true;
+					if (args.multiSelect === true || args.multiSelect === false) {
+						multiSelect = args.multiSelect;
 					}
 				} catch {
 					// 参数解析失败时使用默认问题与选项继续流程.
@@ -1776,14 +1777,13 @@ You have access to these collaboration tools:
 					});
 				}
 
-				// 移除已处理的 askuser 工具，避免重复执行
-				const remainingTools = toolCalls.filter(tc => tc.id !== askUserTool.id);
+				// 移除已处理的 askuser 工具,继续处理下一个
+				toolCalls = toolCalls.filter(tc => tc.id !== askUserTool.id);
+			}
 
-				if (remainingTools.length === 0) {
-					continue;
-				}
-
-				toolCalls = remainingTools;
+			// 如果所有工具都是 askuser 且已处理完毕,继续下一轮
+			if (toolCalls.length === 0) {
+				continue;
 			}
 
 			// 执行前检查工具批准
@@ -1901,8 +1901,8 @@ You have access to these collaboration tools:
 
 				if (shouldStopAfterRejection) {
 					const cancelledMessage = stopRejectedToolName
-						? `Tool execution cancelled because the user rejected tool \"${stopRejectedToolName}\" and requested the sub-agent to stop`
-						: 'Tool execution cancelled because the user requested the sub-agent to stop';
+						? `工具执行已取消,原因: 用户拒绝了工具 \\\"${stopRejectedToolName}\\\" 并要求停止子代理`
+						: '工具执行已取消,原因: 用户要求停止子代理';
 
 					for (const toolCall of [
 						...abortedApprovedToolCalls,
@@ -1936,16 +1936,16 @@ You have access to these collaboration tools:
 
 				if (shouldStopAfterRejection) {
 					const stopInstructionLines = [
-						`[System] The user rejected your request to run tool \"${
+						`[System] 用户拒绝了你运行工具 \"${
 							stopRejectedToolName || 'unknown tool'
-						}\" and asked you to stop.`,
+						}\" 的请求,并要求你停止.`,
 						stopRejectionReason
-							? `[System] Rejection reason: ${stopRejectionReason}`
+							? `[System] 拒绝原因: ${stopRejectionReason}`
 							: undefined,
-						'[System] Do not call any more tools.',
-						'[System] Based only on the information already available in this conversation, provide a final summary of what you know, clearly state any missing information caused by the rejected tool, and then end your work.',
+						'[System] 不要再调用任何工具.',
+						'[System] 请仅基于当前对话中已经存在的信息,给出你已知内容的最终总结. 同时明确说明由于工具被拒绝导致缺失的关键信息,然后结束你的工作.',
 					].filter(Boolean);
-					const stopInstruction = stopInstructionLines.join('\n');
+					const stopInstruction = stopInstructionLines.join('\\n');
 					collectedTerminationInstructions.push(stopInstruction);
 					messages.push({
 						role: 'user',
@@ -2006,7 +2006,7 @@ You have access to these collaboration tools:
 				}
 				// 执行每个工具前检查中止信号
 				if (abortSignal?.aborted) {
-					// Send done message to mark completion
+					// 工具执行阶段中止时,需要显式发送 done,避免 UI 仍认为子代理在运行.
 					if (onMessage) {
 						onMessage({
 							type: 'sub_agent_message',
@@ -2020,7 +2020,7 @@ You have access to these collaboration tools:
 					return {
 						success: false,
 						result: finalResponse,
-						error: 'Sub-agent execution aborted during tool execution',
+						error: '子代理执行在工具运行期间被中止',
 					};
 				}
 

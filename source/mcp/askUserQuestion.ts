@@ -3,6 +3,8 @@ import type {MCPTool} from '../utils/execution/mcpToolsManager.js';
 export interface AskUserQuestionArgs {
 	question: string;
 	options: string[];
+	/** 是否允许多选. 默认 true. */
+	multiSelect?: boolean;
 }
 
 export interface AskUserQuestionResult {
@@ -33,6 +35,11 @@ export const mcpTools: MCPTool[] = [
 						description:
 							'Array of option strings for the user to choose from. Should be concise and clear. User can select one or multiple options.',
 						minItems: 2,
+					},
+					multiSelect: {
+						type: 'boolean',
+						description:
+							'Whether the user can select multiple options. Defaults to true.',
 					},
 				},
 				required: ['question', 'options'],

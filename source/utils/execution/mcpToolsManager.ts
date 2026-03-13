@@ -1725,11 +1725,15 @@ export async function executeMCPTool(
 					const {UserInteractionNeededError} = await import(
 						'../ui/userInteractionError.js'
 					);
+
+					const multiSelect =
+						typeof args.multiSelect === 'boolean' ? args.multiSelect : true;
+
 					throw new UserInteractionNeededError(
 						args.question,
 						args.options,
-						'', //toolCallId will be set by executeToolCall
-						true, // 默认多选模式, 用户可选一个或多个
+						'', // toolCallId will be set by executeToolCall
+						multiSelect,
 					);
 				default:
 					throw new Error(`Unknown askuser tool: ${actualToolName}`);

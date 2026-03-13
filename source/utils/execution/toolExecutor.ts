@@ -646,6 +646,12 @@ function getToolResourceType(toolName: string): string {
 		return 'filesystem'; // Will be further refined by file path
 	}
 
+	// Ask user tools must be sequential - user can only answer one question at a time
+	// 因为 UI 交互资源唯一,并发会导致漏弹窗或死锁,因此统一串行化
+	if (toolName.startsWith('askuser-')) {
+		return 'askuser-interaction';
+	}
+
 	// Other tools are independent
 	return 'independent';
 }
@@ -668,6 +674,10 @@ function getResourceIdentifier(toolCall: ToolCall): string {
 
 	if (resourceType === 'terminal-execution') {
 		return 'terminal-execution'; // All terminal commands share same execution context
+	}
+
+	if (resourceType === 'askuser-interaction') {
+		return 'askuser-interaction'; // All askuser tools share the same user interaction resource
 	}
 
 	if (resourceType === 'filesystem') {
