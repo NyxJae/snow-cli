@@ -683,6 +683,40 @@ export async function* createStreamingResponse(
 					}
 				}
 
+				// 401 Unauthorized - token_invalidated 等认证令牌失效错误需要重试
+				if (response.status === 401) {
+					const lower = errorText.toLowerCase();
+					const isTokenInvalidated =
+						lower.includes('token_invalidated') ||
+						lower.includes('token has been invalidated');
+
+					error.isRetryable = true;
+					error.code = isTokenInvalidated
+						? 'HTTP_401_TOKEN_INVALIDATED'
+						: 'HTTP_401_UNAUTHORIZED';
+
+					const hint = isTokenInvalidated
+						? 'Hint: Token has been invalidated by third-party relay. Snow CLI will retry with backoff.'
+						: 'Hint: This 401 may indicate expired credentials. Retrying may not help, but Snow CLI will retry up to the configured limit.';
+					error.message = `${baseErrorMsg}\n${hint}`;
+
+					try {
+						const {logger} = await import('../utils/core/logger.js');
+						logger.warn(
+							`[API_ERROR] OpenAI Responses API HTTP 401 (${error.code}), will retry with backoff`,
+							{
+								url,
+								model: requestPayload.model,
+								code: error.code,
+								status: response.status,
+								statusText: response.statusText,
+							},
+						);
+					} catch {
+						// ignore logging errors
+					}
+				}
+
 				throw error;
 			}
 

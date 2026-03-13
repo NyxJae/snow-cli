@@ -85,6 +85,15 @@ function isRetriableError(error: Error): boolean {
 		return true;
 	}
 
+	// Unauthorized errors (401). token_invalidated 等认证令牌失效错误通过第三方中转时可能是瞬时问题,需要重试
+	if (
+		errorMessage.includes('401') &&
+		(errorMessage.includes('unauthorized') ||
+			errorMessage.includes('token_invalidated'))
+	) {
+		return true;
+	}
+
 	// Server errors (5xx - temporary server issues, retryable)
 	// Note: 400, 405 are client errors - typically not retryable
 	// as they indicate request format issues that won't change on retry

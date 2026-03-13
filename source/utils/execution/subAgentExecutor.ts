@@ -6,7 +6,6 @@ import {getSubAgent, getSubAgents} from '../config/subAgentConfig.js';
 import {
 	getAgentsPrompt,
 	createSystemContext,
-	getTaskCompletionPrompt,
 } from '../agentsPromptUtils.js';
 import {
 	collectAllMCPTools,
@@ -617,15 +616,7 @@ You have access to these collaboration tools:
 				: systemContext;
 		}
 
-		// 5. 添加任务完成标识提示词
-		const taskCompletionPrompt = getTaskCompletionPrompt();
-		if (taskCompletionPrompt) {
-			finalPrompt = finalPrompt
-				? `${finalPrompt}\n\n${taskCompletionPrompt}`
-				: taskCompletionPrompt;
-		}
-
-		// 5.5 注入并行协作上下文
+		// 5. 注入并行协作上下文
 		if (collaborationContext) {
 			finalPrompt = `${finalPrompt}${collaborationContext}`;
 		}

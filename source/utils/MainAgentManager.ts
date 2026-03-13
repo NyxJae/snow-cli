@@ -14,7 +14,6 @@ import type {AgentInfo} from '../api/sse-server.js';
 import {
 	getAgentsPrompt,
 	createSystemContext,
-	getTaskCompletionPrompt,
 } from './agentsPromptUtils.js';
 import {getModelSpecificPrompt} from './config/apiConfig.js';
 
@@ -389,11 +388,6 @@ export class MainAgentManager {
 		const contextInfo = createSystemContext();
 		if (contextInfo) {
 			prompt += '\n\n' + contextInfo;
-		}
-
-		const taskCompletionPrompt = getTaskCompletionPrompt();
-		if (taskCompletionPrompt) {
-			prompt += '\n\n' + taskCompletionPrompt;
 		}
 
 		return prompt.trim();
