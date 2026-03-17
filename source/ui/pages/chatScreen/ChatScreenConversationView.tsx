@@ -109,6 +109,8 @@ export default function ChatScreenConversationView({
 										pendingUserQuestion.question
 									}`}
 									question={pendingUserQuestion.question}
+									options={pendingUserQuestion.options}
+									multiSelect={pendingUserQuestion.multiSelect}
 								/>,
 						  ]
 						: []),

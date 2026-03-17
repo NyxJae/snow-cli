@@ -109,6 +109,11 @@ export function useChatScreenInputHandler({
 			return;
 		}
 
+		// 弹窗显示时先清理 pickerState,避免后续 ESC 被吞.
+		if (key.escape && isPickerActive()) {
+			setPickerActive(false);
+		}
+
 		if (pendingToolConfirmation || pendingUserQuestion) {
 			return;
 		}

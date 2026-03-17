@@ -75,6 +75,11 @@ export function useChatHandlers(
 
 			pendingUserQuestion.resolve(result);
 			setPendingUserQuestion(null);
+
+			// 避免 stopping 状态残留导致 ESC 被吞
+			if (streamingState.isStopping) {
+				streamingState.setIsStopping(false);
+			}
 		}
 	};
 
