@@ -11,8 +11,7 @@ import SubAgentResultDisplay from '../special/SubAgentResultDisplay.js';
 import {maskSkillInjectedText} from '../../../utils/ui/skillMask.js';
 
 /**
- * Clean thinking content by removing XML-like tags
- * Some third-party APIs may include <think></think> or <thinking></thinking> tags
+ * 清理第三方渠道可能附带的 think 标签,避免思考内容重复渲染.
  */
 function cleanThinkingContent(content: string): string {
 	return content.replace(/\s*<\/?think(?:ing)?>\s*/gi, '').trim();
@@ -60,9 +59,7 @@ export default function MessageRenderer({
 			</Box>
 		);
 	}
-
-	// If showThinking is false and message only has thinking content (no actual content),
-	// don't render anything to avoid showing empty ❆ icon
+	// 纯思考消息在关闭思考展示时直接跳过,避免出现空占位图标.
 	if (
 		!showThinking &&
 		message.thinking &&
@@ -76,7 +73,6 @@ export default function MessageRenderer({
 		return null;
 	}
 
-	// Helper function to remove ANSI escape codes
 	const removeAnsiCodes = (text: string): string => {
 		return text.replace(/\x1b\[[0-9;]*m/g, '');
 	};
@@ -94,31 +90,24 @@ export default function MessageRenderer({
 			.join('\n');
 	};
 
-	// Determine tool message type and color
 	let toolStatusColor: string = 'cyan';
 
-	// Check if this message is part of a parallel group
 	const isInParallelGroup =
 		message.parallelGroup !== undefined && message.parallelGroup !== null;
 
-	// Check if this is a time-consuming tool (has toolPending or status is pending)
-	// Time-consuming tools should not show parallel group indicators
 	const isTimeConsumingTool =
 		message.toolPending || message.messageStatus === 'pending';
 
-	// Only show parallel group indicators for non-time-consuming tools
 	const shouldShowParallelIndicator = isInParallelGroup && !isTimeConsumingTool;
 
 	const isFirstInGroup =
 		shouldShowParallelIndicator &&
 		(index === 0 ||
 			filteredMessages[index - 1]?.parallelGroup !== message.parallelGroup ||
-			// Previous message is time-consuming tool, so this is the first non-time-consuming one
+			// 如果上一条仍处于 pending,则当前消息视为这一组里第一个可展示的完成项.
 			filteredMessages[index - 1]?.toolPending ||
 			filteredMessages[index - 1]?.messageStatus === 'pending');
 
-	// Check if this is the last message in the parallel group
-	// Show end indicator if next message is not in the same parallel group
 	const nextMessage = filteredMessages[index + 1];
 	const nextInSameGroup =
 		nextMessage &&
@@ -137,7 +126,10 @@ export default function MessageRenderer({
 			toolStatusColor = 'red';
 		} else {
 			// subAgentInternal 消息使用 cyan，其他 subagent 消息使用 magenta
-			if (message.role === 'subagent' && message.subAgentInternal === true) {
+			if (
+				message.subAgentContent === true ||
+				(message.role === 'subagent' && message.subAgentInternal === true)
+			) {
 				toolStatusColor = 'cyan';
 			} else {
 				toolStatusColor = message.role === 'subagent' ? 'magenta' : 'blue';
@@ -154,7 +146,6 @@ export default function MessageRenderer({
 			flexDirection="column"
 			width={terminalWidth}
 		>
-			{/* Plain output - no icons or prefixes */}
 			{message.plainOutput ? (
 				<Text color={message.role === 'user' ? 'white' : toolStatusColor}>
 					{getDisplayContent(message.content)}
@@ -170,36 +161,35 @@ export default function MessageRenderer({
 						</Box>
 					)}
 
-				<Box>
-					<Text
-						color={
-							message.role === 'user'
+					<Box>
+						<Text
+							color={
+								message.role === 'user'
+									? message.subAgentDirected
+										? 'magenta'
+										: 'green'
+									: message.role === 'command'
+									? theme.colors.menuSecondary
+									: toolStatusColor
+							}
+							bold
+						>
+							{shouldShowParallelIndicator && !isFirstInGroup ? '│' : ''}
+							{message.role === 'user'
 								? message.subAgentDirected
-									? 'magenta'
-									: 'green'
+									? '»'
+									: '❯'
 								: message.role === 'command'
-								? theme.colors.menuSecondary
-								: toolStatusColor
-						}
-						bold
-					>
-						{shouldShowParallelIndicator && !isFirstInGroup ? '│' : ''}
-						{message.role === 'user'
-							? message.subAgentDirected
-								? '»'
-								: '❯'
-							: message.role === 'command'
-							? '⌘'
-							: '❆'}
-					</Text>
-					<Box marginLeft={1} flexDirection="column">
-						{/* Show target sub-agent tree for directed messages */}
-						{message.role === 'user' &&
-							message.subAgentDirected &&
-							message.subAgentDirected.targets.length > 0 && (
-								<Box flexDirection="column">
-									{message.subAgentDirected.targets.map(
-										(target, ti, arr) => {
+								? '⌘'
+								: '❆'}
+						</Text>
+						<Box marginLeft={1} flexDirection="column">
+							{/* Show target sub-agent tree for directed messages */}
+							{message.role === 'user' &&
+								message.subAgentDirected &&
+								message.subAgentDirected.targets.length > 0 && (
+									<Box flexDirection="column">
+										{message.subAgentDirected.targets.map((target, ti, arr) => {
 											const isLast = ti === arr.length - 1;
 											const branch = isLast ? '└─' : '├─';
 											return (
@@ -207,9 +197,7 @@ export default function MessageRenderer({
 													<Text color="magenta" dimColor>
 														{branch}{' '}
 													</Text>
-													<Text color="magenta">
-														{target.agentName}
-													</Text>
+													<Text color="magenta">{target.agentName}</Text>
 													{target.promptSnippet ? (
 														<Text color="gray" dimColor>
 															{' '}
@@ -218,11 +206,10 @@ export default function MessageRenderer({
 													) : null}
 												</Box>
 											);
-										},
-									)}
-								</Box>
-							)}
-						{message.role === 'command' ? (
+										})}
+									</Box>
+								)}
+							{message.role === 'command' ? (
 								<>
 									{!message.hideCommandName && (
 										<Text color={theme.colors.menuSecondary} dimColor>
@@ -289,13 +276,15 @@ export default function MessageRenderer({
 											const hasToolStatus = message.messageStatus !== undefined;
 											const isSubAgentInternal =
 												message.subAgentInternal === true;
+											const isSubAgentContent =
+												message.subAgentContent === true;
 
 											if (
-												(hasToolStatus || isSubAgentInternal) &&
+												(hasToolStatus ||
+													(isSubAgentInternal && !isSubAgentContent)) &&
 												(message.role === 'assistant' ||
 													message.role === 'subagent')
 											) {
-												// Parse content to separate title and tool tree
 												const content = message.content || ' ';
 												const lines = content.split('\n');
 												const titleLine = lines[0] || '';
@@ -317,20 +306,34 @@ export default function MessageRenderer({
 																	.join('\n')}
 															</Text>
 														)}
-														{showCtxBar && (() => {
-															const pct = ctxUsage.percentage;
-															const barWidth = 10;
-															const filled = Math.round((pct / 100) * barWidth);
-															const empty = barWidth - filled;
-															const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
-															const barColor =
-																pct >= 80 ? 'red' : pct >= 65 ? 'yellow' : pct >= 50 ? 'cyan' : 'gray';
-															return (
-																<Text color={barColor} dimColor>
-																	{'└─ Context: '}{pct}{'% '}{bar}
-																</Text>
-															);
-														})()}
+														{showCtxBar &&
+															(() => {
+																const pct = ctxUsage.percentage;
+																const barWidth = 10;
+																const filled = Math.round(
+																	(pct / 100) * barWidth,
+																);
+																const empty = barWidth - filled;
+																const bar =
+																	'\u2588'.repeat(filled) +
+																	'\u2591'.repeat(empty);
+																const barColor =
+																	pct >= 80
+																		? 'red'
+																		: pct >= 65
+																		? 'yellow'
+																		: pct >= 50
+																		? 'cyan'
+																		: 'gray';
+																return (
+																	<Text color={barColor} dimColor>
+																		{'└─ Context: '}
+																		{pct}
+																		{'% '}
+																		{bar}
+																	</Text>
+																);
+															})()}
 													</>
 												);
 											}
@@ -398,7 +401,7 @@ export default function MessageRenderer({
 												</Text>
 											);
 										})()}
-								{/* Sub-agent context usage progress bar is rendered inside the
+									{/* Sub-agent context usage progress bar is rendered inside the
 								   subAgentInternal IIFE path above (line ~287). Do NOT duplicate here. */}
 									{message.toolDisplay &&
 										message.toolDisplay.args.length > 0 &&

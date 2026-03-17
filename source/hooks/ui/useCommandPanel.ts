@@ -4,10 +4,15 @@ import {useI18n} from '../../i18n/index.js';
 import {getCustomCommands} from '../../utils/commands/custom.js';
 import {commandUsageManager} from '../../utils/session/commandUsageManager.js';
 
+export type CommandPanelCommand = {
+	name: string;
+	description: string;
+	type: 'builtin' | 'execute' | 'prompt';
+};
+
 export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 	const {t} = useI18n();
 
-	// Built-in commands - only depends on translation
 	const builtInCommands = useMemo(
 		() => [
 			{name: 'help', description: t.commandPanel.commands.help},
@@ -33,6 +38,12 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 			{
 				name: 'review',
 				description: t.commandPanel.commands.review,
+			},
+			{
+				name: 'gitline',
+				description:
+					t.commandPanel.commands.gitline ||
+					'Select git commits and insert them into the chat input',
 			},
 			{
 				name: 'usage',
@@ -156,21 +167,28 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 		[t],
 	);
 
-	// Get all commands (built-in + custom) - dynamically fetch custom commands
-	const getAllCommands = useCallback(() => {
+	const normalizedBuiltInCommands = useMemo<CommandPanelCommand[]>(
+		() =>
+			builtInCommands.map(command => ({
+				...command,
+				type: 'builtin',
+			})),
+		[builtInCommands],
+	);
+
+	const getAllCommands = useCallback((): CommandPanelCommand[] => {
 		const customCommands = getCustomCommands().map(cmd => ({
 			name: cmd.name,
 			description: cmd.description || cmd.command,
+			type: cmd.type,
 		}));
-		return [...builtInCommands, ...customCommands];
-	}, [builtInCommands]);
+		return [...normalizedBuiltInCommands, ...customCommands];
+	}, [normalizedBuiltInCommands]);
 
 	const [showCommands, setShowCommands] = useState(false);
 	const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
 	const [usageLoaded, setUsageLoaded] = useState(false);
 
-	// Load command usage data on mount
-	// Use isMounted flag to prevent state update on unmounted component
 	useEffect(() => {
 		let isMounted = true;
 
@@ -185,26 +203,19 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 		};
 	}, []);
 
-	// Get filtered commands based on current input
-	// Sorting strategy:
-	// - Empty query: Sort by usage frequency (most used first)
-	// - With query: Sort by match priority, then by usage frequency within same priority
-	const getFilteredCommands = useCallback(() => {
+	const getFilteredCommands = useCallback((): CommandPanelCommand[] => {
 		const text = buffer.getFullText();
 		if (!text.startsWith('/')) return [];
 
 		const query = text.slice(1).toLowerCase();
 
-		// Get all commands (including latest custom commands)
 		const allCommands = getAllCommands();
+		const availableCommands = isProcessing
+			? allCommands.filter(command => command.type === 'prompt')
+			: allCommands;
 
-		// Filter and sort commands by priority and usage frequency
-		// Priority order:
-		// 1. Command starts with query (highest)
-		// 2. Command contains query
-		// 3. Description starts with query
-		// 4. Description contains query (lowest)
-		const filtered = allCommands
+		// 有查询词时优先按匹配位置排序,再用使用频次打破并列.
+		const filtered = availableCommands
 			.filter(
 				command =>
 					command.name.toLowerCase().includes(query) ||
@@ -215,43 +226,38 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 				const descLower = command.description.toLowerCase();
 				const usageCount = commandUsageManager.getUsageCountSync(command.name);
 
-				let priority = 4; // Default: description contains query
+				let priority = 4;
 
 				if (nameLower.startsWith(query)) {
-					priority = 1; // Command starts with query
+					priority = 1;
 				} else if (nameLower.includes(query)) {
-					priority = 2; // Command contains query
+					priority = 2;
 				} else if (descLower.startsWith(query)) {
-					priority = 3; // Description starts with query
+					priority = 3;
 				}
 
 				return {command, priority, usageCount};
 			})
 			.sort((a, b) => {
-				// When query is empty, sort primarily by usage frequency
 				if (query === '') {
-					// Sort by usage count (descending), then alphabetically
 					if (a.usageCount !== b.usageCount) {
 						return b.usageCount - a.usageCount;
 					}
 					return a.command.name.localeCompare(b.command.name);
 				}
 
-				// With query: sort by priority first, then by usage frequency
 				if (a.priority !== b.priority) {
 					return a.priority - b.priority;
 				}
-				// Same priority: sort by usage count (descending)
 				if (a.usageCount !== b.usageCount) {
 					return b.usageCount - a.usageCount;
 				}
-				// Same usage count: sort alphabetically
 				return a.command.name.localeCompare(b.command.name);
 			})
 			.map(item => item.command);
 
 		return filtered;
-	}, [buffer, getAllCommands, usageLoaded]);
+	}, [buffer, getAllCommands, isProcessing, usageLoaded]);
 
 	// Update command panel state
 	const updateCommandPanelState = useCallback((text: string) => {
@@ -272,7 +278,6 @@ export function useCommandPanel(buffer: TextBuffer, isProcessing = false) {
 		setCommandSelectedIndex,
 		getFilteredCommands,
 		updateCommandPanelState,
-		getAllCommands, // Export function to get all commands dynamically
-		isProcessing, // Export isProcessing for CommandPanel to use
+		getAllCommands,
 	};
 }

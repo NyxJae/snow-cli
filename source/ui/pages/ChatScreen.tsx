@@ -261,6 +261,8 @@ export default function ChatScreen({autoResume, enableYolo}: Props) {
 	const {handleCommandExecution} = useCommandHandler({
 		messages,
 		setMessages,
+		setPendingMessages,
+		streamStatus: streamingState.streamStatus,
 		setRemountKey,
 		clearSavedMessages,
 		setIsCompressing,

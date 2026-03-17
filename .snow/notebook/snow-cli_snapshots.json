@@ -926,5 +926,96 @@
       "op": "add",
       "notebookId": "notebook-1773152943709_123s7mhki"
     }
+  ],
+  "0e02d153-8a84-499d-aa83-e56d05b8130e:65": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1772946167507_w20gdc5uj",
+      "previousNote": "职责: 命令面板展示层. 只负责暴露 `/tool-search` 等命令入口与描述,不负责工具权限判定,Tool Search registry 构建或白名单决策.\n\n接口摘要:\n- 输入: i18n 文案与命令注册结果.\n- 输出: 面板可见命令项.\n\n依赖拓扑:\n- 依赖: source/utils/commands/toolsearch.ts 等命令注册层.\n- 被依赖: TUI 命令面板 UI.\n\n避坑指南:\n- 是否存在 `tool-search` 入口,不等于任意工具都可被搜索到.\n- 面板层不得内联 availableTools,availableSubAgents 或白名单判断,避免 UI 与执行边界漂移.\n- 保持与旧模式解绑,只展示独立 Tool Search 能力入口."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1773143726642_v0ba6j1vm",
+      "previousNote": "职责: 会话执行核心拆分目录. 承载 streamFactory,toolCallRound,toolConfirmationFlow 等稳定内核,用于把 useConversation 主循环拆成可维护的轮次级能力.\\n接口摘要:\\n- streamFactory: 统一根据 requestMethod 选择流式适配器.\\n- toolCallRound/toolConfirmationFlow: 统一处理 tool calls,审批流与 round usage 续传.\\n依赖拓扑:\\n- 被依赖: source/hooks/conversation/useConversation.ts.\\n- 依赖: source/api/*,tool executor,tool confirmation 相关能力.\\n避坑指南:\\n- 后续合并 upstream 时,优先在本目录吸收新的轮次拆分或 adapter 选择逻辑,不要把已拆出的能力重新回填到 useConversation.ts.\\n- createStreamGenerator 的参数口径必须与 useConversation 调用点同步演进,避免再次出现 call-site 传旧模式参数(plan/vulnerability/toolSearchDisabled)而 core 类型已收敛的错位.\\n- tool confirmation 的统一入口必须与 UI askuser/ToolConfirmation 流程保持兼容,避免执行层新增第二套审批状态机."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772107272120_8ae464f6q",
+      "previousNote": "职责: 会话执行编排层,负责组装主循环并消费 core/* 中的流式轮次与工具轮次能力,而不是重新内联 provider 分支或 UI 状态机.\n接口摘要:\n- 主循环通过 processStreamRound() 处理单轮流式输出,通过 handleToolCallRound() 处理 tool calls,通过 createStreamGenerator() 统一选择 anthropic/gemini/responses/chat 适配器.\n- 最外层 retry loop 统一负责错误分类,重试上限,退避等待,RetryStatus UI 同步与 AbortController 生命周期切换; onRetry 文案必须走 i18n key(retryResending).\n依赖拓扑:\n- 依赖 source/hooks/conversation/core/{streamFactory,toolCallRound,toolConfirmationFlow}.ts 与 source/api/* 渠道适配器.\n- 依赖 source/utils/core/emptyResponseDetector.ts 提供 EMPTY_RESPONSE 可重试错误分类契约.\n- 被 source/hooks/conversation/chatLogic/useMessageProcessing.ts 调用,由其管理 AbortController 与 UI streaming state.\n避坑指南:\n- 本文件已按 upstream 拆分结构收敛,后续合并 upstream 时优先保留 processStreamRound/handleToolCallRound/createStreamGenerator 这组稳定边界,不要把 provider 选择,确认流或 tool loop 再摊回单文件.\n- 必须保留本地能力: 空回复重试 guard,请求前 contextUsage 基线估算,roundUsage/accumulatedUsage 透传,finally 中的 setIsStopping(false)+notifyMessageProcessingCompleted()+clearConversationContext() 清理链.\n- 重试必须集中在 handleConversationWithTools 最外层循环处理,executeWithInternalRetry 及下游适配器只负责单次执行,禁止在多层同时各自实现空回复重试,避免重入和重复退避.\n- EMPTY_RESPONSE 走更积极策略: 独立错误分类,最大重试 20 次,base delay 500ms,指数退避并附加 20% jitter,总 delay cap 15s; 其他可重试错误沿用默认策略.\n- 每轮重试前必须重新读取 options.controller,并在切换到新 AbortController 时桥接旧 controller 的 abort 事件; 否则 ESC/用户中断会在等待窗口或重试轮次中丢失.\n- 延迟等待必须使用 abort-aware sleep(signal),确保用户主动中断可立即打断等待; 用户主动中断(Request aborted by user)必须短路退出,不得进入重试提示循环.\n- Tool Search 的唯一开关事实源仍是 getToolSearchEnabled(),不得在会话层引入 plan/role/vulnerability 等已移除模式的兼容分支."
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1772945711181_j5lhhipfz",
+      "previousNote": "主代理会话层只消费统一工具访问结果与 projectSettings 中的 Tool Search 配置事实源. 流程固定为: collect raw tools -> resolve allowedTools/initialTools -> 用 allowedTools 初始化 Tool Search registry -> 通过 getToolSearchEnabled() 决定走渐进暴露还是直接使用 allowedTools -> 由 initialTools + discovered tools 生成 activeTools. 此处已禁止硬编码 const useToolSearch = true/false,也不得再内联权限判断,白名单判断或本地开关默认值. 若主代理权限筛选异常,上游必须按 fail-closed 生效,此处不得回退到原始工具集."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721486719_ffxr4u9vb"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721486830_0jpndv3nh"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721486949_2z2a6z5gr"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721487073_ao5bsjfv4"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721487188_cjuk33n40"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721487328_lbdf70dd0"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721487445_qto4mvj5h"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721487573_46xto9jvd"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721487708_wz7nu9993"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721487845_ya1ug8yj2"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721487965_iucs3cu61"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721488104_gaw6oms4g"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721488224_pcsziwjpo"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721488351_5rf46fdkk"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721488468_wkyj1kqvk"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1773721488594_dk9pvwxt1"
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1773721487573_46xto9jvd",
+      "previousNote": "职责: ChatScreen 启动阶段的命令注册装配 hook. 通过动态 import 触发各 commands 模块的 registerCommand 副作用,保持命令体系可拆分且按需加载.\n\n接口摘要:\n- 输入: 无(或 page 级上下文).\n- 输出: 完成命令注册(副作用),供 useCommandHandler/useCommandPanel 使用.\n\n依赖拓 topology:\n- 依赖: source/utils/commands/*.ts.\n- 被依赖: source/ui/pages/ChatScreen.tsx.\n\n避坑指南:\n- `/role` 已废弃,MUSTNOT import role 命令模块,也不得保留对应 i18n key 或 action.\n- `/gitline` 需保留,但仅保留最小完整链路所需的 import,避免顺带恢复无关上游命令体系.\n- 命令面板(useCommandPanel)展示的命令列表必须与此处实际注册的命令集保持一致,避免\"面板可见但命令不可用\"或反之."
+    }
   ]
 }

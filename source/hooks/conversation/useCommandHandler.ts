@@ -302,6 +302,15 @@ export async function executeContextCompression(
 type CommandHandlerOptions = {
 	messages: Message[];
 	setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+	setPendingMessages?: React.Dispatch<
+		React.SetStateAction<
+			Array<{
+				text: string;
+				images?: Array<{data: string; mimeType: string}>;
+			}>
+		>
+	>;
+	streamStatus?: 'idle' | 'streaming' | 'stopping';
 	setRemountKey: React.Dispatch<React.SetStateAction<number>>;
 	clearSavedMessages: () => void;
 	setIsCompressing: React.Dispatch<React.SetStateAction<boolean>>;
@@ -319,7 +328,6 @@ type CommandHandlerOptions = {
 			| import('../../ui/components/compression/CompressionStatus.js').CompressionStatus
 			| null,
 	) => void;
-
 	setShowUsagePanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowModelsPanel: React.Dispatch<React.SetStateAction<boolean>>;
 	setShowCustomCommandConfig: React.Dispatch<React.SetStateAction<boolean>>;
@@ -597,13 +605,14 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 			) {
 				if (options.onResumeSessionById) {
 					await options.onResumeSessionById(result.sessionId);
+				} else {
+					const commandMessage: Message = {
+						role: 'command',
+						content: result.message || '',
+						commandName: commandName,
+					};
+					options.setMessages(prev => [...prev, commandMessage]);
 				}
-				const commandMessage: Message = {
-					role: 'command',
-					content: result.message || '',
-					commandName: commandName,
-				};
-				options.setMessages(prev => [...prev, commandMessage]);
 			} else if (result.success && result.action === 'showSessionPanel') {
 				options.setShowSessionPanel(true);
 				const commandMessage: Message = {
@@ -730,8 +739,18 @@ export function useCommandHandler(options: CommandHandlerOptions) {
 					commandName: commandName,
 				};
 				options.setMessages(prev => [...prev, commandMessage]);
-				// Send command to AI for execution
-				options.processMessage(result.prompt, undefined, false, false);
+				if (
+					options.streamStatus &&
+					options.streamStatus !== 'idle' &&
+					options.setPendingMessages
+				) {
+					options.setPendingMessages(prev => [
+						...prev,
+						{text: result.prompt as string},
+					]);
+				} else {
+					options.processMessage(result.prompt, undefined, false, false);
+				}
 			} else if (
 				result.success &&
 				result.action === 'executeTerminalCommand' &&

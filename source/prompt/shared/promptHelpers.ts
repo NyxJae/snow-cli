@@ -110,7 +110,7 @@ export function isCodebaseEnabled(): boolean {
 }
 
 /**
- * Get current time information
+ * 获取当前日期信息.
  */
 export function getCurrentTimeInfo(): {date: string} {
 	const now = new Date();
@@ -121,7 +121,7 @@ export function getCurrentTimeInfo(): {date: string} {
 }
 
 /**
- * Append system environment and time to prompt
+ * 在提示词尾部追加系统环境与日期信息.
  */
 export function appendSystemContext(
 	prompt: string,
@@ -137,7 +137,7 @@ Current Date: ${timeInfo.date}`;
 }
 
 /**
- * Get the tool discovery section based on whether tool search is disabled
+ * 按工具暴露方式选择提示词片段.
  */
 export function getToolDiscoverySection(
 	toolSearchDisabled: boolean,

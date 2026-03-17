@@ -16,6 +16,9 @@ const FileList = lazy(() => import('../tools/FileList.js'));
 const AgentPickerPanel = lazy(() => import('../panels/AgentPickerPanel.js'));
 const TodoPickerPanel = lazy(() => import('../panels/TodoPickerPanel.js'));
 const SkillsPickerPanel = lazy(() => import('../panels/SkillsPickerPanel.js'));
+const GitLinePickerPanel = lazy(
+	() => import('../panels/GitLinePickerPanel.js'),
+);
 const ProfilePanel = lazy(() => import('../panels/ProfilePanel.js'));
 const RunningAgentsPanel = lazy(
 	() => import('../panels/RunningAgentsPanel.js'),
@@ -31,6 +34,7 @@ import {useTerminalFocus} from '../../../hooks/ui/useTerminalFocus.js';
 import {useAgentPicker} from '../../../hooks/picker/useAgentPicker.js';
 import {useTodoPicker} from '../../../hooks/picker/useTodoPicker.js';
 import {useSkillsPicker} from '../../../hooks/picker/useSkillsPicker.js';
+import {useGitLinePicker} from '../../../hooks/picker/useGitLinePicker.js';
 import {useRunningAgentsPicker} from '../../../hooks/picker/useRunningAgentsPicker.js';
 import {useI18n} from '../../../i18n/index.js';
 import {useTheme} from '../../contexts/ThemeContext.js';
@@ -38,6 +42,10 @@ import {useBashMode} from '../../../hooks/input/useBashMode.js';
 
 function parseSkillIdFromHeaderLine(line: string): string {
 	return line.replace(/^# Skill:\s*/i, '').trim() || 'unknown';
+}
+
+function parseGitLineShaFromHeaderLine(line: string): string {
+	return line.replace(/^# GitLine:\s*/i, '').trim() || 'unknown';
 }
 
 function restoreTextWithSkillPlaceholders(
@@ -78,34 +86,36 @@ function restoreTextWithSkillPlaceholders(
 	let i = 0;
 	while (i < lines.length) {
 		const line = lines[i] ?? '';
-		if (!line.startsWith('# Skill:')) {
+		const isSkillBlock = line.startsWith('# Skill:');
+		const isGitLineBlock = line.startsWith('# GitLine:');
+		if (!isSkillBlock && !isGitLineBlock) {
 			plain += line;
 			if (i < lines.length - 1) plain += '\n';
 			i++;
 			continue;
 		}
 
-		// Consume a full skill injection block and rebuild it as a TextBuffer text placeholder.
 		flushPlain();
-		const skillId = parseSkillIdFromHeaderLine(line);
 		const rawLines: string[] = [line];
+		const placeholderText = isSkillBlock
+			? `[Skill:${parseSkillIdFromHeaderLine(line)}] `
+			: `[GitLine:${parseGitLineShaFromHeaderLine(line).slice(0, 8)}] `;
+		const endMarker = isSkillBlock ? '# Skill End' : '# GitLine End';
 		let endFound = false;
 		i++;
 
 		while (i < lines.length) {
 			const next = lines[i] ?? '';
-			if (next.startsWith('# Skill:')) break;
+			if (next.startsWith('# Skill:') || next.startsWith('# GitLine:')) break;
 
-			// Compat: old messages may have "# Skill End<user text>" glued together.
 			const trimmedStart = next.trimStart();
-			if (trimmedStart.startsWith('# Skill End')) {
-				const remainder = trimmedStart.slice('# Skill End'.length);
-				rawLines.push('# Skill End');
+			if (trimmedStart.startsWith(endMarker)) {
+				const remainder = trimmedStart.slice(endMarker.length);
+				rawLines.push(endMarker);
 				endFound = true;
 				i++;
 
 				if (remainder.length > 0) {
-					// Keep user text after end marker in the plain stream.
 					plain += remainder.replace(/^\s+/, '');
 					if (i < lines.length) plain += '\n';
 				}
@@ -117,18 +127,16 @@ function restoreTextWithSkillPlaceholders(
 		}
 
 		let raw = rawLines.join('\n');
-		// Ensure end marker doesn't glue to subsequent user text during masking/rendering.
 		if (endFound && !raw.endsWith('\n')) raw += '\n';
 
-		buffer.insertTextPlaceholder(raw, `[Skill:${skillId}] `);
+		buffer.insertTextPlaceholder(raw, placeholderText);
 	}
 
 	flushPlain();
 }
 
 /**
- * Calculate context usage percentage
- * This is the same logic used in ChatInput to display usage
+ * 计算上下文占用比例.
  */
 export function calculateContextPercentage(contextUsage: {
 	inputTokens: number;
@@ -137,13 +145,10 @@ export function calculateContextPercentage(contextUsage: {
 	cacheReadTokens?: number;
 	cachedTokens?: number;
 }): number {
-	// Determine which caching system is being used
 	const isAnthropic =
 		(contextUsage.cacheCreationTokens || 0) > 0 ||
 		(contextUsage.cacheReadTokens || 0) > 0;
 
-	// For Anthropic: Total = inputTokens + cacheCreationTokens + cacheReadTokens
-	// For OpenAI: Total = inputTokens (cachedTokens are already included in inputTokens)
 	const totalInputTokens = isAnthropic
 		? contextUsage.inputTokens +
 		  (contextUsage.cacheCreationTokens || 0) +
@@ -164,7 +169,7 @@ type Props = {
 	onCommand?: (commandName: string, result: any) => void;
 	placeholder?: string;
 	disabled?: boolean;
-	isProcessing?: boolean; // Prevent command panel from showing during AI response/tool execution
+	isProcessing?: boolean;
 	chatHistory?: Array<{
 		role: string;
 		content: string;
@@ -173,14 +178,11 @@ type Props = {
 	onHistorySelect?: (selectedIndex: number, message: string) => void;
 	yoloMode?: boolean;
 	setYoloMode?: (value: boolean) => void;
-	// Vulnerability Hunting Mode 已整合为 Debugger 主代理，不再需要独立状态
 	contextUsage?: {
 		inputTokens: number;
 		maxContextTokens: number;
-		// Anthropic caching
 		cacheCreationTokens?: number;
 		cacheReadTokens?: number;
-		// OpenAI caching
 		cachedTokens?: number;
 	};
 	initialContent?: {
@@ -285,21 +287,16 @@ export default function ChatInput({
 	onTodoScrollUp,
 	onTodoScrollDown,
 }: Props) {
-	// Use i18n hook for translations
 	const {t} = useI18n();
 	const {theme} = useTheme();
 
-	// Use bash mode hook for command detection
 	const {parseBashCommands, parsePureBashCommands} = useBashMode();
 
-	// Use terminal size hook to listen for resize events
 	const {columns: terminalWidth} = useTerminalSize();
 	const prevTerminalWidthRef = useRef(terminalWidth);
 
-	// Use terminal focus hook to detect focus state
 	const {hasFocus, ensureFocus} = useTerminalFocus();
 
-	// Recalculate viewport dimensions to ensure proper resizing
 	const uiOverhead = 8;
 	const viewportWidth = Math.max(40, terminalWidth - uiOverhead);
 	const viewport: Viewport = useMemo(
@@ -308,12 +305,10 @@ export default function ChatInput({
 			height: 1,
 		}),
 		[viewportWidth],
-	); // Memoize viewport to prevent unnecessary re-renders
+	);
 
-	// Use input buffer hook
 	const {buffer, triggerUpdate, forceUpdate} = useInputBuffer(viewport);
 
-	// Track bash mode state with debounce to avoid high-frequency updates
 	const [isBashMode, setIsBashMode] = React.useState(false);
 	const [isPureBashMode, setIsPureBashMode] = React.useState(false);
 	const bashModeDebounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -326,7 +321,6 @@ export default function ChatInput({
 		setCommandSelectedIndex,
 		getFilteredCommands,
 		updateCommandPanelState,
-		isProcessing: commandPanelIsProcessing,
 		getAllCommands,
 	} = useCommandPanel(buffer, isProcessing);
 
@@ -411,6 +405,24 @@ export default function ChatInput({
 		closeSkillsPicker,
 	} = useSkillsPicker(buffer, triggerUpdate);
 
+	const {
+		showGitLinePicker,
+		setShowGitLinePicker,
+		gitLineSelectedIndex,
+		setGitLineSelectedIndex,
+		gitLineCommits,
+		selectedGitLineCommits,
+		gitLineHasMore,
+		gitLineIsLoading,
+		gitLineIsLoadingMore,
+		gitLineSearchQuery,
+		setGitLineSearchQuery,
+		gitLineError,
+		toggleGitLineCommitSelection,
+		confirmGitLineSelection,
+		closeGitLinePicker,
+	} = useGitLinePicker(buffer, triggerUpdate);
+
 	// Use running agents picker hook
 	const {
 		showRunningAgentsPicker,
@@ -441,7 +453,6 @@ export default function ChatInput({
 	useKeyboardInput({
 		buffer,
 		disabled,
-
 		disableKeyboardNavigation,
 		isProcessing,
 		triggerUpdate,
@@ -514,7 +525,6 @@ export default function ChatInput({
 		confirmTodoSelection,
 		todoSearchQuery,
 		setTodoSearchQuery,
-		// Skills picker
 		showSkillsPicker,
 		setShowSkillsPicker,
 		skillsSelectedIndex,
@@ -529,6 +539,19 @@ export default function ChatInput({
 		backspaceSkillsField,
 		confirmSkillsSelection,
 		closeSkillsPicker,
+		showGitLinePicker,
+		setShowGitLinePicker,
+		gitLineSelectedIndex,
+		setGitLineSelectedIndex,
+		gitLineCommits,
+		selectedGitLineCommits,
+		gitLineIsLoading,
+		gitLineSearchQuery,
+		setGitLineSearchQuery,
+		gitLineError,
+		toggleGitLineCommitSelection,
+		confirmGitLineSelection,
+		closeGitLinePicker,
 		showProfilePicker,
 		setShowProfilePicker: setShowProfilePicker || (() => {}),
 		profileSelectedIndex,
@@ -564,26 +587,19 @@ export default function ChatInput({
 		updateRunningAgentsPickerState,
 	});
 
-	// Set initial content when provided (e.g., when rolling back to first message)
 	useEffect(() => {
 		if (initialContent) {
-			// Always do full restore to avoid duplicate placeholders
 			buffer.setText('');
 
 			const text = initialContent.text;
 			const images = initialContent.images || [];
 
 			if (images.length === 0) {
-				// No images, just set the text.
-				// Use restoreTextWithSkillPlaceholders() so rollback restore:
-				// - doesn't get treated as a "paste" placeholder
-				// - rebuilds Skill injection blocks back into [Skill:id] placeholders
+				// 回滚恢复时统一走占位符恢复,避免把注入块当成普通粘贴文本.
 				if (text) {
 					restoreTextWithSkillPlaceholders(buffer, text);
 				}
 			} else {
-				// Split text by image placeholders and reconstruct with actual images
-				// Placeholder format: [image #N]
 				const imagePlaceholderPattern = /\[image #\d+\]/g;
 				const parts = text.split(imagePlaceholderPattern);
 
@@ -690,26 +706,20 @@ export default function ChatInput({
 		});
 	}, [buffer.text, buffer, onDraftChange]);
 
-	// Force full re-render when file picker visibility changes to prevent artifacts
+	// 文件选择面板切换时主动刷新一次,避免残留旧渲染片段.
 	useEffect(() => {
-		// Use a small delay to ensure the component tree has updated
-		const timer = setTimeout(() => {
-			forceUpdate();
-		}, 10);
+		const timer = setTimeout(() => forceUpdate(), 0);
 		return () => clearTimeout(timer);
 	}, [showFilePicker, forceUpdate]);
 
-	// Handle terminal width changes with debounce (like gemini-cli)
+	// 终端宽度变化时做一次防抖刷新,减少频繁重排带来的闪烁.
 	useEffect(() => {
-		// Skip on initial mount
 		if (prevTerminalWidthRef.current === terminalWidth) {
-			prevTerminalWidthRef.current = terminalWidth;
 			return;
 		}
 
 		prevTerminalWidthRef.current = terminalWidth;
 
-		// Debounce the re-render to avoid flickering during resize
 		const timer = setTimeout(() => {
 			forceUpdate();
 		}, 100);
@@ -1070,7 +1080,6 @@ export default function ChatInput({
 							selectedIndex={commandSelectedIndex}
 							query={buffer.getFullText().slice(1)}
 							visible={showCommands}
-							isProcessing={commandPanelIsProcessing}
 						/>
 					</Suspense>
 					<Box>
@@ -1086,62 +1095,76 @@ export default function ChatInput({
 								searchMode={searchMode}
 							/>
 						</Suspense>
+						<Suspense fallback={null}>
+							<AgentPickerPanel
+								agents={getFilteredAgents()}
+								selectedIndex={agentSelectedIndex}
+								visible={showAgentPicker}
+								maxHeight={5}
+							/>
+						</Suspense>
+						<Suspense fallback={null}>
+							<TodoPickerPanel
+								todos={todos}
+								selectedIndex={todoSelectedIndex}
+								selectedTodos={selectedTodos}
+								visible={showTodoPicker}
+								maxHeight={5}
+								isLoading={todoIsLoading}
+								searchQuery={todoSearchQuery}
+								totalCount={totalTodoCount}
+							/>
+						</Suspense>
+						<Suspense fallback={null}>
+							<SkillsPickerPanel
+								skills={skills.map(s => ({
+									id: s.id,
+									name: s.name,
+									description: s.description,
+									location: s.location,
+								}))}
+								selectedIndex={skillsSelectedIndex}
+								visible={showSkillsPicker}
+								maxHeight={5}
+								isLoading={skillsIsLoading}
+								searchQuery={skillsSearchQuery}
+								appendText={skillsAppendText}
+								focus={skillsFocus}
+							/>
+						</Suspense>
+						<Suspense fallback={null}>
+							<GitLinePickerPanel
+								commits={gitLineCommits}
+								selectedIndex={gitLineSelectedIndex}
+								selectedCommits={selectedGitLineCommits}
+								visible={showGitLinePicker}
+								maxHeight={5}
+								hasMore={gitLineHasMore}
+								isLoading={gitLineIsLoading}
+								isLoadingMore={gitLineIsLoadingMore}
+								searchQuery={gitLineSearchQuery}
+								error={gitLineError}
+							/>
+						</Suspense>
+						<Suspense fallback={null}>
+							<ProfilePanel
+								profiles={getFilteredProfiles ? getFilteredProfiles() : []}
+								selectedIndex={profileSelectedIndex}
+								visible={showProfilePicker}
+								maxHeight={5}
+								searchQuery={profileSearchQuery}
+							/>
+						</Suspense>
+						<Suspense fallback={null}>
+							<RunningAgentsPanel
+								agents={runningAgents}
+								selectedIndex={runningAgentsSelectedIndex}
+								selectedAgents={selectedRunningAgents}
+								visible={showRunningAgentsPicker}
+								maxHeight={5}
+							/>
+						</Suspense>
 					</Box>
-					<Suspense fallback={null}>
-						<AgentPickerPanel
-							agents={getFilteredAgents()}
-							selectedIndex={agentSelectedIndex}
-							visible={showAgentPicker}
-							maxHeight={5}
-						/>
-					</Suspense>
-					<Suspense fallback={null}>
-						<TodoPickerPanel
-							todos={todos}
-							selectedIndex={todoSelectedIndex}
-							selectedTodos={selectedTodos}
-							visible={showTodoPicker}
-							maxHeight={5}
-							isLoading={todoIsLoading}
-							searchQuery={todoSearchQuery}
-							totalCount={totalTodoCount}
-						/>
-					</Suspense>
-					<Suspense fallback={null}>
-						<SkillsPickerPanel
-							skills={skills.map(s => ({
-								id: s.id,
-								name: s.name,
-								description: s.description,
-								location: s.location,
-							}))}
-							selectedIndex={skillsSelectedIndex}
-							visible={showSkillsPicker}
-							maxHeight={5}
-							isLoading={skillsIsLoading}
-							searchQuery={skillsSearchQuery}
-							appendText={skillsAppendText}
-							focus={skillsFocus}
-						/>
-					</Suspense>
-					<Suspense fallback={null}>
-						<ProfilePanel
-							profiles={getFilteredProfiles?.() || []}
-							selectedIndex={profileSelectedIndex}
-							visible={showProfilePicker}
-							maxHeight={5}
-							searchQuery={profileSearchQuery}
-						/>
-					</Suspense>
-					<Suspense fallback={null}>
-						<RunningAgentsPanel
-							agents={runningAgents}
-							selectedIndex={runningAgentsSelectedIndex}
-							selectedAgents={selectedRunningAgents}
-							visible={showRunningAgentsPicker}
-							maxHeight={5}
-						/>
-					</Suspense>
 				</>
 			)}
 		</Box>

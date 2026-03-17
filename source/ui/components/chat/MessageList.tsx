@@ -67,6 +67,7 @@ export interface Message {
 		isComplete?: boolean;
 	};
 	subAgentInternal?: boolean; // Mark internal sub-agent messages to filter from API requests
+	subAgentContent?: boolean; // Persisted sub-agent thinking/content replay message
 	subAgentUsage?: {
 		inputTokens: number;
 		outputTokens: number;

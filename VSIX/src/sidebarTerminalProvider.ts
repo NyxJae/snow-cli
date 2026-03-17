@@ -4,6 +4,7 @@ import {
 	SidebarTerminalSession,
 	SidebarTerminalTabState,
 } from './sidebarTerminalSession';
+import {startupCommandManager} from './startupCommandManager';
 import {formatTerminalPathPayload} from './terminalPathFormatter';
 
 type LaunchPolicy = 'ensure' | 'restart';
@@ -110,6 +111,7 @@ type WebviewToExtensionMessage =
 	| {type: 'resize'; cols: number; rows: number}
 	| {type: 'switchTab'; tabId: string}
 	| {type: 'closeTab'; tabId: string}
+	| {type: 'dropPaths'; uris: string[]}
 	| {
 			type: 'rendererHealth';
 			stage: RendererHealthStage;
@@ -368,6 +370,18 @@ function parseWebviewMessage(rawMessage: unknown): WebviewToExtensionMessage | u
 				stats: parseRendererHealthStats(rawMessage.stats),
 			};
 		}
+		case 'dropPaths': {
+			if (!Array.isArray(rawMessage.uris)) {
+				return undefined;
+			}
+			const uris = (rawMessage.uris as unknown[]).filter(
+				(uri): uri is string => typeof uri === 'string' && uri.length > 0,
+			);
+			if (uris.length === 0) {
+				return undefined;
+			}
+			return {type: 'dropPaths', uris};
+		}
 		case 'frontendLog': {
 			const message = asOptionalNonEmptyString(rawMessage.message);
 			if (!message) {
@@ -450,7 +464,6 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 	private sessionOrder: string[] = [];
 	private activeSessionId: string | undefined;
 	private sessionCounter = 0;
-	private startupCommand: string;
 	private webviewReady = false;
 	private hasResolvedViewOnce = false;
 	private ensureRunningTimer: NodeJS.Timeout | undefined;
@@ -468,12 +481,8 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 	private lastManualRestartRequestedAt = 0;
 	private disposed = false;
 
-	constructor(
-		private readonly extensionUri: vscode.Uri,
-		startupCommand?: string,
-	) {
+	constructor(private readonly extensionUri: vscode.Uri) {
 		this.outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
-		this.startupCommand = startupCommand ?? 'snow';
 		this.ensureActiveSessionExists();
 		this.applyShellType();
 		this.logSidebarInfo('Sidebar terminal provider initialized.');
@@ -609,10 +618,7 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 		return (
 			folder?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
 		);
-	}
 
-	public setStartupCommand(command: string): void {
-		this.startupCommand = command;
 	}
 
 	public createTab(options?: EnsureOptions): void {
@@ -1017,13 +1023,16 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 						);
 					}
 					return;
-				case 'rendererHealth':
-					this.handleRendererHealthMessage(
-						message.stage,
-						message.reason,
-						message.stats,
-					);
-					return;
+			case 'dropPaths':
+				this.handleDropPaths(message.uris);
+				return;
+			case 'rendererHealth':
+				this.handleRendererHealthMessage(
+					message.stage,
+					message.reason,
+					message.stats,
+				);
+				return;
 				case 'frontendLog':
 					this.writeOutputLog(
 						message.level,
@@ -1153,9 +1162,8 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 		const sizeDetails = this.latestTerminalSize
 			? `${this.latestTerminalSize.cols}x${this.latestTerminalSize.rows}`
 			: 'auto';
-		const {started, processNonce} = session.start(
+		const {started, processNonce, startupCommand} = session.start(
 			cwd,
-			this.startupCommand,
 			this.latestTerminalSize,
 			{
 				onData: data => {
@@ -1170,20 +1178,22 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
 					);
 				},
 			},
+			() => startupCommandManager.getNextStartupCommand(),
 		);
+		const commandDetails = startupCommand ?? '(none)';
 
 		this.syncTabsToWebview();
 		if (started) {
 			this.logSidebarInfo(
 				'Terminal started.',
-				`tabId=${session.id}, process=${processNonce}, cwd=${cwd}, command=${this.startupCommand}, size=${sizeDetails}`,
+				`tabId=${session.id}, process=${processNonce}, cwd=${cwd}, command=${commandDetails}, size=${sizeDetails}`,
 			);
 			return;
 		}
 
 		this.logSidebarError(
 			'Terminal start request completed but process is not running.',
-			`tabId=${session.id}, process=${processNonce}, cwd=${cwd}, command=${this.startupCommand}, size=${sizeDetails}`,
+			`tabId=${session.id}, process=${processNonce}, cwd=${cwd}, command=${commandDetails}, size=${sizeDetails}`,
 		);
 	}
 
@@ -1504,6 +1514,28 @@ export class SidebarTerminalProvider implements vscode.WebviewViewProvider {
   <script src="${sidebarScriptUri}"></script>
 </body>
 </html>`;
+	}
+
+	private handleDropPaths(uris: string[]): void {
+		const paths = uris
+			.map(uri => {
+				try {
+					return vscode.Uri.parse(uri).fsPath;
+				} catch {
+					return '';
+				}
+			})
+			.filter(path => path.length > 0);
+
+		if (paths.length === 0) {
+			return;
+		}
+
+		this.logSidebarInfo(
+			'Received file paths from drop.',
+			`pathCount=${paths.length}`,
+		);
+		this.sendFilePaths(paths);
 	}
 
 	public sendFilePaths(paths: string[]): void {

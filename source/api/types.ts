@@ -27,6 +27,12 @@ export interface ChatMessage {
 	images?: ImageContent[]; // 图片内容
 	subAgentInternal?: boolean; // Mark internal sub-agent messages (filtered from API requests)
 	specialUserMessage?: boolean; // Mark dynamically injected special user context messages
+	subAgentContent?: boolean; // Persisted sub-agent thinking/content replay message
+	subAgent?: {
+		agentId: string;
+		agentName: string;
+		isComplete?: boolean;
+	};
 	// IDE editor context (VSCode workspace, active file, cursor position, selected code)
 
 	editorContext?: {
@@ -36,7 +42,6 @@ export interface ChatMessage {
 		selectedText?: string;
 	};
 	reasoning?: {
-		// Reasoning data for Responses API caching
 		summary?: Array<{type: 'summary_text'; text: string}>;
 		content?: any;
 		encrypted_content?: string;

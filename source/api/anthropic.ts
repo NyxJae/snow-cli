@@ -742,7 +742,6 @@ export async function* createStreamingAnthropicCompletion(
 				'Content-Type': 'application/json',
 				'x-api-key': config.apiKey,
 				Authorization: `Bearer ${config.apiKey}`,
-				'anthropic-version': '2023-06-01',
 				'x-snow': getVersionHeader(),
 				...customHeaders,
 			};

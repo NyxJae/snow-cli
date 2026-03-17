@@ -526,6 +526,7 @@ export const zhTW: TranslationKeys = {
 			compact: '使用壓縮模型壓縮對話歷史',
 			home: '返回歡迎畫面修改設定',
 			review: '審查工作區變更與選定提交。會開啟選擇面板，可多選並輸入備註。',
+			gitline: '選擇 Git 提交記錄並將提交內容插入到目前輸入框',
 			usage: '查看帶有互動式圖表的令牌使用統計',
 			export: '將聊天對話匯出到帶儲存對話方塊的文字檔案',
 			custom: '新增自訂命令並儲存到 ~/.snow/commands',
@@ -667,6 +668,17 @@ export const zhTW: TranslationKeys = {
 		selectedLabel: '已選擇',
 		errorSelectAtLeastOne: '請至少選擇一項進行審查。',
 	},
+	gitLinePickerPanel: {
+		title: 'GitLine：選擇提交記錄',
+		loadingCommits: '正在載入提交記錄...',
+		loadingMoreSuffix: '（載入更多中...）',
+		noCommits: '找不到可用的提交記錄',
+		searchLabel: '搜尋:',
+		emptySearch: '(空)',
+		hintNavigation: '↑/↓ 導航 · 空格 勾選 · Enter 確認 · 直接輸入篩選',
+		selectedLabel: '已選擇',
+		scrollToLoadMore: '(滾動載入更多)',
+	},
 	hooks: {
 		pressCtrlCAgain: '再次按 Ctrl+C 退出',
 		exitingApplication: '正在安全退出...',
@@ -683,6 +695,7 @@ export const zhTW: TranslationKeys = {
 		},
 		hookTypes: {
 			onUserMessage: '使用者發送訊息時觸發',
+
 			beforeToolCall: '在工具呼叫之前執行',
 			afterToolCall: '在工具呼叫完成後執行',
 			toolConfirmation: '工具的第二確認中引起的（包括敏感词汇的確認）',
@@ -968,7 +981,8 @@ export const zhTW: TranslationKeys = {
 		historyNavigateHint: '↑↓ 導航 · Enter 選擇 · ESC 關閉',
 		typeToFilterCommands: '輸入以過濾命令',
 		contentSearchHint: '內容搜尋 • Tab/Enter 選擇 • ESC 取消',
-		fileSearchHint: '輸入以過濾檔案 • Tab/Enter 選擇 • ESC 取消',
+		fileSearchHint:
+			'輸入以過濾檔案 • Tab/Enter 選擇 • Ctrl+T 切換檢視 • ESC 取消',
 		expandedViewHint: '展開檢視 • Ctrl+T 切換',
 		yoloModeActive: '❁ YOLO 模式已啟用 - 所有工具將自動批准無需確認',
 		toolSearchEnabled: '♾︎ 工具搜尋已開啟 - 按需搜尋載入工具',

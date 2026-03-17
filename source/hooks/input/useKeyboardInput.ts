@@ -12,24 +12,29 @@ type KeyboardInputOptions = {
 	buffer: TextBuffer;
 	disabled: boolean;
 	disableKeyboardNavigation?: boolean;
-	isProcessing?: boolean; // Prevent command execution during AI response/tool execution
+	isProcessing?: boolean;
 	triggerUpdate: () => void;
 	forceUpdate: React.Dispatch<React.SetStateAction<{}>>;
-	// Mode state
 	yoloMode: boolean;
 	setYoloMode: (value: boolean) => void;
-	// Paste receiving indicator
 	onPasteReceivingChange?: (isReceiving: boolean, charCount: number) => void;
-	// Command panel
 	showCommands: boolean;
 	setShowCommands: (show: boolean) => void;
 	commandSelectedIndex: number;
 	setCommandSelectedIndex: (index: number | ((prev: number) => number)) => void;
-	getFilteredCommands: () => Array<{name: string; description: string}>;
+	getFilteredCommands: () => Array<{
+		name: string;
+		description: string;
+		type: 'builtin' | 'execute' | 'prompt';
+	}>;
 	updateCommandPanelState: (text: string) => void;
 	onCommand?: (commandName: string, result: any) => void;
-	getAllCommands?: () => Array<{name: string; description: string}>; // Get all available commands for validation
-	// File picker
+	getAllCommands?: () => Array<{
+		name: string;
+		description: string;
+		type: 'builtin' | 'execute' | 'prompt';
+	}>; // Get all available commands for validation
+
 	showFilePicker: boolean;
 	setShowFilePicker: (show: boolean) => void;
 	fileSelectedIndex: number;
@@ -41,8 +46,11 @@ type KeyboardInputOptions = {
 	filteredFileCount: number;
 	updateFilePickerState: (text: string, cursorPos: number) => void;
 	handleFileSelect: (filePath: string) => Promise<void>;
-	fileListRef: React.RefObject<{getSelectedFile: () => string | null}>;
-	// History navigation
+	fileListRef: React.RefObject<{
+		getSelectedFile: () => string | null;
+		toggleDisplayMode: () => boolean;
+	}>;
+
 	showHistoryMenu: boolean;
 	setShowHistoryMenu: (show: boolean) => void;
 	historySelectedIndex: number;
@@ -116,6 +124,25 @@ type KeyboardInputOptions = {
 	backspaceSkillsField: () => void;
 	confirmSkillsSelection: () => void;
 	closeSkillsPicker: () => void;
+	// GitLine picker
+	showGitLinePicker: boolean;
+	setShowGitLinePicker: (show: boolean) => void;
+	gitLineSelectedIndex: number;
+	setGitLineSelectedIndex: (index: number | ((prev: number) => number)) => void;
+	gitLineCommits: Array<{
+		sha: string;
+		subject: string;
+		authorName: string;
+		dateIso: string;
+	}>;
+	selectedGitLineCommits: Set<string>;
+	gitLineIsLoading: boolean;
+	gitLineSearchQuery: string;
+	setGitLineSearchQuery: (query: string) => void;
+	gitLineError?: string | null;
+	toggleGitLineCommitSelection: () => void;
+	confirmGitLineSelection: () => void;
+	closeGitLinePicker: () => void;
 	// Profile picker
 	showProfilePicker: boolean;
 	setShowProfilePicker: (show: boolean) => void;
@@ -244,13 +271,31 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 		setTodoSearchQuery,
 		showSkillsPicker,
 		setShowSkillsPicker,
+		skillsSelectedIndex,
 		setSkillsSelectedIndex,
 		skills,
+		skillsIsLoading,
+		skillsSearchQuery,
+		skillsAppendText,
+		skillsFocus,
 		toggleSkillsFocus,
 		appendSkillsChar,
 		backspaceSkillsField,
 		confirmSkillsSelection,
 		closeSkillsPicker,
+		showGitLinePicker,
+		setShowGitLinePicker,
+		gitLineSelectedIndex,
+		setGitLineSelectedIndex,
+		gitLineCommits,
+		selectedGitLineCommits,
+		gitLineIsLoading,
+		gitLineSearchQuery,
+		setGitLineSearchQuery,
+		gitLineError,
+		toggleGitLineCommitSelection,
+		confirmGitLineSelection,
+		closeGitLinePicker,
 		showProfilePicker,
 		setShowProfilePicker,
 		profileSelectedIndex,
@@ -286,25 +331,31 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 		updateRunningAgentsPickerState,
 	} = options;
 
-	// Mark variables as used (they are used in useInput closure below)
 	void todoSelectedIndex;
 	void selectedTodos;
 	void yoloMode;
+	void skillsSelectedIndex;
+	void skillsIsLoading;
+	void skillsSearchQuery;
+	void skillsAppendText;
+	void skillsFocus;
+	void gitLineSelectedIndex;
+	void selectedGitLineCommits;
+	void gitLineIsLoading;
+	void gitLineError;
 	void runningAgentsSelectedIndex;
 	void selectedRunningAgents;
 	void setShowRunningAgentsPicker;
 
-	// Track paste detection
 	const inputBuffer = useRef<string>('');
 	const inputTimer = useRef<NodeJS.Timeout | null>(null);
-	const isPasting = useRef<boolean>(false); // Track if we're in pasting mode
-	const inputStartCursorPos = useRef<number>(0); // Track cursor position when input starts accumulating
-	const isProcessingInput = useRef<boolean>(false); // Track if multi-char input is being processed
-	const inputSessionId = useRef<number>(0); // Invalidates stale buffered input timers
-	const lastPasteShortcutAt = useRef<number>(0); // Track recent paste shortcut usage
-	const componentMountTime = useRef<number>(Date.now()); // Track when component mounted
+	const isPasting = useRef<boolean>(false);
+	const inputStartCursorPos = useRef<number>(0);
+	const isProcessingInput = useRef<boolean>(false);
+	const inputSessionId = useRef<number>(0);
+	const lastPasteShortcutAt = useRef<number>(0);
+	const componentMountTime = useRef<number>(Date.now());
 
-	// Cleanup timer on unmount
 	useEffect(() => {
 		return () => {
 			if (inputTimer.current) {
@@ -378,11 +429,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 	// Handle input using useInput hook
 	useInput((input, key) => {
 		if (disabled) return;
-		// Filter out focus events more robustly
-		// Focus events: ESC[I (focus in) or ESC[O (focus out)
-		// Some terminals may send these with or without ESC, and they might appear
-		// anywhere in the input string (especially during drag-and-drop with Shift held)
-		// We need to filter them out but NOT remove legitimate user input
+		// 部分终端会把焦点事件混进输入流里,这里先过滤,避免误触发普通输入逻辑.
 		const focusEventPattern = /(\s|^)\[(?:I|O)(?=(?:\s|$|["'~\\\/]|[A-Za-z]:))/;
 		const isEarlyFocusEvent =
 			Date.now() - componentMountTime.current < 500 &&
@@ -480,30 +527,32 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// Close profile picker if open
 			if (showProfilePicker) {
 				setShowProfilePicker(false);
 				setProfileSelectedIndex(0);
-				setProfileSearchQuery(''); // Reset search query
-				setPickerActive(true); // Signal ChatScreen to skip ESC abort
+				setProfileSearchQuery('');
+				setPickerActive(true);
 				return;
 			}
 
-			// Close skills picker if open
 			if (showSkillsPicker) {
 				closeSkillsPicker();
 				setPickerActive(true);
 				return;
 			}
 
-			// Close running agents picker if open
+			if (showGitLinePicker) {
+				closeGitLinePicker();
+				setPickerActive(true);
+				return;
+			}
+
 			if (showRunningAgentsPicker) {
 				closeRunningAgentsPicker();
 				setPickerActive(true);
 				return;
 			}
 
-			// Close todo picker if open
 			if (showTodoPicker) {
 				setShowTodoPicker(false);
 				setTodoSelectedIndex(0);
@@ -511,7 +560,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// Close agent picker if open
 			if (showAgentPicker) {
 				setShowAgentPicker(false);
 				setAgentSelectedIndex(0);
@@ -519,7 +567,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// Close file picker if open
 			if (showFilePicker) {
 				setShowFilePicker(false);
 				setFileSelectedIndex(0);
@@ -529,7 +576,6 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// Don't interfere with existing ESC behavior if in command panel
 			if (showCommands) {
 				setShowCommands(false);
 				setCommandSelectedIndex(0);
@@ -537,49 +583,39 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// No picker was active for this ESC press
 			setPickerActive(false);
 
-			// Handle history navigation
 			if (showHistoryMenu) {
 				setShowHistoryMenu(false);
 				return;
 			}
 
-			// Count escape key presses for double-ESC detection
 			setEscapeKeyCount(prev => prev + 1);
 
-			// Clear any existing timer
 			if (escapeKeyTimer.current) {
 				clearTimeout(escapeKeyTimer.current);
 			}
 
-			// Set timer to reset count after 500ms
 			escapeKeyTimer.current = setTimeout(() => {
 				setEscapeKeyCount(0);
 			}, 500);
 
-			// Check for double escape
 			if (escapeKeyCount >= 1) {
-				// This will be 2 after increment
 				setEscapeKeyCount(0);
 				if (escapeKeyTimer.current) {
 					clearTimeout(escapeKeyTimer.current);
 					escapeKeyTimer.current = null;
 				}
 
-				// If input has content, clear it; otherwise open history menu
 				const text = buffer.getFullText();
 				if (text.trim().length > 0) {
-					// Clear input content
 					buffer.setText('');
 					forceStateUpdate();
 				} else {
-					// Open history menu
 					const userMessages = getUserMessages();
 					if (userMessages.length > 0) {
 						setShowHistoryMenu(true);
-						setHistorySelectedIndex(userMessages.length - 1); // Reset selection to last item
+						setHistorySelectedIndex(userMessages.length - 1);
 					}
 				}
 			}
@@ -638,11 +674,61 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			return;
 		}
 
+		if (showGitLinePicker) {
+			if (key.upArrow) {
+				setGitLineSelectedIndex(prev =>
+					prev > 0 ? prev - 1 : Math.max(0, gitLineCommits.length - 1),
+				);
+				return;
+			}
+
+			if (key.downArrow) {
+				const maxIndex = Math.max(0, gitLineCommits.length - 1);
+				setGitLineSelectedIndex(prev => (prev < maxIndex ? prev + 1 : 0));
+				return;
+			}
+
+			if (input === ' ') {
+				toggleGitLineCommitSelection();
+				return;
+			}
+
+			if (key.return) {
+				confirmGitLineSelection();
+				return;
+			}
+
+			if (key.backspace || key.delete) {
+				if (gitLineSearchQuery.length > 0) {
+					setGitLineSearchQuery(gitLineSearchQuery.slice(0, -1));
+					setGitLineSelectedIndex(0);
+					triggerUpdate();
+				}
+				return;
+			}
+
+			if (
+				input &&
+				!key.ctrl &&
+				!key.meta &&
+				!key.escape &&
+				input !== '\\x1b' &&
+				input !== '\\u001b' &&
+				!/[\\x00-\\x1F]/.test(input)
+			) {
+				setGitLineSearchQuery(gitLineSearchQuery + input);
+				setGitLineSelectedIndex(0);
+				triggerUpdate();
+				return;
+			}
+
+			return;
+		}
+
 		// Handle profile picker navigation
 		if (showProfilePicker) {
 			const filteredProfiles = getFilteredProfiles();
 
-			// Up arrow in profile picker - 循环导航:第一项 → 最后一项
 			if (key.upArrow) {
 				setProfileSelectedIndex(prev =>
 					prev > 0 ? prev - 1 : Math.max(0, filteredProfiles.length - 1),
@@ -650,14 +736,12 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// Down arrow in profile picker - 循环导航:最后一项 → 第一项
 			if (key.downArrow) {
 				const maxIndex = Math.max(0, filteredProfiles.length - 1);
 				setProfileSelectedIndex(prev => (prev < maxIndex ? prev + 1 : 0));
 				return;
 			}
 
-			// Enter - select profile
 			if (key.return) {
 				if (
 					filteredProfiles.length > 0 &&
@@ -671,35 +755,30 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 				return;
 			}
 
-			// Backspace - remove last character from search
 			if (key.backspace || key.delete) {
 				if (profileSearchQuery.length > 0) {
 					setProfileSearchQuery(profileSearchQuery.slice(0, -1));
-					setProfileSelectedIndex(0); // Reset to first item
+					setProfileSelectedIndex(0);
 					triggerUpdate();
 				}
 				return;
 			}
 
-			// Type to search - alphanumeric and common characters
-			// Accept complete characters (including multi-byte like Chinese)
-			// but filter out control sequences and incomplete input
 			if (
 				input &&
 				!key.ctrl &&
 				!key.meta &&
 				!key.escape &&
-				input !== '\x1b' && // Ignore escape sequences
-				input !== '\u001b' && // Additional escape check
-				!/[\x00-\x1F]/.test(input) // Ignore other control characters
+				input !== '\x1b' &&
+				input !== '\u001b' &&
+				!/[\x00-\x1F]/.test(input)
 			) {
 				setProfileSearchQuery(profileSearchQuery + input);
-				setProfileSelectedIndex(0); // Reset to first item
+				setProfileSelectedIndex(0);
 				triggerUpdate();
 				return;
 			}
 
-			// For any other key in profile picker, just return to prevent interference
 			return;
 		}
 
@@ -990,8 +1069,13 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 			}
 		};
 
-		// Ctrl+T - Toggle expanded/collapsed view for pasted text
+		// Ctrl+T - Toggle file picker display mode when active, otherwise toggle pasted text view
 		if (key.ctrl && input === 't') {
+			if (showFilePicker && fileListRef.current?.toggleDisplayMode()) {
+				forceUpdate({});
+				return;
+			}
+
 			flushPendingInput();
 			buffer.toggleExpandedView();
 			forceUpdate({});
@@ -1304,14 +1388,21 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 							triggerUpdate();
 							return;
 						}
+						if (selectedCommand.name === 'gitline') {
+							buffer.setText('');
+							setShowCommands(false);
+							setCommandSelectedIndex(0);
+							setShowGitLinePicker(true);
+							triggerUpdate();
+							return;
+						}
 						// AI 正在处理时,不执行有效命令,避免并发状态下触发重复的会话操作.
 						// 但类似 /usr/bin 这种路径输入不应被当作命令拦截.
 						if (isProcessing && getAllCommands) {
-							const allCommands = getAllCommands();
-							const isValidCommand = allCommands.some(
+							const matchedCommand = getAllCommands().find(
 								cmd => cmd.name === selectedCommand.name,
 							);
-							if (isValidCommand) {
+							if (matchedCommand && matchedCommand.type !== 'prompt') {
 								// 仅关闭面板并清空缓冲,避免用户误以为命令已执行.
 								buffer.setText('');
 								setShowCommands(false);
@@ -1408,9 +1499,7 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 						const commandName = commandMatch[1];
 						const commandArgs = commandMatch[2];
 
-						// Special handling for picker-style commands.
-						// These commands are UI interactions and should open the picker panel
-						// instead of going through the generic command execution flow.
+						// 这些命令依赖面板交互,需要直接打开对应选择器.
 						if (commandName === 'todo-' && !commandArgs) {
 							buffer.setText('');
 							setShowCommands(false);
@@ -1435,16 +1524,21 @@ export function useKeyboardInput(options: KeyboardInputOptions) {
 							triggerUpdate();
 							return;
 						}
+						if (commandName === 'gitline' && !commandArgs) {
+							buffer.setText('');
+							setShowCommands(false);
+							setCommandSelectedIndex(0);
+							setShowGitLinePicker(true);
+							triggerUpdate();
+							return;
+						}
 
-						// Block command execution if AI is processing
-						// Only block if it's a valid command (not a path like /usr/bin)
 						if (isProcessing && getAllCommands) {
-							const allCommands = getAllCommands();
-							const isValidCommand = allCommands.some(
+							const matchedCommand = getAllCommands().find(
 								cmd => cmd.name === commandName,
 							);
-							if (isValidCommand) {
-								// Don't execute command, just clear the input
+							if (matchedCommand && matchedCommand.type !== 'prompt') {
+								// AI 正在处理时,拦截非 prompt 命令,避免并发触发重复操作.
 								buffer.setText('');
 								triggerUpdate();
 								return;

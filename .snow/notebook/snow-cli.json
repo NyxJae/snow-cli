@@ -152,6 +152,15 @@
       "updatedAt": "2026-02-19T17:54:32.905"
     }
   ],
+  "source/api/types.ts": [
+    {
+      "id": "notebook-1773721487188_cjuk33n40",
+      "filePath": "source/api/types.ts",
+      "note": "职责: 对话与工具协议类型的稳定定义层(SSoT for runtime message schema). 该文件的字段语义直接影响: 会话持久化,历史回放,流式 UI,以及各模型适配器的请求过滤.\n\n接口摘要:\n- ChatMessage: role/content/tool_calls/images/thinking/reasoning 等通用字段.\n- 子代理与特殊上下文字段: subAgentInternal,subAgentContent,subAgent{agentId,agentName,isComplete},specialUserMessage.\n\n依赖拓扑:\n- 被依赖: source/hooks/conversation/*,source/utils/session/*,source/api/* adapters,以及 SSE/Web 回放链路.\n\n避坑指南:\n- 本地 specialUserMessage 与 upstream 子代理持久化字段必须\"并存\". specialUserMessage 用于标记动态注入的 user 上下文,subAgent* 用于子代理消息回放,两者不得互相替代.\n- subAgentInternal 标记的内部消息必须在\"发往模型请求\"时被过滤,但在 UI/持久化中可用于调试或回放. 不得因过滤逻辑误删持久化必要字段.\n- 字段新增必须保持向后兼容: 旧 session/messages 缺字段时要安全降级.",
+      "createdAt": "2026-03-17T12:24:47.188",
+      "updatedAt": "2026-03-17T12:24:47.188"
+    }
+  ],
   "source/config/mainAgents/": [
     {
       "id": "notebook-1771735800708_5a84pzbvn",
@@ -165,34 +174,88 @@
     {
       "id": "notebook-1773143726642_v0ba6j1vm",
       "filePath": "source/hooks/conversation/core/",
-      "note": "职责: 会话执行核心拆分目录. 承载 streamFactory,toolCallRound,toolConfirmationFlow 等稳定内核,用于把 useConversation 主循环拆成可维护的轮次级能力.\\n接口摘要:\\n- streamFactory: 统一根据 requestMethod 选择流式适配器.\\n- toolCallRound/toolConfirmationFlow: 统一处理 tool calls,审批流与 round usage 续传.\\n依赖拓扑:\\n- 被依赖: source/hooks/conversation/useConversation.ts.\\n- 依赖: source/api/*,tool executor,tool confirmation 相关能力.\\n避坑指南:\\n- 后续合并 upstream 时,优先在本目录吸收新的轮次拆分或 adapter 选择逻辑,不要把已拆出的能力重新回填到 useConversation.ts.\\n- createStreamGenerator 的参数口径必须与 useConversation 调用点同步演进,避免再次出现 call-site 传旧模式参数(plan/vulnerability/toolSearchDisabled)而 core 类型已收敛的错位.\\n- tool confirmation 的统一入口必须与 UI askuser/ToolConfirmation 流程保持兼容,避免执行层新增第二套审批状态机.",
+      "note": "职责: 会话执行核心拆分目录(core/*). 承载 conversationSetup,streamProcessor,toolCallRoundHandler,streamFactory,toolCallRound,toolConfirmationFlow 等稳定内核,用于把 useConversation 主循环拆成可维护的轮次级能力.\n\n接口摘要:\n- conversationSetup: 会话初始化,用户消息写入与上下文同步,工具集准备.\n- streamProcessor: 单轮流式输出处理,抽取 tool_calls,thinking/reasoning,并以批处理方式写入 UI streaming lines.\n- toolCallRoundHandler: 工具确认流 + 工具执行轮次,以及子代理流式消息接入 UI.\n\n依赖拓扑:\n- 被依赖: source/hooks/conversation/useConversation.ts(编排层).\n- 依赖: source/api/*(stream adapters),tool executor,tool confirmation/askuser(UI)流程,token encoder.\n\n避坑指南:\n- core/* 必须保持\"可复用内核\"定位,禁止把 UI 页面状态机或旧模式参数(planMode,role,vulnerability 等)重新引入核心函数签名.\n- createStreamGenerator/streamFactory 的参数口径必须与 useConversation 调用点同步演进,避免 call-site 传旧模式参数导致类型与行为错位.\n- tool confirmation 的统一入口必须与 UI askuser/ToolConfirmation 流程保持兼容,避免执行层新增第二套审批状态机.",
       "createdAt": "2026-03-10T19:55:26.642",
-      "updatedAt": "2026-03-10T19:55:26.642"
+      "updatedAt": "2026-03-17T12:24:46.305"
+    }
+  ],
+  "source/hooks/conversation/core/conversationSetup.ts": [
+    {
+      "id": "notebook-1773721486719_ffxr4u9vb",
+      "filePath": "source/hooks/conversation/core/conversationSetup.ts",
+      "note": "职责: 会话初始化与\"用户消息写入\"前置准备,为 useConversation 提供稳定的 setup API.\n\n接口摘要:\n- prepareConversationSetup(...)-> {conversationMessages,activeTools,discoveredToolNames,useToolSearch}.\n- appendUserMessageAndSyncContext({conversationMessages,userContent,editorContext,imageContents,saveMessage})-> void.\n\n依赖拓扑:\n- 依赖: sessionManager(会话),mcpToolsManager/toolSearchService(工具集),conversationContext/sessionConverter(codebase 上下文同步).\n- 被依赖: source/hooks/conversation/useConversation.ts.\n\n避坑指南:\n- 旧模式(planMode,vulnerabilityHuntingMode,toolSearchDisabled,role)在本地已废弃,setup 层 MUSTNOT 以参数形式回流或作为事实源. Tool Search 开关唯一事实源是 projectSettings.getToolSearchEnabled().\n- 工具集 MUST 先按主代理/子代理权限过滤(allowedTools),再决定 initialTools/searchableTools,禁止 setup 层直接暴露 raw MCP tools.\n- appendUserMessageAndSyncContext 中保存持久化消息时,必须区分\"写入 UI/上下文的 finalUserContent\"与\"落盘的原始 userContent\",避免 editorContext 重复持久化或污染回放.",
+      "createdAt": "2026-03-17T12:24:46.719",
+      "updatedAt": "2026-03-17T12:24:46.719"
+    }
+  ],
+  "source/hooks/conversation/core/encoderManager.ts": [
+    {
+      "id": "notebook-1773721487073_ao5bsjfv4",
+      "filePath": "source/hooks/conversation/core/encoderManager.ts",
+      "note": "职责: TokenEncoder 生命周期管理器. 负责按需创建/复用 encoder,并提供 freeEncoder() 确保长会话与重试路径下不泄漏.\n\n接口摘要:\n- getEncoder(model)-> TokenEncoder.\n- freeEncoder()-> void.\n\n依赖拓扑:\n- 依赖: tiktoken/encoding_for_model.\n- 被依赖: useConversation.ts,streamProcessor/toolCallRoundHandler(计数与 UI token 显示).\n\n避坑指南:\n- encoder 的创建与释放必须集中管理,重试与 abort 退出路径必须调用 freeEncoder,避免内存上涨.\n- 不在各核心函数内各自 new encoder,保持单一事实源.",
+      "createdAt": "2026-03-17T12:24:47.073",
+      "updatedAt": "2026-03-17T12:24:47.073"
+    }
+  ],
+  "source/hooks/conversation/core/streamProcessor.ts": [
+    {
+      "id": "notebook-1773721486830_0jpndv3nh",
+      "filePath": "source/hooks/conversation/core/streamProcessor.ts",
+      "note": "职责: 单轮流式输出处理内核. 负责从模型 SSE/stream generator 消费增量,累积 streamedContent,捕获 tool_calls 与 thinking/reasoning,并以 batching 方式写入 UI streaming lines.\n\n接口摘要:\n- processStreamRound(ctx)-> StreamRoundResult(streamedContent,receivedToolCalls,thinking/reasoning,hasStreamedLines,roundUsage...).\n\n依赖拓扑:\n- 依赖: streamFactory/createStreamGenerator(流来源),extractThinkingContent(归一化),TokenEncoder(计数),MessageList 类型.\n- 被依赖: useConversation.ts(编排),toolCallRoundHandler(后续工具轮次).\n\n避坑指南:\n- 本文件只处理\"流式解析与 UI 增量写入\",MUSTNOT 承担工具权限判定,Tool Search 开关,主代理选择或重试策略.\n- streamingDisplay=false 时必须完全静默增量写入,但仍要完整累积 streamedContent/tool_calls 以供后续轮次.\n- batching/flush 策略必须保持幂等与可中断,abort 后不得遗留半截 UI 状态或重复写入.",
+      "createdAt": "2026-03-17T12:24:46.830",
+      "updatedAt": "2026-03-17T12:24:46.830"
+    }
+  ],
+  "source/hooks/conversation/core/toolCallRoundHandler.ts": [
+    {
+      "id": "notebook-1773721486949_2z2a6z5gr",
+      "filePath": "source/hooks/conversation/core/toolCallRoundHandler.ts",
+      "note": "职责: 工具调用轮次内核. 负责: stream 后 tool_calls 入库与摘要,tool confirmation/askuser 协调,executeToolCalls 执行,以及子代理流式消息写入 UI 的接入点.\n\n接口摘要:\n- handleToolCallRound(ctx)-> ToolCallRoundResult(continue/return,...).\n- 对 executeToolCalls 提供 subAgentMessage 回调,将子代理消息交由 SubAgentUIHandler 写入 MessageList.\n\n依赖拓扑:\n- 依赖: toolCallProcessor(resolve/process),ToolConfirmation/askuser UI 流程,toolExecutor,SubAgentUIHandler,connectionManager(远端确认通知).\n- 被依赖: useConversation.ts.\n\n避坑指南:\n- 子代理流式消息必须既能实时写入 UI,也能以可回放字段持久化(与 source/api/types.ts 的 subAgent 字段保持一致),避免\"只实时不回放\"或\"只回放不实时\".\n- abort 分支必须为每个已批准 tool_call 写入可解释的 tool aborted 结果,并确保 freeEncoder/cleanup 执行,避免 encoder 泄漏或 ESC 中断失效.\n- 本层不做工具权限筛选,只消费已完成 allowedTools 裁剪后的 activeTools.",
+      "createdAt": "2026-03-17T12:24:46.949",
+      "updatedAt": "2026-03-17T12:24:46.949"
     }
   ],
   "source/hooks/conversation/useConversation.ts": [
     {
       "id": "notebook-1772945711181_j5lhhipfz",
       "filePath": "source/hooks/conversation/useConversation.ts",
-      "note": "主代理会话层只消费统一工具访问结果与 projectSettings 中的 Tool Search 配置事实源. 流程固定为: collect raw tools -> resolve allowedTools/initialTools -> 用 allowedTools 初始化 Tool Search registry -> 通过 getToolSearchEnabled() 决定走渐进暴露还是直接使用 allowedTools -> 由 initialTools + discovered tools 生成 activeTools. 此处已禁止硬编码 const useToolSearch = true/false,也不得再内联权限判断,白名单判断或本地开关默认值. 若主代理权限筛选异常,上游必须按 fail-closed 生效,此处不得回退到原始工具集.",
+      "note": "主代理会话层只消费统一工具访问结果与 projectSettings 中的 Tool Search 配置事实源.\n\n流程固定为:\n1) collect raw tools.\n2) resolve allowedTools/initialTools(先权限过滤,再暴露策略).\n3) 用 allowedTools 初始化 Tool Search registry.\n4) 通过 getToolSearchEnabled() 决定走渐进暴露还是直接使用 allowedTools.\n5) 由 initialTools + discovered tools 生成 activeTools.\n\n避坑指南:\n- 禁止硬编码 const useToolSearch = true/false,也不得在会话层内联权限判断,白名单判断或本地开关默认值.\n- 若主代理权限筛选异常,上游必须按 fail-closed 生效,此处不得回退到原始工具集.\n- 旧模式参数(planMode,vulnerabilityHuntingMode,role 等)已废弃,不得借 core/* 重构回流到 prepare/setup 入口或 options 透传链路.",
       "createdAt": "2026-03-08T12:55:11.181",
-      "updatedAt": "2026-03-08T16:35:35.330"
+      "updatedAt": "2026-03-17T12:24:46.592"
     },
     {
       "id": "notebook-1772107272120_8ae464f6q",
       "filePath": "source/hooks/conversation/useConversation.ts",
-      "note": "职责: 会话执行编排层,负责组装主循环并消费 core/* 中的流式轮次与工具轮次能力,而不是重新内联 provider 分支或 UI 状态机.\n接口摘要:\n- 主循环通过 processStreamRound() 处理单轮流式输出,通过 handleToolCallRound() 处理 tool calls,通过 createStreamGenerator() 统一选择 anthropic/gemini/responses/chat 适配器.\n- 最外层 retry loop 统一负责错误分类,重试上限,退避等待,RetryStatus UI 同步与 AbortController 生命周期切换; onRetry 文案必须走 i18n key(retryResending).\n依赖拓扑:\n- 依赖 source/hooks/conversation/core/{streamFactory,toolCallRound,toolConfirmationFlow}.ts 与 source/api/* 渠道适配器.\n- 依赖 source/utils/core/emptyResponseDetector.ts 提供 EMPTY_RESPONSE 可重试错误分类契约.\n- 被 source/hooks/conversation/chatLogic/useMessageProcessing.ts 调用,由其管理 AbortController 与 UI streaming state.\n避坑指南:\n- 本文件已按 upstream 拆分结构收敛,后续合并 upstream 时优先保留 processStreamRound/handleToolCallRound/createStreamGenerator 这组稳定边界,不要把 provider 选择,确认流或 tool loop 再摊回单文件.\n- 必须保留本地能力: 空回复重试 guard,请求前 contextUsage 基线估算,roundUsage/accumulatedUsage 透传,finally 中的 setIsStopping(false)+notifyMessageProcessingCompleted()+clearConversationContext() 清理链.\n- 重试必须集中在 handleConversationWithTools 最外层循环处理,executeWithInternalRetry 及下游适配器只负责单次执行,禁止在多层同时各自实现空回复重试,避免重入和重复退避.\n- EMPTY_RESPONSE 走更积极策略: 独立错误分类,最大重试 20 次,base delay 500ms,指数退避并附加 20% jitter,总 delay cap 15s; 其他可重试错误沿用默认策略.\n- 每轮重试前必须重新读取 options.controller,并在切换到新 AbortController 时桥接旧 controller 的 abort 事件; 否则 ESC/用户中断会在等待窗口或重试轮次中丢失.\n- 延迟等待必须使用 abort-aware sleep(signal),确保用户主动中断可立即打断等待; 用户主动中断(Request aborted by user)必须短路退出,不得进入重试提示循环.\n- Tool Search 的唯一开关事实源仍是 getToolSearchEnabled(),不得在会话层引入 plan/role/vulnerability 等已移除模式的兼容分支.",
+      "note": "职责: 会话执行编排层. 负责组装主循环并消费 core/* 中的流式轮次与工具轮次能力,而不是重新内联 provider 分支或 UI 状态机.\n\n接口摘要:\n- 主循环通过 processStreamRound() 处理单轮流式输出,通过 handleToolCallRound() 处理 tool calls,通过 createStreamGenerator()/streamFactory 统一选择 anthropic/gemini/responses/chat 适配器.\n- 最外层 retry loop 统一负责错误分类,重试上限,退避等待,RetryStatus UI 同步与 AbortController 生命周期切换; onRetry 文案必须走 i18n key(retryResending).\n\n依赖拓扑:\n- 依赖: source/hooks/conversation/core/*(conversationSetup,streamProcessor,toolCallRoundHandler,streamFactory),source/api/* 渠道适配器.\n- 依赖: source/utils/core/emptyResponseDetector.ts 提供 EMPTY_RESPONSE 可重试错误分类契约.\n- 被依赖: source/hooks/conversation/chatLogic/useMessageProcessing.ts 调用,由其管理 AbortController 与 UI streaming state.\n\n避坑指南:\n- MUST 保留 core/* 拆分后的稳定边界,后续合并 upstream 时优先在 core/* 吸收新逻辑,不要再摊回 useConversation.ts.\n- 必须保留本地能力: 空回复重试 guard,请求前 contextUsage 基线估算,roundUsage/accumulatedUsage 透传,finally 清理链.\n- 重试必须集中在 handleConversationWithTools 最外层循环处理,下游适配器只负责单次执行,禁止多层重复实现重试.\n- Tool Search 的唯一开关事实源仍是 getToolSearchEnabled(),不得在会话层引入 plan/role/vulnerability 等已移除模式的兼容分支.",
       "createdAt": "2026-02-26T20:01:12.120",
-      "updatedAt": "2026-03-10T22:29:03.143"
+      "updatedAt": "2026-03-17T12:24:46.453"
+    }
+  ],
+  "source/hooks/input/useKeyboardInput.ts": [
+    {
+      "id": "notebook-1773721487328_lbdf70dd0",
+      "filePath": "source/hooks/input/useKeyboardInput.ts",
+      "note": "职责: TUI 输入键盘路由与焦点协调的核心 hook. 负责在\"输入框\",\"命令面板\",\"各种 picker/panel\",\"askuser/ToolConfirmation\"之间做按键分发,并确保 ESC/Enter 等全局键的占用与释放一致.\n\n接口摘要:\n- 输入: buffer(输入缓冲),command 执行结果(action),面板可见状态,会话处理状态(isProcessing).\n- 输出: 对 buffer 的编辑,对各 panel/picker 的 show/hide/selection 变更,以及触发发送/停止等回调.\n\n依赖拓扑:\n- 依赖: commandExecutor(action 枚举),pickerState,subAgentConfig 等.\n- 被依赖: source/ui/components/chat/ChatInput.tsx.\n\n避坑指南:\n- ESC 占用是跨模块契约: askuser/ToolConfirmation 或任一 picker 关闭后,MUST 释放对 ESC 的捕获,确保用户可中断会话. 合并 upstream 时禁止回退该行为.\n- `/role` 已废弃,键盘路由中不得保留任何与 role 相关的 action/快捷键/状态位.\n- `/gitline` 只保留最小链路: 允许通过 action(showGitLinePicker)打开面板,并提供基本导航/确认/关闭键处理,不要扩展为新的复杂工作流.",
+      "createdAt": "2026-03-17T12:24:47.328",
+      "updatedAt": "2026-03-17T12:24:47.328"
+    }
+  ],
+  "source/hooks/picker/useGitLinePicker.ts": [
+    {
+      "id": "notebook-1773721487845_ya1ug8yj2",
+      "filePath": "source/hooks/picker/useGitLinePicker.ts",
+      "note": "职责: GitLine 提交选择 picker hook. 负责从本地 git 仓库分页读取 commits,提供搜索/选择/确认交互,并将选中提交的 patch 以约定格式注入到输入 buffer.\n\n接口摘要:\n- 输入: TextBuffer,triggerUpdate.\n- 输出: showGitLinePicker 状态,commits 列表/分页,selectedCommits 集合,以及 confirm/close 等动作.\n\n依赖拓扑:\n- 依赖: reviewAgent(读取 git 信息与 patch),TextBuffer.\n- 被依赖: ChatInput.tsx,GitLinePickerPanel.tsx.\n\n避坑指南:\n- 该 hook 只负责\"从 git 获取数据 + 注入输入框\",MUSTNOT 触发模型调用或写入会话消息.\n- 注入文本格式必须稳定(带 # GitLine/# GitLine End 标记),便于用户与后续解析辨识.\n- patch 可能很大,默认交互应鼓励用户少量选择,避免一次注入过多提交导致上下文爆炸(后续如需限制,应在本层做 size guard,不要在命令层或面板层分散实现).",
+      "createdAt": "2026-03-17T12:24:47.845",
+      "updatedAt": "2026-03-17T12:24:47.845"
     }
   ],
   "source/hooks/ui/useCommandPanel.ts": [
     {
       "id": "notebook-1772946167507_w20gdc5uj",
       "filePath": "source/hooks/ui/useCommandPanel.ts",
-      "note": "职责: 命令面板展示层. 只负责暴露 `/tool-search` 等命令入口与描述,不负责工具权限判定,Tool Search registry 构建或白名单决策.\n\n接口摘要:\n- 输入: i18n 文案与命令注册结果.\n- 输出: 面板可见命令项.\n\n依赖拓扑:\n- 依赖: source/utils/commands/toolsearch.ts 等命令注册层.\n- 被依赖: TUI 命令面板 UI.\n\n避坑指南:\n- 是否存在 `tool-search` 入口,不等于任意工具都可被搜索到.\n- 面板层不得内联 availableTools,availableSubAgents 或白名单判断,避免 UI 与执行边界漂移.\n- 保持与旧模式解绑,只展示独立 Tool Search 能力入口.",
+      "note": "职责: 命令面板展示层. 只负责暴露内置命令列表与描述(含 `/gitline`),不负责工具权限判定,Tool Search registry 构建或白名单决策.\n\n接口摘要:\n- 输入: i18n 文案与命令注册结果.\n- 输出: 面板可见命令项.\n\n依赖拓扑:\n- 依赖: source/utils/commands/*.ts(命令注册层),source/i18n/*(文案).\n- 被依赖: source/ui/components/chat/ChatInput.tsx(命令面板渲染).\n\n避坑指南:\n- `/role` 是明确废弃能力,MUSTNOT 出现在命令面板(也不得残留对应 i18n key).\n- `/gitline` 只要求最小闭环,命令面板仅展示入口与描述,不承担面板逻辑.\n- 是否存在某命令入口,不等于任意工具都可被搜索到. 面板层不得内联 availableTools,availableSubAgents 或白名单判断,避免 UI 与执行边界漂移.",
       "createdAt": "2026-03-08T13:02:47.507",
-      "updatedAt": "2026-03-08T13:02:47.507"
+      "updatedAt": "2026-03-17T12:24:46.186"
     }
   ],
   "source/hooks/ui/usePanelState.ts": [
@@ -202,6 +265,42 @@
       "note": "职责: UI 面板状态管理 hook,负责维护当前展示的 Panel 类型与来源等状态.\n接口摘要:\n- usePanelState() 提供 show/hide/toggle 等对面板状态的操作.\n依赖拓扑:\n- 上游: 各 TUI screen/组件.\n- 下游: 内部状态容器.\n避坑指南:\n- 本 hook 不应依赖 API 适配器或网络层逻辑,保持 UI 与 core/network 解耦.\n备注:\n- 与\"流式 API idle timeout/断开后丢弃\"无关.相关逻辑应由 api adapters + utils/core(streamGuards,retryUtils)处理,且属于固定 3 分钟不可配置的健壮性机制.不要把 hasYielded,timeoutMs 等网络状态塞进 UI 面板状态.",
       "createdAt": "2026-02-13T09:40:00.000",
       "updatedAt": "2026-02-13T11:52:16.686"
+    }
+  ],
+  "source/i18n/lang/en.ts": [
+    {
+      "id": "notebook-1773721488224_pcsziwjpo",
+      "filePath": "source/i18n/lang/en.ts",
+      "note": "职责: 英文 i18n 文案实现. 需要与 source/i18n/types.ts 的 key 结构严格一致.\n\n避坑指南:\n- `/gitline` 相关文案必须覆盖 commandPanel.commands.gitline 与 gitLinePickerPanel.*.\n- `/role` 已废弃,不得在文案中保留可见入口或描述,避免用户误以为可用.",
+      "createdAt": "2026-03-17T12:24:48.224",
+      "updatedAt": "2026-03-17T12:24:48.224"
+    }
+  ],
+  "source/i18n/lang/zh-TW.ts": [
+    {
+      "id": "notebook-1773721488468_wkyj1kqvk",
+      "filePath": "source/i18n/lang/zh-TW.ts",
+      "note": "职责: 繁体中文 i18n 文案实现. 需要与 source/i18n/types.ts 的 key 结构严格一致.\n\n避坑指南:\n- `/gitline` 相关文案必须覆盖 commandPanel.commands.gitline 与 gitLinePickerPanel.*.\n- `/role` 已废弃,不得在文案中保留可见入口或描述,避免用户误以为可用.",
+      "createdAt": "2026-03-17T12:24:48.468",
+      "updatedAt": "2026-03-17T12:24:48.468"
+    }
+  ],
+  "source/i18n/lang/zh.ts": [
+    {
+      "id": "notebook-1773721488351_5rf46fdkk",
+      "filePath": "source/i18n/lang/zh.ts",
+      "note": "职责: 简体中文 i18n 文案实现. 需要与 source/i18n/types.ts 的 key 结构严格一致.\n\n避坑指南:\n- `/gitline` 相关文案必须覆盖 commandPanel.commands.gitline 与 gitLinePickerPanel.*.\n- `/role` 已废弃,不得在文案中保留可见入口或描述,避免用户误以为可用.",
+      "createdAt": "2026-03-17T12:24:48.351",
+      "updatedAt": "2026-03-17T12:24:48.351"
+    }
+  ],
+  "source/i18n/types.ts": [
+    {
+      "id": "notebook-1773721488104_gaw6oms4g",
+      "filePath": "source/i18n/types.ts",
+      "note": "职责: i18n 类型定义与 key 结构的单一事实源. 任何新增/删除 key 必须先在此处落地,再同步各语言实现.\n\n接口摘要:\n- 定义 t.commandPanel.commands.* 等命令文案结构.\n- 定义 t.gitLinePickerPanel.* 等面板文案结构.\n\n依赖拓扑:\n- 被依赖: source/hooks/ui/useCommandPanel.ts,GitLinePickerPanel.tsx,以及所有 useI18n() 调用点.\n\n避坑指南:\n- `/role` 已废弃,相关 key(如 commandPanel.commands.role)必须移除或保持不可达,禁止在类型层保留导致 UI 误展示.\n- `/gitline` 最小闭环需要的 key 必须完整: commandPanel.commands.gitline + gitLinePickerPanel.*.\n- 合并 upstream 时优先保证 types.ts 与各语言文件(en,zh,zh-TW)一一对应,避免运行期 undefined.",
+      "createdAt": "2026-03-17T12:24:48.104",
+      "updatedAt": "2026-03-17T12:24:48.104"
     }
   ],
   "source/mcp/": [
@@ -256,6 +355,15 @@
       "note": "职责: 提示词系统(SSoT for prompting).承载系统提示词模板、共享片段(shared),以及与主/子代理角色定义提示词的拼装约束.\n\n接口摘要:\n- 输入: 当前调用上下文(主/子代理,会话信息,环境信息),以及可选的 customSystemPromptOverride(string[]).\n- 输出: 供模型适配器(source/api/*)使用的 system prompt 片段(可能为多条,顺序敏感).\n\n依赖拓扑:\n- 依赖: source/utils/agentsPromptUtils.ts(环境信息片段),主代理配置(MainAgentManager)提供的 role definition.\n- 被依赖: 对话执行层(execution)与各模型适配器在组装请求时引用.\n\n避坑指南:\n- 主/子代理隔离硬约束: 角色定义提示词只来自当前 agent profile,不得跨注入.\n- 多条 system prompt 必须保持顺序敏感,跨渠道(anthropic/chat/gemini/responses)语义等价.\n- 不要在此目录写 UI 文案或业务状态机逻辑,仅做 prompting 相关拼装.",
       "createdAt": "2026-02-22T12:50:59.888",
       "updatedAt": "2026-02-22T12:50:59.888"
+    }
+  ],
+  "source/prompt/systemPrompt.ts": [
+    {
+      "id": "notebook-1773721488594_dk9pvwxt1",
+      "filePath": "source/prompt/systemPrompt.ts",
+      "note": "职责: 系统提示词组装入口(SSoT for system prompt). 负责把\"基础系统提示词\"与\"当前主/子代理角色定义\"按顺序拼装成各渠道适配器可消费的 system prompts.\n\n接口摘要:\n- 输入: 当前调用上下文(主/子代理标识,会话信息,环境信息),以及可选 customSystemPromptOverride.\n- 输出: string[] system prompts(顺序敏感).\n\n依赖拓扑:\n- 依赖: source/utils/agentsPromptUtils.ts(环境信息片段),MainAgentManager/子代理配置提供的 role definition.\n- 被依赖: source/utils/execution/* 与 source/api/* adapters.\n\n避坑指南:\n- 主/子代理隔离硬约束: 角色定义提示词只来自\"当前 agent profile\",不得跨注入.\n- 旧模式(role,planMode,vulnerabilityHuntingMode,--yolo 等)已废弃,不得在此文件恢复任何旧模式分支或提示词片段.\n- 多渠道语义必须等价: 同一套 system prompt 在 anthropic/chat/gemini/responses 下应保持顺序与意图一致.",
+      "createdAt": "2026-03-17T12:24:48.594",
+      "updatedAt": "2026-03-17T12:24:48.594"
     }
   ],
   "source/test/sse-client/": [
@@ -330,6 +438,24 @@
       "updatedAt": "2026-02-22T12:50:36.915"
     }
   ],
+  "source/ui/components/chat/ChatInput.tsx": [
+    {
+      "id": "notebook-1773721487445_qto4mvj5h",
+      "filePath": "source/ui/components/chat/ChatInput.tsx",
+      "note": "职责: 聊天输入区装配层. 负责把 buffer,commands,keyboard routing,各类 picker/panel,以及发送/停止行为装配为单一 UI 入口.\n\n接口摘要:\n- 输入: conversation 状态,command 执行器,各 picker hooks 输出.\n- 输出: 用户输入编辑,命令面板/工具面板/各 picker 的渲染与显隐控制,最终发送消息.\n\n依赖拓扑:\n- 依赖: useKeyboardInput/useCommandPanel 与各 picker hooks(含 useGitLinePicker),i18n.\n- 被依赖: ChatScreen 页面装配层.\n\n避坑指南:\n- 面板显隐的真值必须集中,避免同一 panel 同时被多个状态位控制导致 ESC 释放失败.\n- `/gitline` 面板仅作为\"把选中提交内容注入到输入框\"的最小能力,不应在 ChatInput 内引入 git 扫描或 patch 拼装逻辑(应在 picker/hook 内完成).\n- askuser/ToolConfirmation 的静态展示与键盘占用必须保持与本地修复一致,合并 upstream 时禁止让选项只显示一半或导致 ESC 长期被占用.",
+      "createdAt": "2026-03-17T12:24:47.445",
+      "updatedAt": "2026-03-17T12:24:47.445"
+    }
+  ],
+  "source/ui/components/panels/GitLinePickerPanel.tsx": [
+    {
+      "id": "notebook-1773721487965_iucs3cu61",
+      "filePath": "source/ui/components/panels/GitLinePickerPanel.tsx",
+      "note": "职责: GitLinePicker 的纯展示面板. 负责渲染 commits 列表,搜索输入提示,选择计数,加载/错误状态,以及键盘导航提示. 不直接访问 git 或拼装注入文本.\n\n接口摘要:\n- 输入: useGitLinePicker 输出的状态与回调,以及 i18n 文案.\n- 输出: 面板 UI 渲染与事件分发.\n\n依赖拓扑:\n- 依赖: source/hooks/picker/useGitLinePicker.ts(数据与动作),source/i18n/*.\n- 被依赖: ChatInput.tsx(懒加载并渲染).\n\n避坑指南:\n- 面板层 MUST 保持纯渲染,禁止引入 git 读取与 patch 拼装逻辑,避免逻辑分叉与难测.\n- 文案 key 必须与 i18n/types.ts 对齐,避免合并时出现缺 key 或遗留 `/role` 文案.",
+      "createdAt": "2026-03-17T12:24:47.965",
+      "updatedAt": "2026-03-17T12:24:47.965"
+    }
+  ],
   "source/ui/components/panels/MCPInfoPanel.tsx": [
     {
       "id": "notebook-1770950000002_mcpinfopanel",
@@ -364,6 +490,15 @@
       "note": "职责: ChatScreen 的页面内模块化子目录. 承载 commands,modes,input,panels,conversation view,codebase indexing 等页面级拆分单元,目标是让 ChatScreen.tsx 只做装配而不再承担巨型状态机.\\n接口摘要:\\n- 输入: ChatScreen 透传的页面级状态与回调.\\n- 输出: 可组合的 hooks/components,供 ChatScreen.tsx 统一装配.\\n依赖拓扑:\\n- 被依赖: source/ui/pages/ChatScreen.tsx.\\n- 依赖: source/hooks/conversation/*,source/hooks/ui/*,source/utils/commands/*.\\n避坑指南:\\n- 此目录中的模块边界要围绕\\\"单一页面职责\\\"拆分,不要把模型调用,工具权限判定或持久化事实源塞回 UI 子模块.\\n- 本地长期约束已移除 plan/role/vulnerability 模式. 后续合并 upstream 时,若上游重新出现这些兼容项,应在此目录优先清理,不要把旧模式残留扩散回 ChatScreen.\\n- useChatScreenCommands,useChatScreenModes,useChatScreenInputHandler 共同构成页面交互骨架,修改时必须核对 askuser,ToolConfirmation 与普通输入是否仍保持单入口,避免快捷键和弹窗冲突.",
       "createdAt": "2026-03-10T19:55:26.518",
       "updatedAt": "2026-03-10T19:55:26.518"
+    }
+  ],
+  "source/ui/pages/chatScreen/useChatScreenCommands.ts": [
+    {
+      "id": "notebook-1773721487573_46xto9jvd",
+      "filePath": "source/ui/pages/chatScreen/useChatScreenCommands.ts",
+      "note": "职责: ChatScreen 启动阶段的命令注册装配 hook. 通过动态 import 触发各 commands 模块的 registerCommand 副作用,保持命令体系可拆分且按需加载.\n\n接口摘要:\n- 输入: 无(或 page 级上下文).\n- 输出: 完成命令注册(副作用),供 useCommandHandler/useCommandPanel 使用.\n\n依赖拓扑:\n- 依赖: source/utils/commands/*.ts.\n- 被依赖: source/ui/pages/ChatScreen.tsx.\n\n避坑指南:\n- `/role` 已废弃,MUSTNOT import role 命令模块,也不得保留对应 i18n key 或 action.\n- `/gitline` 需保留,但仅保留最小完整链路所需的 import,避免顺带恢复无关上游命令体系.\n- 命令面板(useCommandPanel)展示的命令列表必须与此处实际注册的命令集保持一致,避免\"面板可见但命令不可用\"或反之.",
+      "createdAt": "2026-03-17T12:24:47.573",
+      "updatedAt": "2026-03-17T12:25:52.647"
     }
   ],
   "source/ui/pages/ChatScreen.tsx": [
@@ -416,6 +551,15 @@
       "note": "职责: 核心业务与通用能力层.包含对话执行(execution),会话(session),SSE(sse),模型调用与流控制(core),配置读写(config),命令(commands),事件(events)等.\n\n接口摘要:\n- 输入: UI/CLI 层传入的用户指令与上下文.\n- 输出: 对话结果,状态变更事件,以及对外协议输出(SSE 事件等).\n\n依赖拓扑:\n- 依赖: source/api/ 作为模型渠道适配器.\n- 被依赖: source/ui/ 与 CLI 入口.\n\n避坑指南:\n- 任何跨会话的可变状态必须显式按 sessionId/connectionId 分片,禁止隐式单例导致串扰.\n- 流式输出必须统一使用 streamGuards/idle timeout/abandoned 丢弃策略,避免 abort 后 chunk 外泄.\n- 主/子代理提示词隔离是硬约束: 角色定义提示词只来自各自 profile,自定义 system prompt 仅影响本次调用且不得跨注入.",
       "createdAt": "2026-02-22T12:50:37.045",
       "updatedAt": "2026-02-22T12:50:37.045"
+    }
+  ],
+  "source/utils/commands/gitline.ts": [
+    {
+      "id": "notebook-1773721487708_wz7nu9993",
+      "filePath": "source/utils/commands/gitline.ts",
+      "note": "职责: 注册 `/gitline` 命令的最小实现. 命令本身只返回 action=showGitLinePicker,由 UI 层打开 GitLinePickerPanel 并把选择结果注入输入框.\n\n接口摘要:\n- registerCommand('gitline',{execute()->{success,action:'showGitLinePicker'}}).\n\n依赖拓扑:\n- 依赖: commandExecutor(registerCommand,CommandResult).\n- 被依赖: useChatScreenCommands.ts(动态 import 注册),useKeyboardInput/ChatInput(消费 action).\n\n避坑指南:\n- 本文件 MUST 保持无状态,无 UI,无 git 扫描逻辑,仅做命令注册与 action 返回.\n- `/gitline` 为最小保留能力,不得扩展为新的 review 或分析命令体系.",
+      "createdAt": "2026-03-17T12:24:47.708",
+      "updatedAt": "2026-03-17T12:24:47.708"
     }
   ],
   "source/utils/commands/toolsearch.ts": [

@@ -18,6 +18,7 @@ export function useChatScreenCommands(workingDirectory: string) {
 			import('../../../utils/commands/compact.js'),
 			import('../../../utils/commands/home.js'),
 			import('../../../utils/commands/review.js'),
+			import('../../../utils/commands/gitline.js'),
 			import('../../../utils/commands/usage.js'),
 			import('../../../utils/commands/export.js'),
 			import('../../../utils/commands/agent.js'),

@@ -558,6 +558,8 @@ export const en: TranslationKeys = {
 			home: 'Return to welcome screen to modify settings',
 			review:
 				'Review changes in the working tree and selected commits. Opens a picker panel where you can select items and add notes.',
+			gitline:
+				'Select git commits and insert their content into the current chat input',
 			usage: 'View token usage statistics with interactive charts',
 			export: 'Export chat conversation to text file with save dialog',
 			custom: 'Add custom command and save to ~/.snow/commands',
@@ -707,6 +709,18 @@ export const en: TranslationKeys = {
 		selectedLabel: 'Selected',
 		errorSelectAtLeastOne: 'Please select at least one item to review.',
 	},
+	gitLinePickerPanel: {
+		title: 'GitLine: Select Commits',
+		loadingCommits: 'Loading commits...',
+		loadingMoreSuffix: '(loading more...)',
+		noCommits: 'No commits available',
+		searchLabel: 'Search:',
+		emptySearch: '(empty)',
+		hintNavigation:
+			'↑/↓ navigate · Space toggle · Enter confirm · Type to filter',
+		selectedLabel: 'Selected',
+		scrollToLoadMore: '(scroll to load more)',
+	},
 	hooks: {
 		pressCtrlCAgain: 'Press Ctrl+C again to exit',
 		exitingApplication: 'Exiting safely...',
@@ -723,6 +737,7 @@ export const en: TranslationKeys = {
 		},
 		hookTypes: {
 			onUserMessage: 'Triggered when user sends a message',
+
 			beforeToolCall: 'Run before tool call',
 			afterToolCall: 'Run after tool call completes',
 			toolConfirmation:
@@ -1019,7 +1034,7 @@ export const en: TranslationKeys = {
 		typeToFilterCommands: 'Type to filter commands',
 		contentSearchHint: 'Content search • Tab/Enter to select • ESC to cancel',
 		fileSearchHint:
-			'Type to filter files • Tab/Enter to select • ESC to cancel',
+			'Type to filter files • Tab/Enter to select • Ctrl+T to toggle view • ESC to cancel',
 		expandedViewHint: 'Expanded view • Ctrl+T to toggle',
 		yoloModeActive:
 			'❁ YOLO MODE ACTIVE - All tools will be auto-approved without confirmation',
