@@ -304,7 +304,10 @@ async function executeWithInternalRetry(
 				(!streamResult.streamedContent ||
 					isEmptyResponse(streamResult.streamedContent)) &&
 				(!streamResult.receivedToolCalls ||
-					streamResult.receivedToolCalls.length === 0)
+					streamResult.receivedToolCalls.length === 0) &&
+				!streamResult.receivedReasoning &&
+				!streamResult.receivedThinking &&
+				!streamResult.receivedReasoningContent
 			) {
 				freeEncoder();
 				throw createEmptyResponseError(streamResult.streamedContent || '');

@@ -461,6 +461,9 @@ async function* parseSSEStream(
 
 					if (parseResult.success) {
 						const event = parseResult.data;
+						const responseObjectOutput = Array.isArray(event?.output)
+							? event.output
+							: [];
 						const hasBusinessDelta =
 							(event?.type === 'response.output_text.delta' && event?.delta) ||
 							(event?.type === 'response.reasoning_summary_text.delta' &&
@@ -468,12 +471,121 @@ async function* parseSSEStream(
 							(event?.type === 'response.function_call_arguments.delta' &&
 								event?.delta) ||
 							(event?.type === 'response.output_item.added' &&
-								event?.item?.type === 'function_call');
-						if (hasBusinessDelta) {
+								(event?.item?.type === 'function_call' ||
+									event?.item?.type === 'message' ||
+									event?.item?.type === 'reasoning'));
+						const hasResponseObjectBusinessOutput =
+							!event?.type &&
+							event?.object === 'response' &&
+							responseObjectOutput.some(
+								(item: any) =>
+									item?.type === 'function_call' ||
+									item?.type === 'message' ||
+									item?.type === 'reasoning',
+							);
+						const responseObjectStatus =
+							event?.object === 'response' ? event?.status : undefined;
+						if (hasBusinessDelta || hasResponseObjectBusinessOutput) {
+							// 只有真正产生业务输出时才刷新 idle timeout, 空的 in_progress/created 快照不能无限续命
 							guard.touch();
 						}
-						// yield 前检查是否已被丢弃
-						if (!guard.isAbandoned()) {
+						if (
+							!guard.isAbandoned() &&
+							!event?.type &&
+							event?.object === 'response' &&
+							responseObjectOutput.length > 0
+						) {
+							for (const item of responseObjectOutput) {
+								if (item?.type === 'reasoning') {
+									yield {
+										type: 'response.output_item.added',
+										item,
+									};
+									yield {
+										type: 'response.output_item.done',
+										item,
+									};
+									continue;
+								}
+								if (item?.type === 'function_call') {
+									yield {
+										type: 'response.output_item.added',
+										item,
+									};
+									yield {
+										type: 'response.output_item.done',
+										item,
+									};
+									continue;
+								}
+								if (item?.type === 'message' && Array.isArray(item?.content)) {
+									for (const contentPart of item.content) {
+										if (
+											contentPart?.type === 'output_text' &&
+											typeof contentPart.text === 'string' &&
+											contentPart.text
+										) {
+											yield {
+												type: 'response.output_text.delta',
+												delta: contentPart.text,
+											};
+											yield {
+												type: 'response.output_text.done',
+												text: contentPart.text,
+											};
+										}
+									}
+								}
+							}
+							if (responseObjectStatus === 'completed') {
+								yield {
+									type: 'response.completed',
+									response: event,
+								};
+							}
+							if (responseObjectStatus === 'failed') {
+								yield {
+									type: 'response.failed',
+									error: event?.error,
+								};
+							}
+							if (responseObjectStatus === 'cancelled') {
+								yield {
+									type: 'response.cancelled',
+									error: event?.error,
+								};
+							}
+							continue;
+						}
+						if (
+							!guard.isAbandoned() &&
+							!event?.type &&
+							event?.object === 'response'
+						) {
+							if (responseObjectStatus === 'completed') {
+								yield {
+									type: 'response.completed',
+									response: event,
+								};
+								continue;
+							}
+							if (responseObjectStatus === 'failed') {
+								yield {
+									type: 'response.failed',
+									error: event?.error,
+								};
+								continue;
+							}
+							if (responseObjectStatus === 'cancelled') {
+								yield {
+									type: 'response.cancelled',
+									error: event?.error,
+								};
+								continue;
+							}
+						}
+						// 仅对无 type 的 response 快照做合成; 其他有 type 的原生事件继续按原协议透传
+						if (!guard.isAbandoned() && event?.type) {
 							yield event;
 						}
 					}
